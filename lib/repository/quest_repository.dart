@@ -42,6 +42,7 @@ class QuestRepository {
   Future<List<QuestRecommendation>> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,
+    List<String> excludedQuestIds = const [],
     int limit = 3,
   }) async {
     try {
@@ -50,6 +51,7 @@ class QuestRepository {
         socialLevel: preferences.socialLevel,
         interests: preferences.interests,
         locationMode: preferences.locationMode,
+        excludedQuestIds: excludedQuestIds,
         limit: limit,
       );
       return rows.map(QuestRecommendation.fromJson).toList();

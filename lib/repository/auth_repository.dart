@@ -13,6 +13,8 @@ class AuthRepository {
 
   User? get currentUser => _remoteDataSource.currentSession?.user;
 
+  String? get currentUserEmail => _remoteDataSource.currentUserEmail;
+
   bool get isAuthenticated => currentUser != null;
 
   Stream<AuthState> get authStateChanges => _remoteDataSource.authStateChanges;

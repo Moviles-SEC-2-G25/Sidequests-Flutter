@@ -3,13 +3,17 @@ class Profile {
   final String id;
   final String? displayName;
   final String? avatarUrl;
+  final DateTime? createdAt;
 
-  const Profile({required this.id, this.displayName, this.avatarUrl});
+  const Profile({required this.id, this.displayName, this.avatarUrl, this.createdAt});
 
   factory Profile.fromJson(Map<String, dynamic> json) => Profile(
     id: json['id'] as String,
     displayName: json['display_name'] as String?,
     avatarUrl: json['avatar_url'] as String?,
+    createdAt: json['created_at'] == null
+        ? null
+        : DateTime.parse(json['created_at'] as String),
   );
 
   Map<String, dynamic> toJson() => {
@@ -22,5 +26,6 @@ class Profile {
     id: id,
     displayName: displayName ?? this.displayName,
     avatarUrl: avatarUrl ?? this.avatarUrl,
+    createdAt: createdAt,
   );
 }

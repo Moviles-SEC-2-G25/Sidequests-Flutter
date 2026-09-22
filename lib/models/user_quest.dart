@@ -54,4 +54,28 @@ class UserQuest {
         ? null
         : DateTime.parse(json['abandoned_at'] as String),
   );
+
+  /// For building the payload of a progress update — only the fields the
+  /// backend lets a client write are overridable (see `updateProgress` in
+  /// QuestRepository); lifecycle timestamps stay server-owned.
+  UserQuest copyWithProgress({
+    String? status,
+    int? currentStep,
+    List<int>? completedSteps,
+  }) => UserQuest(
+    id: id,
+    userId: userId,
+    questId: questId,
+    status: status ?? this.status,
+    currentStep: currentStep ?? this.currentStep,
+    completedSteps: completedSteps ?? this.completedSteps,
+    abandonReason: abandonReason,
+    rating: rating,
+    feedbackTags: feedbackTags,
+    photoProofPath: photoProofPath,
+    acceptedAt: acceptedAt,
+    startedAt: startedAt,
+    completedAt: completedAt,
+    abandonedAt: abandonedAt,
+  );
 }

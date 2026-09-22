@@ -26,19 +26,28 @@ class AnalyticsTracker {
     String eventType, {
     String? questId,
     String? category,
+    int? availableMinutes,
+    String? locationMode,
+    int? questDurationMinutes,
+    String? questDifficulty,
+    double? estimatedCost,
     Map<String, dynamic> metadata = const {},
   }) async {
     try {
-      final context = await _contextManager.snapshot();
+      final context = await _contextManager.snapshot(availableMinutes: availableMinutes);
       final event = AnalyticsEvent(
         eventType: eventType,
         sessionId: sessionId,
         questId: questId,
         category: category,
         availableMinutes: context.availableMinutes,
+        locationMode: locationMode,
         latitude: context.latitude,
         longitude: context.longitude,
         timeOfDay: context.timeOfDay,
+        questDurationMinutes: questDurationMinutes,
+        questDifficulty: questDifficulty,
+        estimatedCost: estimatedCost,
         metadata: metadata,
       );
       await _eventSink.insertAnalyticsEvent(event.toJson());

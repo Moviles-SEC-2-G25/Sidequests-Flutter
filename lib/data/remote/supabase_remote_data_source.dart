@@ -15,6 +15,8 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
 
   Session? get currentSession => _client.auth.currentSession;
 
+  String? get currentUserEmail => _client.auth.currentUser?.email;
+
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 
   Future<AuthResponse> signUp({
@@ -61,11 +63,15 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
     return (rows as List).cast<Map<String, dynamic>>();
   }
 
+  /// `recommend_quests` (BQ5). `excludedQuestIds` implements the immediate
+  /// session-level "not for me" exclusion added in migration 007 — quests
+  /// the user just skipped shouldn't be re-recommended in the same session.
   Future<List<Map<String, dynamic>>> recommendQuests({
     required int availableMinutes,
     required String socialLevel,
     List<String> interests = const [],
     String locationMode = 'all',
+    List<String> excludedQuestIds = const [],
     int limit = 3,
   }) async {
     final rows = await _client.rpc(
@@ -75,6 +81,7 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
         'p_social_level': socialLevel,
         'p_interests': interests,
         'p_location_mode': locationMode,
+        'p_excluded_quest_ids': excludedQuestIds,
         'p_limit': limit,
       },
     );

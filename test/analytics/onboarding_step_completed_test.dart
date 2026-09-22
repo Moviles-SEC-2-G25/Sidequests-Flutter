@@ -43,6 +43,9 @@ class _FakeAuthRepository implements AuthRepository {
   User? get currentUser => null;
 
   @override
+  String? get currentUserEmail => null;
+
+  @override
   bool get isAuthenticated => false;
 
   @override
@@ -79,6 +82,11 @@ class _SpyAnalyticsTracker extends AnalyticsTracker {
     String eventType, {
     String? questId,
     String? category,
+    int? availableMinutes,
+    String? locationMode,
+    int? questDurationMinutes,
+    String? questDifficulty,
+    double? estimatedCost,
     Map<String, dynamic> metadata = const {},
   }) async {
     calls.add({'eventType': eventType, 'metadata': metadata});

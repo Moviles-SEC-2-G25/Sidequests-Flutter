@@ -58,6 +58,9 @@ dependencies:
   # Loads Supabase URL/publishable key from a local .env file (mirrors backend .env.example convention)
   flutter_dotenv: ^5.2.1
 
+  # Outfit (headings) + DM Sans (body) match the Figma reference's typography
+  google_fonts: ^6.2.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

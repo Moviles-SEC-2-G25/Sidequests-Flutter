@@ -16,6 +16,9 @@ class LocalDataSource {
   static const _keyUserQuests = 'user_quests';
   static const _keyActiveQuestId = 'active_quest_id';
   static const _keyOnboardingComplete = 'onboarding_complete';
+  static const _keyDarkMode = 'dark_mode';
+  static const _keyMissionNotifications = 'mission_notifications_enabled';
+  static const _keyDailyReminders = 'daily_reminders_enabled';
 
   late final Box _box;
   late final SharedPreferences _prefs;
@@ -31,6 +34,27 @@ class LocalDataSource {
 
   Future<void> setCompletedOnboarding(bool value) =>
       _prefs.setBool(_keyOnboardingComplete, value);
+
+  // Device-level display/notification preferences. Kept outside `clear()`
+  // since they belong to the device, not the signed-in account.
+  bool isDarkMode() => _prefs.getBool(_keyDarkMode) ?? false;
+
+  Future<void> setDarkMode(bool value) => _prefs.setBool(_keyDarkMode, value);
+
+  /// Local preference only — there is no push-notification backend yet
+  /// (Firebase Cloud Messaging and the `notify` edge function are both
+  /// {planned} in Sidequests-Backend), so this stores intent without
+  /// triggering any real notification.
+  bool missionNotificationsEnabled() =>
+      _prefs.getBool(_keyMissionNotifications) ?? true;
+
+  Future<void> setMissionNotificationsEnabled(bool value) =>
+      _prefs.setBool(_keyMissionNotifications, value);
+
+  bool dailyRemindersEnabled() => _prefs.getBool(_keyDailyReminders) ?? false;
+
+  Future<void> setDailyRemindersEnabled(bool value) =>
+      _prefs.setBool(_keyDailyReminders, value);
 
   Map<String, dynamic>? getPreferences() =>
       (_box.get(_keyPreferences) as Map?)?.cast<String, dynamic>();

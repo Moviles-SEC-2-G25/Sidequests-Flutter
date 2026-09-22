@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'analytics/analytics_tracker.dart';
+import 'core/app_theme.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
 import 'data/remote/supabase_remote_data_source.dart';
@@ -12,6 +13,10 @@ import 'repository/quest_repository.dart';
 import 'repository/social_repository.dart';
 import 'view/auth/auth_gate.dart';
 import 'viewmodel/auth/auth_view_model.dart';
+import 'viewmodel/profile/profile_view_model.dart';
+import 'viewmodel/quests/quest_view_model.dart';
+import 'viewmodel/social/social_view_model.dart';
+import 'viewmodel/theme_view_model.dart';
 
 /// Composition root: wires data sources -> repositories -> ViewModels.
 /// The architecture marks a dedicated DI container as {planned}; today this
@@ -53,11 +58,40 @@ class SidequestsApp extends StatelessWidget {
             analyticsTracker,
           ),
         ),
+        ChangeNotifierProvider(create: (_) => ThemeViewModel(localDataSource)),
+        // Below providers depend on a signed-in userId. Provider's `create`
+        // is lazy (runs on first read), and these are only ever read from
+        // inside HomeShell (reachable only once authenticated), so reading
+        // AuthViewModel.userId here is safe despite it being null pre-login.
+        // Placed above MaterialApp/Navigator (not inside HomeShell) so any
+        // route pushed on top of HomeShell can still see them.
+        ChangeNotifierProvider(
+          create: (context) => QuestViewModel(
+            context.read<QuestRepository>(),
+            contextManager,
+            analyticsTracker,
+            context.read<AuthViewModel>().userId!,
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => ProfileViewModel(
+            context.read<ProfileRepository>(),
+            context.read<AuthRepository>(),
+            context.read<AuthViewModel>().userId!,
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => SocialViewModel(context.read<SocialRepository>()),
+        ),
       ],
-      child: MaterialApp(
-        title: 'Sidequests',
-        theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
-        home: const AuthGate(),
+      child: Consumer<ThemeViewModel>(
+        builder: (context, themeViewModel, _) => MaterialApp(
+          title: 'Sidequests',
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: themeViewModel.themeMode,
+          home: const AuthGate(),
+        ),
       ),
     );
   }

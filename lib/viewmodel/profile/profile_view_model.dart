@@ -3,11 +3,13 @@ import 'package:flutter/foundation.dart';
 import '../../core/app_exception.dart';
 import '../../models/profile.dart';
 import '../../models/user_preferences.dart';
+import '../../repository/auth_repository.dart';
 import '../../repository/profile_repository.dart';
 
 /// Preferences, achievements and settings for the profile views.
 class ProfileViewModel extends ChangeNotifier {
   final ProfileRepository _profileRepository;
+  final AuthRepository _authRepository;
   final String _userId;
 
   Profile? profile;
@@ -15,7 +17,9 @@ class ProfileViewModel extends ChangeNotifier {
   bool isLoading = false;
   String? errorMessage;
 
-  ProfileViewModel(this._profileRepository, this._userId);
+  ProfileViewModel(this._profileRepository, this._authRepository, this._userId);
+
+  String? get email => _authRepository.currentUserEmail;
 
   Future<void> load() async {
     isLoading = true;
