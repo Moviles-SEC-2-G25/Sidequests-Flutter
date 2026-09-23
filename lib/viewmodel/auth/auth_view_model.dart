@@ -44,6 +44,12 @@ class AuthViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       await action();
+      // signUp doesn't create a session when email confirmation is
+      // required, so authStateChanges never fires to clear this status.
+      status = _authRepository.isAuthenticated
+          ? AuthStatus.authenticated
+          : AuthStatus.unauthenticated;
+      notifyListeners();
       return true;
     } on AppException catch (e) {
       status = AuthStatus.unauthenticated;
