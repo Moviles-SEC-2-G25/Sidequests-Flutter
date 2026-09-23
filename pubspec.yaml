@@ -55,6 +55,10 @@ dependencies:
   # Context Manager connectivity dimension
   connectivity_plus: ^6.1.0
 
+  # Analytics session id: analytics_events.session_id is a Postgres uuid
+  # column, so this must generate real UUIDs, not an arbitrary string.
+  uuid: ^4.6.0
+
   # Loads Supabase URL/publishable key from a local .env file (mirrors backend .env.example convention)
   flutter_dotenv: ^5.2.1
 

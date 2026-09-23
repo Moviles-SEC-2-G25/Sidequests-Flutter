@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import 'analytics/analytics_tracker.dart';
 import 'core/app_theme.dart';
@@ -33,7 +34,10 @@ class SidequestsApp extends StatelessWidget {
     final analyticsTracker = AnalyticsTracker(
       eventSink: remoteDataSource,
       contextManager: contextManager,
-      sessionId: DateTime.now().microsecondsSinceEpoch.toString(),
+      // analytics_events.session_id is a Postgres `uuid` column; a
+      // non-uuid value here makes every event insert fail RLS/type
+      // validation silently (AnalyticsTracker.track swallows the error).
+      sessionId: const Uuid().v4(),
     );
 
     return MultiProvider(
