@@ -627,6 +627,20 @@ class _SettingsSectionState extends State<_SettingsSection> {
     final localDataSource = context.read<LocalDataSource>();
     _missionNotifications = localDataSource.missionNotificationsEnabled();
     _dailyReminders = localDataSource.dailyRemindersEnabled();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => context.read<AuthViewModel>().loadBiometricAvailability(),
+    );
+  }
+
+  Future<void> _toggleBiometric(bool value) async {
+    final authViewModel = context.read<AuthViewModel>();
+    if (!value) return authViewModel.disableBiometric();
+    final confirmed = await authViewModel.enableBiometric();
+    if (!confirmed && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo verificar tu huella. Desbloqueo no activado.')),
+      );
+    }
   }
 
   @override
@@ -634,6 +648,7 @@ class _SettingsSectionState extends State<_SettingsSection> {
     final themeViewModel = context.watch<ThemeViewModel>();
     final localDataSource = context.read<LocalDataSource>();
     final profile = widget.profileViewModel.profile;
+    final authViewModel = context.watch<AuthViewModel>();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -664,6 +679,13 @@ class _SettingsSectionState extends State<_SettingsSection> {
             localDataSource.setDailyRemindersEnabled(value);
           },
         ),
+        if (authViewModel.isBiometricAvailable)
+          _SettingSwitch(
+            title: 'Desbloquear con huella',
+            subtitle: 'Pide tu huella al abrir la app',
+            value: authViewModel.biometricEnabled,
+            onChanged: _toggleBiometric,
+          ),
         const SizedBox(height: 4),
         ListTile(
           contentPadding: EdgeInsets.zero,

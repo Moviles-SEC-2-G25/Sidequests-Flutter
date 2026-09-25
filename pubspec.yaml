@@ -59,6 +59,9 @@ dependencies:
   # column, so this must generate real UUIDs, not an arbitrary string.
   uuid: ^4.6.0
 
+  # Optional biometric unlock (fingerprint / Face ID)
+  local_auth: ^2.3.0
+
   # Loads Supabase URL/publishable key from a local .env file (mirrors backend .env.example convention)
   flutter_dotenv: ^5.2.1
 

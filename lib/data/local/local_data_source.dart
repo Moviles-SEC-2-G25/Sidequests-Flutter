@@ -19,6 +19,7 @@ class LocalDataSource {
   static const _keyDarkMode = 'dark_mode';
   static const _keyMissionNotifications = 'mission_notifications_enabled';
   static const _keyDailyReminders = 'daily_reminders_enabled';
+  static const _keyBiometricEnabled = 'biometric_enabled';
 
   late final Box _box;
   late final SharedPreferences _prefs;
@@ -56,6 +57,13 @@ class LocalDataSource {
   Future<void> setDailyRemindersEnabled(bool value) =>
       _prefs.setBool(_keyDailyReminders, value);
 
+  /// Account-bound: cleared on sign-out so the next account starts without
+  /// a biometric lock it never enabled.
+  bool isBiometricEnabled() => _prefs.getBool(_keyBiometricEnabled) ?? false;
+
+  Future<void> setBiometricEnabled(bool value) =>
+      _prefs.setBool(_keyBiometricEnabled, value);
+
   Map<String, dynamic>? getPreferences() =>
       (_box.get(_keyPreferences) as Map?)?.cast<String, dynamic>();
 
@@ -89,5 +97,6 @@ class LocalDataSource {
   Future<void> clear() async {
     await _box.clear();
     await _prefs.remove(_keyOnboardingComplete);
+    await _prefs.remove(_keyBiometricEnabled);
   }
 }
