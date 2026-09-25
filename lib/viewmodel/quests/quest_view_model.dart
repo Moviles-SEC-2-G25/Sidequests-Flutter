@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../analytics/analytics_event_type.dart';
 import '../../analytics/analytics_tracker.dart';
@@ -122,12 +123,20 @@ class QuestViewModel extends ChangeNotifier {
         preferences: preferences.copyWith(locationMode: selectedLocationScope),
         excludedQuestIds: _sessionSkippedQuestIds.toList(),
       );
+      // One batch_id per RPC call so BQ8 can group the events of one list.
+      final batchId = const Uuid().v4();
       for (final recommendation in recommendations) {
         _analyticsTracker.track(
           AnalyticsEventType.recommendationShown,
           questId: recommendation.questId,
+          category: recommendation.category,
           availableMinutes: selectedMinutes,
           locationMode: selectedLocationScope,
+          metadata: {
+            'variant': recommendation.variant,
+            'rank': recommendation.rankPosition,
+            'batch_id': batchId,
+          },
         );
       }
     } on AppException catch (e) {

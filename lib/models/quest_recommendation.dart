@@ -8,6 +8,13 @@ class QuestRecommendation {
   final bool socialMatch;
   final bool locationMatch;
 
+  /// BQ8 A/B arm assigned by the server: 'control' | 'diverse'.
+  final String variant;
+
+  /// 1-based position of this row in the returned list.
+  final int rankPosition;
+  final String? category;
+
   const QuestRecommendation({
     required this.questId,
     required this.score,
@@ -15,6 +22,9 @@ class QuestRecommendation {
     required this.interestMatch,
     required this.socialMatch,
     required this.locationMatch,
+    this.variant = 'control',
+    this.rankPosition = 0,
+    this.category,
   });
 
   factory QuestRecommendation.fromJson(Map<String, dynamic> json) =>
@@ -25,5 +35,8 @@ class QuestRecommendation {
         interestMatch: json['interest_match'] as bool? ?? false,
         socialMatch: json['social_match'] as bool? ?? false,
         locationMatch: json['location_match'] as bool? ?? false,
+        variant: json['variant'] as String? ?? 'control',
+        rankPosition: (json['rank_position'] as num?)?.toInt() ?? 0,
+        category: json['category'] as String?,
       );
 }
