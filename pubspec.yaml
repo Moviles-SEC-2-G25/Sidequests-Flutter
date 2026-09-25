@@ -59,6 +59,9 @@ dependencies:
   # column, so this must generate real UUIDs, not an arbitrary string.
   uuid: ^4.6.0
 
+  # Weather Service (Open-Meteo REST adapter)
+  http: ^1.2.2
+
   # Loads Supabase URL/publishable key from a local .env file (mirrors backend .env.example convention)
   flutter_dotenv: ^5.2.1
 
