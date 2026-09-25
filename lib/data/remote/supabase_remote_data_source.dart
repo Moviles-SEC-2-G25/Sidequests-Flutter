@@ -101,6 +101,26 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
     Map<String, dynamic> userQuest,
   ) => _client.from('user_quests').upsert(userQuest).select().single();
 
+  /// Upserts only the rating columns of an existing `user_quests` row (RLS
+  /// lets the user update their own rows).
+  Future<Map<String, dynamic>> rateUserQuest({
+    required String id,
+    required String userId,
+    required String questId,
+    required int rating,
+    required List<String> feedbackTags,
+  }) => _client
+      .from('user_quests')
+      .upsert({
+        'id': id,
+        'user_id': userId,
+        'quest_id': questId,
+        'rating': rating,
+        'feedback_tags': feedbackTags,
+      })
+      .select()
+      .single();
+
   /// `analytics_events.user_id` is NOT NULL and RLS requires it to equal
   /// `auth.uid()`, so it must be stamped from the active session here rather
   /// than trusted from the caller. Silently skips if there is no session —

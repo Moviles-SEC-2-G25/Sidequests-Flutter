@@ -34,6 +34,8 @@ class QuestViewModel extends ChangeNotifier {
   bool isLoadingRecommendations = false;
   bool isLoadingSteps = false;
   String? errorMessage;
+  bool isSubmittingRating = false;
+  String? ratingErrorMessage;
 
   int selectedMinutes = 30;
   String selectedLocationScope = 'all'; // all | gps | anywhere
@@ -216,7 +218,8 @@ class QuestViewModel extends ChangeNotifier {
   /// Advances the current step (or completes the quest on the last one).
   /// Transitions 'accepted' -> 'in_progress' on the first step so the
   /// backend's lifecycle trigger stamps `started_at` for real.
-  Future<void> completeCurrentStep(UserQuest userQuest) async {
+  /// Returns true only when this call completed the whole quest.
+  Future<bool> completeCurrentStep(UserQuest userQuest) async {
     final nextCompleted = [...userQuest.completedSteps, userQuest.currentStep];
     final isLastStep = _stepsQuestId == userQuest.questId &&
         userQuest.currentStep >= steps.length - 1;
@@ -245,8 +248,42 @@ class QuestViewModel extends ChangeNotifier {
         );
       }
       _replaceUserQuest(updated);
+      return isLastStep;
     } on AppException catch (e) {
       errorMessage = e.message;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Saves the post-mission rating/feedback and emits 'quest_rated'.
+  /// Returns true on success; on failure `ratingErrorMessage` is set.
+  Future<bool> submitRating(
+    UserQuest userQuest, {
+    required int rating,
+    required List<String> tags,
+  }) async {
+    isSubmittingRating = true;
+    ratingErrorMessage = null;
+    notifyListeners();
+    try {
+      final updated = await _questRepository.rateQuest(userQuest, rating, tags);
+      _replaceUserQuest(updated);
+      final quest = questById(updated.questId);
+      _analyticsTracker.track(
+        AnalyticsEventType.questRated,
+        questId: updated.questId,
+        category: quest?.category,
+        questDurationMinutes: quest?.durationMinutes,
+        questDifficulty: quest?.difficulty,
+        metadata: {'rating': rating, 'tags': tags},
+      );
+      return true;
+    } on AppException catch (e) {
+      ratingErrorMessage = e.message;
+      return false;
+    } finally {
+      isSubmittingRating = false;
       notifyListeners();
     }
   }
