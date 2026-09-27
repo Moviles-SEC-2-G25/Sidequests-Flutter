@@ -277,6 +277,21 @@ class QuestViewModel extends ChangeNotifier {
     }
   }
 
+  /// Candidates for the "shake to decide" gesture: same catalogue filter as
+  /// Explore (respects `selectedMinutes`), minus quests already completed.
+  List<Quest> get shakeCandidates {
+    final completedIds = completedQuests.map((uq) => uq.questId).toSet();
+    return filteredCatalog.where((quest) => !completedIds.contains(quest.id)).toList();
+  }
+
+  void trackShakeSurprise(String questId) {
+    _analyticsTracker.track(
+      AnalyticsEventType.shakeSurprise,
+      questId: questId,
+      metadata: {'quest_id': questId},
+    );
+  }
+
   void _replaceUserQuest(UserQuest updated) {
     userQuests = [updated, ...userQuests.where((uq) => uq.id != updated.id)];
     notifyListeners();

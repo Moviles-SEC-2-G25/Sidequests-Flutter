@@ -9,4 +9,5 @@ abstract final class AnalyticsEventType {
   static const questAbandoned = 'quest_abandoned';
   static const questCompleted = 'quest_completed';
   static const locationModeSelected = 'location_mode_selected';
+  static const shakeSurprise = 'shake_surprise';
 }
