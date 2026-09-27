@@ -45,6 +45,13 @@ class QuestViewModel extends ChangeNotifier {
   double? userLongitude;
   bool isLocatingUser = false;
 
+  // --- BQ4: "decision journey" toward starting a quest — how long, and how
+  // many interactions, from the first recommendations shown (after opening
+  // the app or after the last quest was started) to accepting one. ---
+  DateTime? _decisionStartedAt;
+  String? _decisionBatchId;
+  int _interactionCount = 0;
+
   QuestViewModel(
     this._questRepository,
     this._contextManager,
@@ -95,22 +102,32 @@ class QuestViewModel extends ChangeNotifier {
 
   void setMinutes(int minutes) {
     selectedMinutes = minutes;
+    registerInteraction();
     notifyListeners();
   }
 
   void setCategory(String? category) {
     selectedCategory = category;
+    registerInteraction();
     notifyListeners();
   }
 
   /// BQ10 (location-independent mode usage) is measured from this event.
   void setLocationScope(String scope) {
     selectedLocationScope = scope;
+    registerInteraction();
     notifyListeners();
     _analyticsTracker.track(
       AnalyticsEventType.locationModeSelected,
       locationMode: scope,
     );
+  }
+
+  /// BQ4: counts one step of browsing toward the decision to start a quest —
+  /// a filter change, dismissing a recommendation, or opening a quest's
+  /// detail from Explore. The final "accept" tap itself isn't counted.
+  void registerInteraction() {
+    _interactionCount++;
   }
 
   Future<void> loadRecommendations(UserPreferences preferences) async {
@@ -125,6 +142,13 @@ class QuestViewModel extends ChangeNotifier {
       );
       // One batch_id per RPC call so BQ8 can group the events of one list.
       final batchId = const Uuid().v4();
+      // BQ4: starts the decision clock on the first non-empty list shown
+      // since the app opened (or since the last quest was started) — later
+      // reloads (filter changes, "Ahora no") don't restart it.
+      if (recommendations.isNotEmpty) {
+        _decisionStartedAt ??= DateTime.now();
+        _decisionBatchId ??= batchId;
+      }
       for (final recommendation in recommendations) {
         _analyticsTracker.track(
           AnalyticsEventType.recommendationShown,
@@ -147,7 +171,32 @@ class QuestViewModel extends ChangeNotifier {
     }
   }
 
+  /// [wasRecommended] also picks BQ4's start_path: 'standard' from a
+  /// recommendation's detail view, 'catalog' from "Todas las misiones".
   Future<void> acceptQuest(String questId, {bool wasRecommended = false}) async {
+    await _acceptQuest(
+      questId,
+      startPath: wasRecommended ? 'standard' : 'catalog',
+      wasRecommended: wasRecommended,
+    );
+  }
+
+  /// "Empezar ya" on a recommendation card (BQ4's 'instant_plan' start
+  /// path): accepts the quest and preloads its steps, skipping
+  /// QuestDetailView entirely. The caller navigates to MissionTabView once
+  /// this returns true.
+  Future<bool> startInstantPlan(Quest quest) async {
+    final started = await _acceptQuest(quest.id, startPath: 'instant_plan', wasRecommended: true);
+    if (!started) return false;
+    await loadSteps(quest.id);
+    return true;
+  }
+
+  Future<bool> _acceptQuest(
+    String questId, {
+    required String startPath,
+    required bool wasRecommended,
+  }) async {
     try {
       final userQuest = await _questRepository.acceptQuest(
         userId: _userId,
@@ -155,6 +204,11 @@ class QuestViewModel extends ChangeNotifier {
       );
       _replaceUserQuest(userQuest);
       final quest = questById(questId);
+      // BQ4: how much a ready-to-execute plan (vs. browsing the detail page)
+      // shortens the trip from seeing recommendations to starting a quest.
+      final secondsToStart = _decisionStartedAt == null
+          ? 0
+          : DateTime.now().difference(_decisionStartedAt!).inSeconds;
       _analyticsTracker.track(
         wasRecommended
             ? AnalyticsEventType.recommendationAccepted
@@ -164,11 +218,27 @@ class QuestViewModel extends ChangeNotifier {
         questDurationMinutes: quest?.durationMinutes,
         questDifficulty: quest?.difficulty,
         estimatedCost: quest?.estimatedCost,
+        metadata: {
+          'start_path': startPath,
+          'seconds_to_start': secondsToStart,
+          'interactions_to_start': _interactionCount,
+          'batch_id': _decisionBatchId,
+        },
       );
+      _resetDecisionJourney();
+      return true;
     } on AppException catch (e) {
       errorMessage = e.message;
       notifyListeners();
+      return false;
     }
+  }
+
+  /// A new decision journey starts the next time recommendations are shown.
+  void _resetDecisionJourney() {
+    _decisionStartedAt = null;
+    _decisionBatchId = null;
+    _interactionCount = 0;
   }
 
   /// "Ahora no" on a recommendation card: excludes it from this session's
@@ -176,6 +246,7 @@ class QuestViewModel extends ChangeNotifier {
   Future<void> skipRecommendation(String questId, UserPreferences preferences) async {
     _sessionSkippedQuestIds.add(questId);
     recommendations = recommendations.where((r) => r.questId != questId).toList();
+    registerInteraction();
     notifyListeners();
     _analyticsTracker.track(
       AnalyticsEventType.recommendationSkipped,
