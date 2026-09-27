@@ -1,3 +1,4 @@
+import '../core/distance.dart';
 import 'analytics_event_sink.dart';
 import '../data/context/context_manager.dart';
 import '../models/analytics_event.dart';
@@ -31,10 +32,27 @@ class AnalyticsTracker {
     int? questDurationMinutes,
     String? questDifficulty,
     double? estimatedCost,
+    double? questLatitude,
+    double? questLongitude,
     Map<String, dynamic> metadata = const {},
   }) async {
     try {
-      final context = await _contextManager.snapshot(availableMinutes: availableMinutes);
+      final context = await _contextManager.snapshot(
+        availableMinutes: availableMinutes,
+      );
+      // Distance user -> quest (BQ6 distance segmentation); only when both
+      // the device fix and the quest coordinates are known.
+      final int? distanceMeters =
+          context.hasLocation && questLatitude != null && questLongitude != null
+          ? (haversineKm(
+                      context.latitude!,
+                      context.longitude!,
+                      questLatitude,
+                      questLongitude,
+                    ) *
+                    1000)
+                .round()
+          : null;
       final event = AnalyticsEvent(
         eventType: eventType,
         sessionId: sessionId,
@@ -48,6 +66,7 @@ class AnalyticsTracker {
         questDurationMinutes: questDurationMinutes,
         questDifficulty: questDifficulty,
         estimatedCost: estimatedCost,
+        distanceMeters: distanceMeters,
         metadata: metadata,
       );
       await _eventSink.insertAnalyticsEvent(event.toJson());

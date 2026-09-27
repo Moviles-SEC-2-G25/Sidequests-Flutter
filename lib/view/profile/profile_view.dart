@@ -9,6 +9,7 @@ import '../../viewmodel/auth/auth_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import '../../viewmodel/theme_view_model.dart';
+import 'change_password_dialog.dart';
 import 'edit_preferences_view.dart';
 
 /// Profile: header + stats, friends (honest stub — no backend table),
@@ -108,6 +109,11 @@ class _ProfileHeader extends StatelessWidget {
               if (handle.isNotEmpty) Text(handle, style: Theme.of(context).textTheme.bodySmall),
             ],
           ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.lock_reset),
+          tooltip: 'Cambiar contraseña',
+          onPressed: () => showChangePasswordDialog(context),
         ),
         IconButton(
           icon: const Icon(Icons.logout),

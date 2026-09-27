@@ -49,6 +49,9 @@ class _FakeAuthRepository implements AuthRepository {
   bool get isAuthenticated => false;
 
   @override
+  Future<void> changePassword(String newPassword) async {}
+
+  @override
   Stream<AuthState> get authStateChanges => const Stream.empty();
 
   @override
@@ -87,6 +90,8 @@ class _SpyAnalyticsTracker extends AnalyticsTracker {
     int? questDurationMinutes,
     String? questDifficulty,
     double? estimatedCost,
+    double? questLatitude,
+    double? questLongitude,
     Map<String, dynamic> metadata = const {},
   }) async {
     calls.add({'eventType': eventType, 'metadata': metadata});

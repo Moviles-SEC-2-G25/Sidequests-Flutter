@@ -35,6 +35,14 @@ class AuthRepository {
     }
   }
 
+  Future<void> changePassword(String newPassword) async {
+    try {
+      await _remoteDataSource.updatePassword(newPassword);
+    } on AuthException catch (e) {
+      throw AppException(e.message);
+    }
+  }
+
   Future<void> signOut() async {
     await _remoteDataSource.signOut();
     await _localDataSource.clear();

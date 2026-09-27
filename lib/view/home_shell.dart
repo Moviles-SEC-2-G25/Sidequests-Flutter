@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../viewmodel/context/context_status_view_model.dart';
+import 'widgets/context_banner.dart';
 
 import 'profile/profile_view.dart';
 import 'quests/explore_view.dart';
@@ -31,8 +35,15 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
+    return ChangeNotifierProvider(
+      create: (_) => ContextStatusViewModel(),
+      child: Scaffold(
+      body: Column(
+        children: [
+          const ContextBanner(),
+          Expanded(child: IndexedStack(index: _index, children: _pages)),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (index) => setState(() => _index = index),
@@ -44,6 +55,6 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(icon: Icon(Icons.person_outline), label: 'Perfil'),
         ],
       ),
-    );
+    ));
   }
 }

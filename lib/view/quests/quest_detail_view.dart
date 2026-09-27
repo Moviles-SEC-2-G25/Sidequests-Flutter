@@ -6,6 +6,8 @@ import '../../core/category_labels.dart';
 import '../../models/quest.dart';
 import '../../models/user_quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../widgets/quest_address.dart';
+import '../widgets/quest_compass.dart';
 import 'mission_tab_view.dart';
 
 /// Quest detail: full info, a 2x2 stat grid, difficulty banner, step count
@@ -88,6 +90,8 @@ class _QuestDetailViewState extends State<QuestDetailView> {
               Text(quest.title, style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 12),
               Text(quest.description, style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 12),
+              QuestAddress(quest: quest),
               const SizedBox(height: 20),
               GridView.count(
                 crossAxisCount: 2,
@@ -156,6 +160,8 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+              QuestCompass(quest: quest),
               const SizedBox(height: 20),
               Text(
                 stepCount != null ? 'Qué harás ($stepCount pasos)' : 'Qué harás',

@@ -262,7 +262,14 @@ class QuestViewModel extends ChangeNotifier {
         category: quest?.category,
         questDurationMinutes: quest?.durationMinutes,
         questDifficulty: quest?.difficulty,
-        metadata: {'reason': reason},
+        estimatedCost: quest?.estimatedCost,
+        questLatitude: quest?.latitude,
+        questLongitude: quest?.longitude,
+        metadata: {
+          'reason': reason,
+          'step': userQuest.currentStep,
+          'completed_steps': userQuest.completedSteps.length,
+        },
       );
     } on AppException catch (e) {
       errorMessage = e.message;

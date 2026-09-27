@@ -31,6 +31,9 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
 
   Future<void> signOut() => _client.auth.signOut();
 
+  Future<UserResponse> updatePassword(String newPassword) =>
+      _client.auth.updateUser(UserAttributes(password: newPassword));
+
   Future<Map<String, dynamic>> getProfile(String userId) => _client
       .from('profiles')
       .select()
