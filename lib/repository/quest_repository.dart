@@ -130,4 +130,23 @@ class QuestRepository {
       throw AppException(e.message);
     }
   }
+
+  Future<UserQuest> rateQuest(
+    UserQuest userQuest,
+    int rating,
+    List<String> tags,
+  ) async {
+    try {
+      final json = await _remoteDataSource.rateUserQuest(
+        id: userQuest.id,
+        userId: userQuest.userId,
+        questId: userQuest.questId,
+        rating: rating,
+        feedbackTags: tags,
+      );
+      return UserQuest.fromJson(json);
+    } on PostgrestException catch (e) {
+      throw AppException(e.message);
+    }
+  }
 }
