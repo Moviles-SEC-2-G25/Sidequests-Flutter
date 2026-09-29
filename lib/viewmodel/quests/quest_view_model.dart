@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../../analytics/analytics_event_type.dart';
 import '../../analytics/analytics_tracker.dart';
 import '../../core/app_exception.dart';
+import '../../core/similar_quest_recommender.dart';
 import '../../data/context/context_manager.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
@@ -24,6 +25,7 @@ class QuestViewModel extends ChangeNotifier {
   final ContextManager _contextManager;
   final AnalyticsTracker _analyticsTracker;
   final String _userId;
+  final SimilarQuestRecommender _similarQuestRecommender;
 
   List<Quest> catalog = [];
   List<QuestRecommendation> recommendations = [];
@@ -58,8 +60,9 @@ class QuestViewModel extends ChangeNotifier {
     this._questRepository,
     this._contextManager,
     this._analyticsTracker,
-    this._userId,
-  );
+    this._userId, {
+    SimilarQuestRecommender similarQuestRecommender = const SimilarQuestRecommender(),
+  }) : _similarQuestRecommender = similarQuestRecommender;
 
   /// The quest to resume from "Continúa donde lo dejaste" / the Misión tab:
   /// the most recently touched quest that isn't completed. `userQuests` is
@@ -357,6 +360,25 @@ class QuestViewModel extends ChangeNotifier {
       isSubmittingRating = false;
       notifyListeners();
     }
+  }
+
+  /// "Te podría gustar" on QuestCompletedView. Pure recomputation from
+  /// [rating] each call (no caching), so the view just re-invokes it as the
+  /// user picks a star rating, before saving — no separate "recalculate"
+  /// step needed.
+  List<Quest> similarQuests({required Quest completed, required int rating}) =>
+      _similarQuestRecommender.recommend(completed, catalog, userQuests, rating, selectedMinutes);
+
+  void trackSimilarQuestOpened({
+    required String openedQuestId,
+    required String sourceQuestId,
+    required int rank,
+  }) {
+    _analyticsTracker.track(
+      AnalyticsEventType.similarQuestOpened,
+      questId: openedQuestId,
+      metadata: {'source_quest_id': sourceQuestId, 'rank': rank},
+    );
   }
 
   Future<void> abandonQuest(UserQuest userQuest, {required String reason}) async {
