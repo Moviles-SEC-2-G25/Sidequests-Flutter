@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/category_labels.dart';
 import '../../models/quest.dart';
 import '../../models/user_quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import 'quest_detail_view.dart';
 
 const _feedbackTags = <String, String>{
   'divertida': 'Divertida',
@@ -114,6 +116,7 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
                     style: textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
                   ),
                 ],
+                _SimilarQuestsSection(completed: widget.quest, rating: _rating),
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
@@ -140,6 +143,73 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// "Te podría gustar": up to 3 quests ranked by [SimilarQuestRecommender],
+/// recomputed on every build so it tracks the pending (not-yet-saved)
+/// rating as the user taps stars.
+class _SimilarQuestsSection extends StatelessWidget {
+  final Quest completed;
+  final int rating;
+
+  const _SimilarQuestsSection({required this.completed, required this.rating});
+
+  @override
+  Widget build(BuildContext context) {
+    final questViewModel = context.watch<QuestViewModel>();
+    final similar = questViewModel.similarQuests(completed: completed, rating: rating);
+    if (similar.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Te podría gustar', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          for (final (index, quest) in similar.indexed)
+            _SimilarQuestCard(
+              quest: quest,
+              onTap: () {
+                questViewModel.trackSimilarQuestOpened(
+                  openedQuestId: quest.id,
+                  sourceQuestId: completed.id,
+                  rank: index + 1,
+                );
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => QuestDetailView(quest: quest, wasRecommended: true),
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SimilarQuestCard extends StatelessWidget {
+  final Quest quest;
+  final VoidCallback onTap;
+
+  const _SimilarQuestCard({required this.quest, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        onTap: onTap,
+        leading: Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 24)),
+        title: Text(quest.title, style: Theme.of(context).textTheme.titleSmall),
+        subtitle: Text(
+          '${categoryLabelEs(quest.category)} · ${quest.durationMinutes} min',
+        ),
+        trailing: const Icon(Icons.chevron_right),
       ),
     );
   }
