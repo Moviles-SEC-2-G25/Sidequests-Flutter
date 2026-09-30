@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/category_labels.dart';
+import '../../models/app_context.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
@@ -53,18 +54,44 @@ class _ExploreViewState extends State<ExploreView> {
           onRefresh: _loadAll,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            // Keyed so a conditional insertion above (the "continue" banner
+            // appearing/disappearing) can't shift these to a new list slot
+            // and, since ListView reconciles unkeyed children positionally,
+            // silently dispose+recreate their State mid-interaction.
             children: [
-              _Header(greeting: _greeting, displayName: profileViewModel.profile?.displayName),
+              _Header(
+                key: const ValueKey('header'),
+                greeting: _greeting,
+                displayName: profileViewModel.profile?.displayName,
+              ),
               const SizedBox(height: 20),
-              _TimeAndScopeFilters(questViewModel: questViewModel, profileViewModel: profileViewModel),
+              _TimeAndScopeFilters(
+                key: const ValueKey('filters'),
+                questViewModel: questViewModel,
+                profileViewModel: profileViewModel,
+              ),
               if (questViewModel.currentMission != null) ...[
                 const SizedBox(height: 16),
-                _ContinueBanner(userQuestId: questViewModel.currentMission!.questId),
+                _ContinueBanner(
+                  key: const ValueKey('continue-banner'),
+                  userQuestId: questViewModel.currentMission!.questId,
+                ),
+              ],
+              if (questViewModel.isAdaptingToContext) ...[
+                const SizedBox(height: 16),
+                _ContextAdaptationBanner(
+                  key: const ValueKey('context-adaptation-banner'),
+                  appContext: questViewModel.currentContext!,
+                ),
               ],
               const SizedBox(height: 20),
-              _RecommendedSection(questViewModel: questViewModel, profileViewModel: profileViewModel),
+              _RecommendedSection(
+                key: const ValueKey('recommended'),
+                questViewModel: questViewModel,
+                profileViewModel: profileViewModel,
+              ),
               const SizedBox(height: 24),
-              _AllMissionsSection(questViewModel: questViewModel),
+              _AllMissionsSection(key: const ValueKey('all-missions'), questViewModel: questViewModel),
             ],
           ),
         ),
@@ -77,7 +104,7 @@ class _Header extends StatelessWidget {
   final String greeting;
   final String? displayName;
 
-  const _Header({required this.greeting, this.displayName});
+  const _Header({super.key, required this.greeting, this.displayName});
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +136,11 @@ class _TimeAndScopeFilters extends StatelessWidget {
   final QuestViewModel questViewModel;
   final ProfileViewModel profileViewModel;
 
-  const _TimeAndScopeFilters({required this.questViewModel, required this.profileViewModel});
+  const _TimeAndScopeFilters({
+    super.key,
+    required this.questViewModel,
+    required this.profileViewModel,
+  });
 
   static const _minuteLabels = {10: '10m', 20: '20m', 30: '30m', 45: '45m', 60: '1 hr+'};
   static const _scopes = [
@@ -179,7 +210,7 @@ class _TimeAndScopeFilters extends StatelessWidget {
 class _ContinueBanner extends StatelessWidget {
   final String userQuestId;
 
-  const _ContinueBanner({required this.userQuestId});
+  const _ContinueBanner({super.key, required this.userQuestId});
 
   @override
   Widget build(BuildContext context) {
@@ -236,11 +267,48 @@ class _ContinueBanner extends StatelessWidget {
   }
 }
 
+/// Explains why [QuestViewModel.filteredCatalog] just reordered itself:
+/// rain or nighttime pushes 'anywhere' quests first. Rain takes priority
+/// over night in the message when both apply.
+class _ContextAdaptationBanner extends StatelessWidget {
+  final AppContext appContext;
+
+  const _ContextAdaptationBanner({super.key, required this.appContext});
+
+  @override
+  Widget build(BuildContext context) {
+    final String message;
+    final IconData icon;
+    if (appContext.isRainy) {
+      message = 'Está lloviendo: te mostramos primero misiones bajo techo.';
+      icon = Icons.umbrella_outlined;
+    } else {
+      message = 'Es de noche: priorizamos misiones cerca o en casa.';
+      icon = Icons.nightlight_outlined;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primaryContainerLight,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.primary, size: 18),
+          const SizedBox(width: 8),
+          Expanded(child: Text(message, style: Theme.of(context).textTheme.bodySmall)),
+        ],
+      ),
+    );
+  }
+}
+
 class _RecommendedSection extends StatelessWidget {
   final QuestViewModel questViewModel;
   final ProfileViewModel profileViewModel;
 
-  const _RecommendedSection({required this.questViewModel, required this.profileViewModel});
+  const _RecommendedSection({super.key, required this.questViewModel, required this.profileViewModel});
 
   @override
   Widget build(BuildContext context) {
@@ -291,9 +359,14 @@ class _RecommendedSection extends StatelessWidget {
               recommendation: recommendation,
               onDismiss: () =>
                   questViewModel.skipRecommendation(quest.id, profileViewModel.preferences),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest, wasRecommended: true)),
-              ),
+              onTap: () {
+                questViewModel.registerInteraction();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => QuestDetailView(quest: quest, wasRecommended: true),
+                  ),
+                );
+              },
             ),
           );
         }),
@@ -302,7 +375,7 @@ class _RecommendedSection extends StatelessWidget {
   }
 }
 
-class _RecommendationCard extends StatelessWidget {
+class _RecommendationCard extends StatefulWidget {
   final int rank;
   final Quest quest;
   final QuestRecommendation recommendation;
@@ -318,7 +391,47 @@ class _RecommendationCard extends StatelessWidget {
   });
 
   @override
+  State<_RecommendationCard> createState() => _RecommendationCardState();
+}
+
+class _RecommendationCardState extends State<_RecommendationCard> {
+  bool _isStartingInstantPlan = false;
+
+  /// "Empezar ya" (BQ4's 'instant_plan' start path): skips QuestDetailView
+  /// and goes straight to the mission checklist.
+  ///
+  /// Accepting the quest flips `currentMission` from null to non-null, which
+  /// makes Explore's unkeyed ListView insert the "Continúa donde lo
+  /// dejaste" banner right before this card's section — reshuffling this
+  /// widget to a new list slot and, since it has no Key, disposing and
+  /// recreating its State right under this `await`. So `navigator` and
+  /// `messenger` are captured up front and used unconditionally: they're
+  /// the app's long-lived Navigator/ScaffoldMessenger, not tied to this
+  /// (possibly-by-then-disposed) State. Only the `setState` calls need the
+  /// `mounted` guard.
+  Future<void> _startInstantPlan() async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final questViewModel = context.read<QuestViewModel>();
+    if (mounted) setState(() => _isStartingInstantPlan = true);
+    final started = await questViewModel.startInstantPlan(widget.quest);
+    if (mounted) setState(() => _isStartingInstantPlan = false);
+    if (!started) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(questViewModel.errorMessage ?? 'No se pudo iniciar la misión.')),
+      );
+      return;
+    }
+    navigator.push(MaterialPageRoute(builder: (_) => const MissionTabView(isTab: false)));
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final rank = widget.rank;
+    final quest = widget.quest;
+    final recommendation = widget.recommendation;
+    final onDismiss = widget.onDismiss;
+    final onTap = widget.onTap;
     final reasons = <String>[
       if (recommendation.timeMatch) 'Encaja en tu tiempo',
       if (recommendation.interestMatch) 'Coincide con tus intereses',
@@ -404,13 +517,27 @@ class _RecommendationCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton(
-                onPressed: onDismiss,
-                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
-                child: const Text('Ahora no →'),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton(
+                  onPressed: _isStartingInstantPlan ? null : onDismiss,
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
+                  child: const Text('Ahora no →'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _isStartingInstantPlan ? null : _startInstantPlan,
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
+                  child: _isStartingInstantPlan
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Empezar ya →'),
+                ),
+              ],
             ),
           ],
         ),
@@ -422,7 +549,7 @@ class _RecommendationCard extends StatelessWidget {
 class _AllMissionsSection extends StatelessWidget {
   final QuestViewModel questViewModel;
 
-  const _AllMissionsSection({required this.questViewModel});
+  const _AllMissionsSection({super.key, required this.questViewModel});
 
   @override
   Widget build(BuildContext context) {
@@ -478,9 +605,12 @@ class _AllMissionsSection extends StatelessWidget {
           ...questViewModel.filteredCatalog.map(
             (quest) => _QuestRow(
               quest: quest,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest)),
-              ),
+              onTap: () {
+                questViewModel.registerInteraction();
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest)));
+              },
             ),
           ),
       ],

@@ -25,6 +25,11 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
   static const _reasons = [
     ('ran_out_of_time', '⏰', 'Se me acabó el tiempo'),
     ('place_closed', '🔒', 'El lugar estaba cerrado'),
+    ('too_far', '📍', 'Quedaba muy lejos'),
+    ('too_expensive', '💸', 'Era muy costosa'),
+    ('too_hard', '🧗', 'Era muy difícil'),
+    ('bad_weather', '🌧️', 'El clima no ayudó'),
+    ('lost_interest', '😴', 'Perdí el interés'),
   ];
 
   String? _selectedReason;

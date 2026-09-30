@@ -3,9 +3,14 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/category_labels.dart';
+import '../../data/services/location_service.dart';
+import '../../data/services/weather_service.dart';
 import '../../models/quest.dart';
 import '../../models/user_quest.dart';
+import '../../models/weather_snapshot.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../widgets/quest_address.dart';
+import '../widgets/quest_compass.dart';
 import 'mission_tab_view.dart';
 
 /// Quest detail: full info, a 2x2 stat grid, difficulty banner, step count
@@ -88,6 +93,8 @@ class _QuestDetailViewState extends State<QuestDetailView> {
               Text(quest.title, style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 12),
               Text(quest.description, style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 12),
+              QuestAddress(quest: quest),
               const SizedBox(height: 20),
               GridView.count(
                 crossAxisCount: 2,
@@ -156,7 +163,8 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              QuestCompass(quest: quest),
               Text(
                 stepCount != null ? 'Qué harás ($stepCount pasos)' : 'Qué harás',
                 style: Theme.of(context).textTheme.titleMedium,
@@ -205,6 +213,97 @@ class _QuestDetailViewState extends State<QuestDetailView> {
     decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
     child: Text(text, style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 11)),
   );
+}
+
+/// "Clima en el lugar": weather at the quest's coordinates, or at the user's
+/// position for 'anywhere' quests / quests without coordinates. Renders
+/// nothing while loading or when no weather could be obtained.
+class _WeatherCard extends StatefulWidget {
+  final Quest quest;
+
+  const _WeatherCard({required this.quest});
+
+  @override
+  State<_WeatherCard> createState() => _WeatherCardState();
+}
+
+class _WeatherCardState extends State<_WeatherCard> {
+  WeatherSnapshot? _weather;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final locationService = context.read<LocationService>();
+    final weatherService = context.read<WeatherService>();
+    final quest = widget.quest;
+
+    double? latitude = quest.latitude;
+    double? longitude = quest.longitude;
+    if (quest.locationMode == 'anywhere' || latitude == null || longitude == null) {
+      final position = await locationService.getCurrentPosition();
+      latitude = position?.latitude;
+      longitude = position?.longitude;
+    }
+    if (latitude == null || longitude == null) return;
+
+    final weather = await weatherService.fetch(latitude, longitude);
+    if (!mounted) return;
+    setState(() => _weather = weather);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final weather = _weather;
+    if (weather == null) return const SizedBox.shrink();
+
+    final outline = Theme.of(context).colorScheme.outline;
+    final rainChance = weather.maxPrecipitationProbability;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: outline.withValues(alpha: 0.15)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              weather.isRainy ? Icons.umbrella_outlined : Icons.wb_sunny_outlined,
+              color: weather.isRainy ? AppColors.primary : AppColors.amber,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'CLIMA EN EL LUGAR',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 0.5),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${weather.temperatureC.round()}°C · ${weather.description}',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  Text(
+                    'Lluvia próximas 3 h: $rainChance%',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _StatCard extends StatelessWidget {

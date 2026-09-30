@@ -52,6 +52,16 @@ dependencies:
   # Battery Monitor (low battery -> less GPS polling)
   battery_plus: ^6.2.1
 
+  # Shake-to-decide gesture (accelerometer)
+  sensors_plus: ^6.0.1
+
+  # External REST services (Nominatim reverse geocoding)
+  # External REST services (Nominatim reverse geocoding, Open-Meteo weather)
+  http: ^1.2.2
+
+  # Compass sensor (magnetometer/rotation vector) for the quest-direction compass
+  flutter_compass: ^0.8.1
+
   # Context Manager connectivity dimension
   connectivity_plus: ^6.1.0
 

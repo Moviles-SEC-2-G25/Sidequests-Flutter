@@ -87,6 +87,17 @@ class AuthViewModel extends ChangeNotifier {
     }
     return success;
   }
+  /// Returns null on success, or the error message to show.
+  Future<String?> changePassword(String newPassword) async {
+    try {
+      await _authRepository.changePassword(newPassword);
+      return null;
+    } on AppException catch (e) {
+      return e.message;
+    }
+  }
+
+  Future<void> signOut() => _authRepository.signOut();
 
   Future<bool> _run(Future<void> Function() action) async {
     status = AuthStatus.authenticating;

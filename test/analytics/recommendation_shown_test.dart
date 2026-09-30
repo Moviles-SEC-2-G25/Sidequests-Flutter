@@ -44,6 +44,8 @@ class _SpyAnalyticsTracker extends AnalyticsTracker {
     int? questDurationMinutes,
     String? questDifficulty,
     double? estimatedCost,
+    double? questLatitude,
+    double? questLongitude,
     Map<String, dynamic> metadata = const {},
   }) async {
     calls.add({'eventType': eventType, 'questId': questId, 'metadata': metadata});
