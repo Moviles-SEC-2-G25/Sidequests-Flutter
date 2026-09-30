@@ -11,6 +11,15 @@ class AppContext {
   final bool isConnected;
   final int? availableMinutes;
 
+  /// WMO weather code at [latitude]/[longitude], from the Weather Service —
+  /// null when there's no location fix or the forecast couldn't be fetched.
+  final int? weatherCode;
+
+  /// True when [weatherCode] is a rain/drizzle/thunderstorm code. False
+  /// (not unknown) when there's no weather reading, so callers can use it
+  /// directly without a null check.
+  final bool isRainy;
+
   const AppContext({
     this.latitude,
     this.longitude,
@@ -18,6 +27,8 @@ class AppContext {
     required this.dayOfWeek,
     required this.isConnected,
     this.availableMinutes,
+    this.weatherCode,
+    this.isRainy = false,
   });
 
   bool get hasLocation => latitude != null && longitude != null;
