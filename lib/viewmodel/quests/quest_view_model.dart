@@ -6,6 +6,7 @@ import '../../analytics/analytics_tracker.dart';
 import '../../core/app_exception.dart';
 import '../../core/similar_quest_recommender.dart';
 import '../../data/context/context_manager.dart';
+import '../../models/app_context.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../models/quest_step.dart';
@@ -49,6 +50,11 @@ class QuestViewModel extends ChangeNotifier {
   double? userLongitude;
   bool isLocatingUser = false;
 
+  /// Last Context Manager snapshot (location, time of day, weather...),
+  /// refreshed whenever recommendations load. Drives Explore's automatic
+  /// weather/time-of-day adaptation — null until the first load.
+  AppContext? currentContext;
+
   // --- BQ4: "decision journey" toward starting a quest — how long, and how
   // many interactions, from the first recommendations shown (after opening
   // the app or after the last quest was started) to accepting one. ---
@@ -77,18 +83,34 @@ class QuestViewModel extends ChangeNotifier {
   List<String> get categories =>
       catalog.map((q) => q.category).toSet().toList()..sort();
 
-  List<Quest> get filteredCatalog => catalog.where((quest) {
-    if (quest.durationMinutes > selectedMinutes) return false;
-    if (selectedLocationScope != 'all' && quest.locationMode != selectedLocationScope) {
-      return false;
-    }
-    if (selectedCategory == 'sponsored') return quest.isSponsored;
-    if (selectedCategory != null &&
-        quest.category.toLowerCase() != selectedCategory!.toLowerCase()) {
-      return false;
-    }
-    return true;
-  }).toList();
+  List<Quest> get filteredCatalog {
+    final filtered = catalog.where((quest) {
+      if (quest.durationMinutes > selectedMinutes) return false;
+      if (selectedLocationScope != 'all' && quest.locationMode != selectedLocationScope) {
+        return false;
+      }
+      if (selectedCategory == 'sponsored') return quest.isSponsored;
+      if (selectedCategory != null &&
+          quest.category.toLowerCase() != selectedCategory!.toLowerCase()) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    if (!isAdaptingToContext) return filtered;
+
+    // Stable partition, not a filter: 'anywhere' quests move first, but
+    // nothing is dropped from the list.
+    final anywhere = filtered.where((quest) => quest.locationMode == 'anywhere');
+    final rest = filtered.where((quest) => quest.locationMode != 'anywhere');
+    return [...anywhere, ...rest];
+  }
+
+  /// True when it's raining at the user's location or it's nighttime —
+  /// Explore then prioritizes 'anywhere' (indoor/no-travel) quests and
+  /// shows a banner explaining why.
+  bool get isAdaptingToContext =>
+      (currentContext?.isRainy ?? false) || currentContext?.timeOfDay == 'night';
 
   Future<void> load() async {
     isLoading = true;
@@ -140,6 +162,7 @@ class QuestViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
+      currentContext = context;
       recommendations = await _questRepository.getRecommendations(
         context: context,
         preferences: preferences.copyWith(locationMode: selectedLocationScope),

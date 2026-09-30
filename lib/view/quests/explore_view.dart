@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/category_labels.dart';
+import '../../models/app_context.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
@@ -74,6 +75,13 @@ class _ExploreViewState extends State<ExploreView> {
                 _ContinueBanner(
                   key: const ValueKey('continue-banner'),
                   userQuestId: questViewModel.currentMission!.questId,
+                ),
+              ],
+              if (questViewModel.isAdaptingToContext) ...[
+                const SizedBox(height: 16),
+                _ContextAdaptationBanner(
+                  key: const ValueKey('context-adaptation-banner'),
+                  appContext: questViewModel.currentContext!,
                 ),
               ],
               const SizedBox(height: 20),
@@ -254,6 +262,43 @@ class _ContinueBanner extends StatelessWidget {
             const Icon(Icons.arrow_forward, color: Colors.white),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Explains why [QuestViewModel.filteredCatalog] just reordered itself:
+/// rain or nighttime pushes 'anywhere' quests first. Rain takes priority
+/// over night in the message when both apply.
+class _ContextAdaptationBanner extends StatelessWidget {
+  final AppContext appContext;
+
+  const _ContextAdaptationBanner({super.key, required this.appContext});
+
+  @override
+  Widget build(BuildContext context) {
+    final String message;
+    final IconData icon;
+    if (appContext.isRainy) {
+      message = 'Está lloviendo: te mostramos primero misiones bajo techo.';
+      icon = Icons.umbrella_outlined;
+    } else {
+      message = 'Es de noche: priorizamos misiones cerca o en casa.';
+      icon = Icons.nightlight_outlined;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primaryContainerLight,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.primary, size: 18),
+          const SizedBox(width: 8),
+          Expanded(child: Text(message, style: Theme.of(context).textTheme.bodySmall)),
+        ],
       ),
     );
   }

@@ -52,7 +52,7 @@ dependencies:
   # Battery Monitor (low battery -> less GPS polling)
   battery_plus: ^6.2.1
 
-  # External REST services (Nominatim reverse geocoding)
+  # External REST services (Nominatim reverse geocoding, Open-Meteo weather)
   http: ^1.2.2
 
   # Compass sensor (magnetometer/rotation vector) for the quest-direction compass
@@ -64,9 +64,6 @@ dependencies:
   # Analytics session id: analytics_events.session_id is a Postgres uuid
   # column, so this must generate real UUIDs, not an arbitrary string.
   uuid: ^4.6.0
-
-  # Weather Service (Open-Meteo REST adapter)
-  http: ^1.2.2
 
   # Loads Supabase URL/publishable key from a local .env file (mirrors backend .env.example convention)
   flutter_dotenv: ^5.2.1
