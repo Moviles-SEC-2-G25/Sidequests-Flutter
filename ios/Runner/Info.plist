@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Sidequests uses Face ID to unlock the app.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Sidequests uses your location to suggest nearby quests.</string>
 	<key>UIApplicationSceneManifest</key>

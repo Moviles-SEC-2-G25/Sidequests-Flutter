@@ -19,6 +19,11 @@ class AuthRepository {
 
   Stream<AuthState> get authStateChanges => _remoteDataSource.authStateChanges;
 
+  bool get isBiometricEnabled => _localDataSource.isBiometricEnabled();
+
+  Future<void> setBiometricEnabled(bool value) =>
+      _localDataSource.setBiometricEnabled(value);
+
   Future<void> signUp({required String email, required String password}) async {
     try {
       await _remoteDataSource.signUp(email: email, password: password);
