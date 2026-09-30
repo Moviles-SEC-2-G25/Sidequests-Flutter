@@ -62,6 +62,7 @@ class AnalyticsTracker {
         locationMode: locationMode,
         latitude: context.latitude,
         longitude: context.longitude,
+        weatherCode: context.weatherCode,
         timeOfDay: context.timeOfDay,
         questDurationMinutes: questDurationMinutes,
         questDifficulty: questDifficulty,

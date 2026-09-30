@@ -8,6 +8,7 @@ import '../../models/user_quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import 'abandon_mission_view.dart';
 import 'explore_view.dart';
+import 'quest_completed_view.dart';
 
 /// The "Misión" tab: the current in-progress (or paused/abandoned-but-
 /// resumable) quest's step checklist. Also reachable as a pushed full
@@ -189,7 +190,16 @@ class _MissionChecklist extends StatelessWidget {
             const SizedBox(height: 12),
             FilledButton(
               onPressed: currentIndex < steps.length
-                  ? () => questViewModel.completeCurrentStep(mission)
+                  ? () async {
+                      final navigator = Navigator.of(context);
+                      final completedMission = await questViewModel.completeCurrentStep(mission);
+                      if (!completedMission || !navigator.mounted) return;
+                      navigator.push(
+                        MaterialPageRoute(
+                          builder: (_) => QuestCompletedView(mission: mission, quest: quest),
+                        ),
+                      );
+                    }
                   : null,
               child: Text(
                 currentIndex >= steps.length - 1 ? 'Completar misión →' : 'Completar este paso →',

@@ -8,6 +8,8 @@ import 'core/app_theme.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
 import 'data/remote/supabase_remote_data_source.dart';
+import 'data/services/location_service.dart';
+import 'data/services/weather_service.dart';
 import 'repository/auth_repository.dart';
 import 'repository/profile_repository.dart';
 import 'repository/quest_repository.dart';
@@ -30,7 +32,11 @@ class SidequestsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final remoteDataSource = SupabaseRemoteDataSource(Supabase.instance.client);
-    final contextManager = ContextManager();
+    // Shared with ContextManager below so the "Clima en el lugar" card and
+    // every context snapshot (recommendations, analytics) hit the same
+    // cache instead of each keeping a separate one.
+    final weatherService = WeatherService();
+    final contextManager = ContextManager(weatherService: weatherService);
     final analyticsTracker = AnalyticsTracker(
       eventSink: remoteDataSource,
       contextManager: contextManager,
@@ -46,6 +52,8 @@ class SidequestsApp extends StatelessWidget {
         Provider.value(value: remoteDataSource),
         Provider.value(value: contextManager),
         Provider.value(value: analyticsTracker),
+        Provider(create: (_) => LocationService()),
+        Provider.value(value: weatherService),
         Provider(
           create: (_) => AuthRepository(remoteDataSource, localDataSource),
         ),

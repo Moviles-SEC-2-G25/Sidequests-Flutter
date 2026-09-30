@@ -8,6 +8,8 @@ abstract final class AnalyticsEventType {
   static const questStarted = 'quest_started';
   static const questAbandoned = 'quest_abandoned';
   static const questCompleted = 'quest_completed';
+  static const questRated = 'quest_rated';
   static const locationModeSelected = 'location_mode_selected';
   static const shakeSurprise = 'shake_surprise';
+  static const similarQuestOpened = 'similar_quest_opened';
 }

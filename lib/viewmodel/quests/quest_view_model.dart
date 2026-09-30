@@ -4,7 +4,9 @@ import 'package:uuid/uuid.dart';
 import '../../analytics/analytics_event_type.dart';
 import '../../analytics/analytics_tracker.dart';
 import '../../core/app_exception.dart';
+import '../../core/similar_quest_recommender.dart';
 import '../../data/context/context_manager.dart';
+import '../../models/app_context.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../models/quest_step.dart';
@@ -24,6 +26,7 @@ class QuestViewModel extends ChangeNotifier {
   final ContextManager _contextManager;
   final AnalyticsTracker _analyticsTracker;
   final String _userId;
+  final SimilarQuestRecommender _similarQuestRecommender;
 
   List<Quest> catalog = [];
   List<QuestRecommendation> recommendations = [];
@@ -34,6 +37,8 @@ class QuestViewModel extends ChangeNotifier {
   bool isLoadingRecommendations = false;
   bool isLoadingSteps = false;
   String? errorMessage;
+  bool isSubmittingRating = false;
+  String? ratingErrorMessage;
 
   int selectedMinutes = 30;
   String selectedLocationScope = 'all'; // all | gps | anywhere
@@ -45,12 +50,25 @@ class QuestViewModel extends ChangeNotifier {
   double? userLongitude;
   bool isLocatingUser = false;
 
+  /// Last Context Manager snapshot (location, time of day, weather...),
+  /// refreshed whenever recommendations load. Drives Explore's automatic
+  /// weather/time-of-day adaptation — null until the first load.
+  AppContext? currentContext;
+
+  // --- BQ4: "decision journey" toward starting a quest — how long, and how
+  // many interactions, from the first recommendations shown (after opening
+  // the app or after the last quest was started) to accepting one. ---
+  DateTime? _decisionStartedAt;
+  String? _decisionBatchId;
+  int _interactionCount = 0;
+
   QuestViewModel(
     this._questRepository,
     this._contextManager,
     this._analyticsTracker,
-    this._userId,
-  );
+    this._userId, {
+    SimilarQuestRecommender similarQuestRecommender = const SimilarQuestRecommender(),
+  }) : _similarQuestRecommender = similarQuestRecommender;
 
   /// The quest to resume from "Continúa donde lo dejaste" / the Misión tab:
   /// the most recently touched quest that isn't completed. `userQuests` is
@@ -65,18 +83,34 @@ class QuestViewModel extends ChangeNotifier {
   List<String> get categories =>
       catalog.map((q) => q.category).toSet().toList()..sort();
 
-  List<Quest> get filteredCatalog => catalog.where((quest) {
-    if (quest.durationMinutes > selectedMinutes) return false;
-    if (selectedLocationScope != 'all' && quest.locationMode != selectedLocationScope) {
-      return false;
-    }
-    if (selectedCategory == 'sponsored') return quest.isSponsored;
-    if (selectedCategory != null &&
-        quest.category.toLowerCase() != selectedCategory!.toLowerCase()) {
-      return false;
-    }
-    return true;
-  }).toList();
+  List<Quest> get filteredCatalog {
+    final filtered = catalog.where((quest) {
+      if (quest.durationMinutes > selectedMinutes) return false;
+      if (selectedLocationScope != 'all' && quest.locationMode != selectedLocationScope) {
+        return false;
+      }
+      if (selectedCategory == 'sponsored') return quest.isSponsored;
+      if (selectedCategory != null &&
+          quest.category.toLowerCase() != selectedCategory!.toLowerCase()) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    if (!isAdaptingToContext) return filtered;
+
+    // Stable partition, not a filter: 'anywhere' quests move first, but
+    // nothing is dropped from the list.
+    final anywhere = filtered.where((quest) => quest.locationMode == 'anywhere');
+    final rest = filtered.where((quest) => quest.locationMode != 'anywhere');
+    return [...anywhere, ...rest];
+  }
+
+  /// True when it's raining at the user's location or it's nighttime —
+  /// Explore then prioritizes 'anywhere' (indoor/no-travel) quests and
+  /// shows a banner explaining why.
+  bool get isAdaptingToContext =>
+      (currentContext?.isRainy ?? false) || currentContext?.timeOfDay == 'night';
 
   Future<void> load() async {
     isLoading = true;
@@ -95,17 +129,20 @@ class QuestViewModel extends ChangeNotifier {
 
   void setMinutes(int minutes) {
     selectedMinutes = minutes;
+    registerInteraction();
     notifyListeners();
   }
 
   void setCategory(String? category) {
     selectedCategory = category;
+    registerInteraction();
     notifyListeners();
   }
 
   /// BQ10 (location-independent mode usage) is measured from this event.
   void setLocationScope(String scope) {
     selectedLocationScope = scope;
+    registerInteraction();
     notifyListeners();
     _analyticsTracker.track(
       AnalyticsEventType.locationModeSelected,
@@ -113,11 +150,19 @@ class QuestViewModel extends ChangeNotifier {
     );
   }
 
+  /// BQ4: counts one step of browsing toward the decision to start a quest —
+  /// a filter change, dismissing a recommendation, or opening a quest's
+  /// detail from Explore. The final "accept" tap itself isn't counted.
+  void registerInteraction() {
+    _interactionCount++;
+  }
+
   Future<void> loadRecommendations(UserPreferences preferences) async {
     isLoadingRecommendations = true;
     notifyListeners();
     try {
       final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
+      currentContext = context;
       recommendations = await _questRepository.getRecommendations(
         context: context,
         preferences: preferences.copyWith(locationMode: selectedLocationScope),
@@ -125,6 +170,13 @@ class QuestViewModel extends ChangeNotifier {
       );
       // One batch_id per RPC call so BQ8 can group the events of one list.
       final batchId = const Uuid().v4();
+      // BQ4: starts the decision clock on the first non-empty list shown
+      // since the app opened (or since the last quest was started) — later
+      // reloads (filter changes, "Ahora no") don't restart it.
+      if (recommendations.isNotEmpty) {
+        _decisionStartedAt ??= DateTime.now();
+        _decisionBatchId ??= batchId;
+      }
       for (final recommendation in recommendations) {
         _analyticsTracker.track(
           AnalyticsEventType.recommendationShown,
@@ -147,7 +199,32 @@ class QuestViewModel extends ChangeNotifier {
     }
   }
 
+  /// [wasRecommended] also picks BQ4's start_path: 'standard' from a
+  /// recommendation's detail view, 'catalog' from "Todas las misiones".
   Future<void> acceptQuest(String questId, {bool wasRecommended = false}) async {
+    await _acceptQuest(
+      questId,
+      startPath: wasRecommended ? 'standard' : 'catalog',
+      wasRecommended: wasRecommended,
+    );
+  }
+
+  /// "Empezar ya" on a recommendation card (BQ4's 'instant_plan' start
+  /// path): accepts the quest and preloads its steps, skipping
+  /// QuestDetailView entirely. The caller navigates to MissionTabView once
+  /// this returns true.
+  Future<bool> startInstantPlan(Quest quest) async {
+    final started = await _acceptQuest(quest.id, startPath: 'instant_plan', wasRecommended: true);
+    if (!started) return false;
+    await loadSteps(quest.id);
+    return true;
+  }
+
+  Future<bool> _acceptQuest(
+    String questId, {
+    required String startPath,
+    required bool wasRecommended,
+  }) async {
     try {
       final userQuest = await _questRepository.acceptQuest(
         userId: _userId,
@@ -155,6 +232,11 @@ class QuestViewModel extends ChangeNotifier {
       );
       _replaceUserQuest(userQuest);
       final quest = questById(questId);
+      // BQ4: how much a ready-to-execute plan (vs. browsing the detail page)
+      // shortens the trip from seeing recommendations to starting a quest.
+      final secondsToStart = _decisionStartedAt == null
+          ? 0
+          : DateTime.now().difference(_decisionStartedAt!).inSeconds;
       _analyticsTracker.track(
         wasRecommended
             ? AnalyticsEventType.recommendationAccepted
@@ -164,11 +246,27 @@ class QuestViewModel extends ChangeNotifier {
         questDurationMinutes: quest?.durationMinutes,
         questDifficulty: quest?.difficulty,
         estimatedCost: quest?.estimatedCost,
+        metadata: {
+          'start_path': startPath,
+          'seconds_to_start': secondsToStart,
+          'interactions_to_start': _interactionCount,
+          'batch_id': _decisionBatchId,
+        },
       );
+      _resetDecisionJourney();
+      return true;
     } on AppException catch (e) {
       errorMessage = e.message;
       notifyListeners();
+      return false;
     }
+  }
+
+  /// A new decision journey starts the next time recommendations are shown.
+  void _resetDecisionJourney() {
+    _decisionStartedAt = null;
+    _decisionBatchId = null;
+    _interactionCount = 0;
   }
 
   /// "Ahora no" on a recommendation card: excludes it from this session's
@@ -176,6 +274,7 @@ class QuestViewModel extends ChangeNotifier {
   Future<void> skipRecommendation(String questId, UserPreferences preferences) async {
     _sessionSkippedQuestIds.add(questId);
     recommendations = recommendations.where((r) => r.questId != questId).toList();
+    registerInteraction();
     notifyListeners();
     _analyticsTracker.track(
       AnalyticsEventType.recommendationSkipped,
@@ -216,7 +315,8 @@ class QuestViewModel extends ChangeNotifier {
   /// Advances the current step (or completes the quest on the last one).
   /// Transitions 'accepted' -> 'in_progress' on the first step so the
   /// backend's lifecycle trigger stamps `started_at` for real.
-  Future<void> completeCurrentStep(UserQuest userQuest) async {
+  /// Returns true only when this call completed the whole quest.
+  Future<bool> completeCurrentStep(UserQuest userQuest) async {
     final nextCompleted = [...userQuest.completedSteps, userQuest.currentStep];
     final isLastStep = _stepsQuestId == userQuest.questId &&
         userQuest.currentStep >= steps.length - 1;
@@ -245,10 +345,63 @@ class QuestViewModel extends ChangeNotifier {
         );
       }
       _replaceUserQuest(updated);
+      return isLastStep;
     } on AppException catch (e) {
       errorMessage = e.message;
       notifyListeners();
+      return false;
     }
+  }
+
+  /// Saves the post-mission rating/feedback and emits 'quest_rated'.
+  /// Returns true on success; on failure `ratingErrorMessage` is set.
+  Future<bool> submitRating(
+    UserQuest userQuest, {
+    required int rating,
+    required List<String> tags,
+  }) async {
+    isSubmittingRating = true;
+    ratingErrorMessage = null;
+    notifyListeners();
+    try {
+      final updated = await _questRepository.rateQuest(userQuest, rating, tags);
+      _replaceUserQuest(updated);
+      final quest = questById(updated.questId);
+      _analyticsTracker.track(
+        AnalyticsEventType.questRated,
+        questId: updated.questId,
+        category: quest?.category,
+        questDurationMinutes: quest?.durationMinutes,
+        questDifficulty: quest?.difficulty,
+        metadata: {'rating': rating, 'tags': tags},
+      );
+      return true;
+    } on AppException catch (e) {
+      ratingErrorMessage = e.message;
+      return false;
+    } finally {
+      isSubmittingRating = false;
+      notifyListeners();
+    }
+  }
+
+  /// "Te podría gustar" on QuestCompletedView. Pure recomputation from
+  /// [rating] each call (no caching), so the view just re-invokes it as the
+  /// user picks a star rating, before saving — no separate "recalculate"
+  /// step needed.
+  List<Quest> similarQuests({required Quest completed, required int rating}) =>
+      _similarQuestRecommender.recommend(completed, catalog, userQuests, rating, selectedMinutes);
+
+  void trackSimilarQuestOpened({
+    required String openedQuestId,
+    required String sourceQuestId,
+    required int rank,
+  }) {
+    _analyticsTracker.track(
+      AnalyticsEventType.similarQuestOpened,
+      questId: openedQuestId,
+      metadata: {'source_quest_id': sourceQuestId, 'rank': rank},
+    );
   }
 
   Future<void> abandonQuest(UserQuest userQuest, {required String reason}) async {

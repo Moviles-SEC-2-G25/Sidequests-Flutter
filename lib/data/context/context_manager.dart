@@ -4,23 +4,27 @@ import 'package:geolocator/geolocator.dart';
 import '../../models/app_context.dart';
 import '../services/battery_monitor.dart';
 import '../services/location_service.dart';
+import '../services/weather_service.dart';
 
 /// Context Manager (CAS): builds one [AppContext] snapshot per request —
-/// location, time of day, day of week and connectivity — for the
+/// location, time of day, day of week, connectivity and weather — for the
 /// Repository/ViewModel layers to attach to recommendation requests and
 /// analytics events.
 class ContextManager {
   final LocationService _locationService;
   final BatteryMonitor _batteryMonitor;
   final Connectivity _connectivity;
+  final WeatherService _weatherService;
 
   ContextManager({
     LocationService? locationService,
     BatteryMonitor? batteryMonitor,
     Connectivity? connectivity,
+    WeatherService? weatherService,
   }) : _locationService = locationService ?? LocationService(),
        _batteryMonitor = batteryMonitor ?? BatteryMonitor(),
-       _connectivity = connectivity ?? Connectivity();
+       _connectivity = connectivity ?? Connectivity(),
+       _weatherService = weatherService ?? WeatherService();
 
   Future<AppContext> snapshot({int? availableMinutes}) async {
     final isLowBattery = await _isLowBattery();
@@ -29,6 +33,12 @@ class ContextManager {
     );
     final isConnected = await _isConnected();
     final now = DateTime.now();
+    // Only when there's a fix — and free on repeated snapshots at the same
+    // spot, since WeatherService caches by rounded coordinates with its own
+    // TTL, so this doesn't fire a new request per snapshot.
+    final weather = position == null
+        ? null
+        : await _weatherService.fetch(position.latitude, position.longitude);
 
     return AppContext(
       latitude: position?.latitude,
@@ -37,6 +47,8 @@ class ContextManager {
       dayOfWeek: _dayOfWeek(now),
       isConnected: isConnected,
       availableMinutes: availableMinutes,
+      weatherCode: weather?.weatherCode,
+      isRainy: weather?.isRainy ?? false,
     );
   }
 
