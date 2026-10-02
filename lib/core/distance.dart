@@ -12,4 +12,8 @@ double haversineKm(double lat1, double lon1, double lat2, double lon2) {
   return earthRadiusKm * c;
 }
 
+/// Same as [haversineKm], in meters (location check-in radius).
+double haversineMeters(double lat1, double lon1, double lat2, double lon2) =>
+    haversineKm(lat1, lon1, lat2, lon2) * 1000;
+
 double _degToRad(double deg) => deg * pi / 180;

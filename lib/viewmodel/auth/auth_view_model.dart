@@ -19,8 +19,8 @@ class AuthViewModel extends ChangeNotifier {
   String? errorMessage;
 
   /// True while a restored session must be confirmed with biometrics before
-  /// the app shell is shown. Only set at startup — signing in with a
-  /// password never locks.
+  /// the app shell is shown. Only set at startup — signing in (password or
+  /// emailed code) never locks: the code IS the identity check.
   bool isLocked = false;
   bool biometricEnabled = false;
   bool isBiometricAvailable = false;
@@ -40,7 +40,48 @@ class AuthViewModel extends ChangeNotifier {
     });
   }
 
+  // --- Passwordless sign-in with an emailed code (feature e). Kept apart
+  // from [errorMessage], which LoginView shows. ---
+  bool isSendingCode = false;
+  String? otpErrorMessage;
+
   String? get userId => _authRepository.currentUser?.id;
+
+  /// Step 1. Doesn't touch [status]: emailing a code isn't signing in.
+  Future<bool> sendLoginCode(String email) async {
+    isSendingCode = true;
+    otpErrorMessage = null;
+    notifyListeners();
+    try {
+      await _authRepository.sendLoginCode(email);
+      return true;
+    } on AppException catch (e) {
+      otpErrorMessage = e.message;
+      return false;
+    } finally {
+      isSendingCode = false;
+      notifyListeners();
+    }
+  }
+
+  /// Step 2. On success the session's `signedIn` event moves AuthGate on;
+  /// the caller pops the code screen pushed on top of it.
+  Future<bool> verifyLoginCode({required String email, required String code}) async {
+    otpErrorMessage = null;
+    final success = await _run(() => _authRepository.verifyLoginCode(email: email, code: code));
+    if (!success) {
+      otpErrorMessage = errorMessage;
+      errorMessage = null; // not LoginView's error
+      notifyListeners();
+    }
+    return success;
+  }
+
+  void clearOtpError() {
+    if (otpErrorMessage == null) return;
+    otpErrorMessage = null;
+    notifyListeners();
+  }
 
   Future<bool> signIn({required String email, required String password}) =>
       _run(() => _authRepository.signIn(email: email, password: password));
@@ -96,8 +137,6 @@ class AuthViewModel extends ChangeNotifier {
       return e.message;
     }
   }
-
-  Future<void> signOut() => _authRepository.signOut();
 
   Future<bool> _run(Future<void> Function() action) async {
     status = AuthStatus.authenticating;

@@ -12,4 +12,5 @@ abstract final class AnalyticsEventType {
   static const locationModeSelected = 'location_mode_selected';
   static const shakeSurprise = 'shake_surprise';
   static const similarQuestOpened = 'similar_quest_opened';
+  static const photoProofUploaded = 'photo_proof_uploaded';
 }

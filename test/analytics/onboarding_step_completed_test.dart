@@ -86,6 +86,7 @@ class _SpyAnalyticsTracker extends AnalyticsTracker {
     String? questId,
     String? category,
     int? availableMinutes,
+    String? socialLevel,
     String? locationMode,
     int? questDurationMinutes,
     String? questDifficulty,

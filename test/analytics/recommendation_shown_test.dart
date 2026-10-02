@@ -40,6 +40,7 @@ class _SpyAnalyticsTracker extends AnalyticsTracker {
     String? questId,
     String? category,
     int? availableMinutes,
+    String? socialLevel,
     String? locationMode,
     int? questDurationMinutes,
     String? questDifficulty,
@@ -48,7 +49,12 @@ class _SpyAnalyticsTracker extends AnalyticsTracker {
     double? questLongitude,
     Map<String, dynamic> metadata = const {},
   }) async {
-    calls.add({'eventType': eventType, 'questId': questId, 'metadata': metadata});
+    calls.add({
+      'eventType': eventType,
+      'questId': questId,
+      'socialLevel': socialLevel,
+      'metadata': metadata,
+    });
   }
 }
 
@@ -121,7 +127,7 @@ void main() {
 
       for (final call in shown) {
         final metadata = call['metadata'] as Map<String, dynamic>;
-        expect(metadata.keys.toSet(), {'variant', 'rank', 'batch_id'});
+        expect(metadata.keys.toSet(), {'variant', 'rank', 'batch_id', 'social_level_source'});
         expect(metadata['variant'], isA<String>());
         expect(metadata['rank'], isA<int>());
         expect(metadata['batch_id'], isA<String>());

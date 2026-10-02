@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../analytics/analytics_event_sink.dart';
+import '../../core/photo_proof_rules.dart';
 
 /// Single wrapper around the Supabase project: auth, REST (PostgREST) and
 /// RPC today; realtime and edge functions are consumed here too once the
@@ -30,6 +33,18 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
   }) => _client.auth.signInWithPassword(email: email, password: password);
 
   Future<void> signOut() => _client.auth.signOut();
+
+  /// Emails a one-time code (the "Magic Link" template must include
+  /// `{{ .Token }}`). Existing accounts only: shouldCreateUser false never
+  /// signs anyone up through this flow. Calling it again resends — gotrue's
+  /// resend() only covers signup/email-change confirmations.
+  Future<void> sendEmailOtp(String email) =>
+      _client.auth.signInWithOtp(email: email, shouldCreateUser: false);
+
+  /// Stores the session on success, which fires `signedIn` on
+  /// [authStateChanges].
+  Future<AuthResponse> verifyEmailOtp({required String email, required String token}) =>
+      _client.auth.verifyOTP(email: email, token: token, type: OtpType.email);
 
   Future<UserResponse> updatePassword(String newPassword) =>
       _client.auth.updateUser(UserAttributes(password: newPassword));
@@ -97,6 +112,42 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
         .select()
         .eq('user_id', userId)
         .order('updated_at', ascending: false);
+    return (rows as List).cast<Map<String, dynamic>>();
+  }
+
+  // --- Photo proof (migration 009): private Storage bucket + one
+  // quest_photo_proofs row per upload. Ownership and "this step takes a
+  // photo" are enforced server-side by RLS on both. ---
+
+  /// New object only (`upsert: false` — the bucket has no UPDATE policy).
+  Future<void> uploadQuestProof(String storagePath, Uint8List jpeg) => _client.storage
+      .from(kQuestProofsBucket)
+      .uploadBinary(
+        storagePath,
+        jpeg,
+        fileOptions: const FileOptions(contentType: 'image/jpeg', upsert: false),
+      );
+
+  Future<Map<String, dynamic>> insertQuestPhotoProof({
+    required String attemptId,
+    required int stepOrder,
+    required String storagePath,
+  }) => _client
+      .from('quest_photo_proofs')
+      .insert({'attempt_id': attemptId, 'step_order': stepOrder, 'storage_path': storagePath})
+      .select()
+      .single();
+
+  /// Only used to clean up an upload whose table insert failed.
+  Future<void> removeQuestProof(String storagePath) =>
+      _client.storage.from(kQuestProofsBucket).remove([storagePath]);
+
+  Future<List<Map<String, dynamic>>> getQuestPhotoProofs(String attemptId) async {
+    final rows = await _client
+        .from('quest_photo_proofs')
+        .select()
+        .eq('attempt_id', attemptId)
+        .order('uploaded_at', ascending: false);
     return (rows as List).cast<Map<String, dynamic>>();
   }
 

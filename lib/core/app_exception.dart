@@ -5,7 +5,12 @@
 class AppException implements Exception {
   final String message;
 
-  const AppException(this.message);
+  /// True when trying again later can succeed (no connection, server
+  /// hiccup) — the Retry tactic keeps the work and offers "Reintentar".
+  /// False when it never will (rejected by RLS, invalid file).
+  final bool isRetryable;
+
+  const AppException(this.message, {this.isRetryable = false});
 
   @override
   String toString() => message;

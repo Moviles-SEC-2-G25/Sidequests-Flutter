@@ -11,6 +11,7 @@ import '../../viewmodel/quests/quest_view_model.dart';
 import '../../viewmodel/theme_view_model.dart';
 import 'change_password_dialog.dart';
 import 'edit_preferences_view.dart';
+import 'stats_view.dart';
 
 /// Profile: header + stats, friends (honest stub — no backend table),
 /// rewards/badges (computed live from real `user_quests`, no rewards
@@ -53,6 +54,16 @@ class _ProfileViewState extends State<ProfileView> {
             _ProfileHeader(profileViewModel: profileViewModel),
             const SizedBox(height: 20),
             _StatsRow(questViewModel: questViewModel),
+            const SizedBox(height: 12),
+            // The three cards above are the summary; this opens the detail.
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.insights),
+                label: const Text('Ver mis estadísticas'),
+                onPressed: () => Navigator.of(context).push(StatsView.route()),
+              ),
+            ),
             const SizedBox(height: 24),
             _FriendsSection(
               tabIndex: _friendsTab,

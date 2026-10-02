@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../viewmodel/auth/auth_view_model.dart';
+import 'otp_login_view.dart';
 import 'signup_view.dart';
 
 class LoginView extends StatefulWidget {
@@ -70,6 +71,16 @@ class _LoginViewState extends State<LoginView> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Text('Log in'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: isBusy
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const OtpLoginView()),
+                        ),
+                  icon: const Icon(Icons.mark_email_read_outlined),
+                  label: const Text('Entrar con código'),
                 ),
                 TextButton(
                   onPressed: isBusy

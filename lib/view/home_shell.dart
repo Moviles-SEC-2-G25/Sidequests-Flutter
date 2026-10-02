@@ -14,6 +14,7 @@ import 'profile/profile_view.dart';
 import 'quests/explore_view.dart';
 import 'quests/mission_tab_view.dart';
 import 'quests/nearby_view.dart';
+import 'quests/quest_completed_view.dart';
 import 'quests/quest_detail_view.dart';
 import 'social/social_view.dart';
 
@@ -35,6 +36,8 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
   final ShakeDetector _shakeDetector = ShakeDetector();
   StreamSubscription<void>? _shakeSubscription;
+  late final StreamSubscription<CheckInEvent> _checkInSubscription;
+  late final AppLifecycleListener _lifecycleListener;
 
   static const _pages = [
     ExploreView(),
@@ -48,6 +51,43 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _updateShakeSubscription();
+
+    final questViewModel = context.read<QuestViewModel>();
+    // Lives here, not in MissionTabView: the shell is mounted exactly once
+    // (MissionTabView can also be pushed on top of itself), and the
+    // check-in should be announced whichever tab is showing.
+    _checkInSubscription = questViewModel.checkInEvents.listen(_onCheckIn);
+    // The location check-in's GPS only runs in the foreground.
+    _lifecycleListener = AppLifecycleListener(
+      onStateChange: (state) => questViewModel.setForeground(
+        state == AppLifecycleState.resumed || state == AppLifecycleState.inactive,
+      ),
+    );
+  }
+
+  void _onCheckIn(CheckInEvent event) {
+    if (!mounted) return;
+    final navigator = Navigator.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          event.completedQuest
+              ? '📍 ¡Llegaste! Misión completada por ubicación.'
+              : '📍 ¡Llegaste! Paso verificado por ubicación.',
+        ),
+        // No forced navigation — the user may be on another tab.
+        action: event.completedQuest
+            ? SnackBarAction(
+                label: 'Calificar',
+                onPressed: () => navigator.push(
+                  MaterialPageRoute(
+                    builder: (_) => QuestCompletedView(mission: event.mission, quest: event.quest),
+                  ),
+                ),
+              )
+            : null,
+      ),
+    );
   }
 
   /// "Shake to decide" only fires while Explorar (IndexedStack index 0) is
@@ -85,6 +125,8 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     _shakeSubscription?.cancel();
     _shakeDetector.dispose();
+    _checkInSubscription.cancel();
+    _lifecycleListener.dispose();
     super.dispose();
   }
 

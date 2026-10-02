@@ -1,15 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../analytics/analytics_event_type.dart';
 import '../../analytics/analytics_tracker.dart';
 import '../../core/app_exception.dart';
+import '../../core/completion_likelihood.dart';
 import '../../core/similar_quest_recommender.dart';
+import '../../core/verification/step_verification_strategy.dart';
+import '../../core/verification/verification_strategies.dart';
 import '../../data/context/context_manager.dart';
+import '../../data/services/location_check_in_service.dart';
+import '../../data/services/photo_capture_service.dart';
+import '../../data/services/step_counter_service.dart';
 import '../../models/app_context.dart';
+import '../../models/photo_proof.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../models/quest_step.dart';
+import '../../models/step_session.dart';
 import '../../models/user_preferences.dart';
 import '../../models/user_quest.dart';
 import '../../repository/quest_repository.dart';
@@ -20,6 +30,28 @@ const List<int> kAvailableMinuteOptions = [10, 20, 30, 45, 60];
 /// be resumed from the Explore "continue" banner or the Misión tab.
 const _unfinishedStatuses = {'accepted', 'in_progress', 'abandoned'};
 
+/// A mission being actively done: walked steps are counted and the GPS
+/// check-in runs (an abandoned quest pauses both until it's resumed).
+const _activeMissionStatuses = {'accepted', 'in_progress'};
+
+/// Minimum time between two automatic check-in attempts on the same step,
+/// so a failing update (offline) isn't retried on every GPS fix.
+const _autoCheckInRetryInterval = Duration(seconds: 30);
+
+/// How many new steps between two writes of the active step session to
+/// Hive — enough to survive an app kill without writing on every reading.
+const _stepPersistInterval = 25;
+
+/// One automatic location check-in, for HomeShell to announce.
+class CheckInEvent {
+  /// The attempt as it was before the step was completed.
+  final UserQuest mission;
+  final Quest quest;
+  final bool completedQuest;
+
+  const CheckInEvent({required this.mission, required this.quest, required this.completedQuest});
+}
+
 /// Explore, nearby, quest detail and mission-in-progress state.
 class QuestViewModel extends ChangeNotifier {
   final QuestRepository _questRepository;
@@ -27,6 +59,36 @@ class QuestViewModel extends ChangeNotifier {
   final AnalyticsTracker _analyticsTracker;
   final String _userId;
   final SimilarQuestRecommender _similarQuestRecommender;
+  final CompletionLikelihood _completionLikelihood;
+  final StepCounterService _stepCounter;
+  late final StreamSubscription<void> _stepCounterSubscription;
+  int? _lastPersistedSteps;
+  final LocationCheckInService _checkIn;
+  StreamSubscription<CheckInFix>? _checkInSubscription;
+  final StreamController<CheckInEvent> _checkInEvents = StreamController<CheckInEvent>.broadcast();
+
+  /// `"<user_quests.id>:<currentStep>"` of the step whose location is being
+  /// watched; null when the GPS is off.
+  String? _checkInKey;
+  VerificationEvidence _evidence = const VerificationEvidence();
+  bool _isForeground = true;
+  bool _isCompletingStep = false;
+  DateTime? _lastAutoCheckInAt;
+
+  final PhotoCaptureService _photoCapture;
+
+  /// Registered proofs (uploaded + recorded) of [_photoProofsAttemptId],
+  /// by zero-based step order — the PhotoVerification evidence.
+  Map<int, QuestPhotoProof> _photoProofs = {};
+  String? _photoProofsAttemptId;
+
+  /// Captured photos still waiting to be uploaded (kept on the device).
+  List<PendingPhotoProof> pendingPhotoProofs = [];
+  String? _uploadingStoragePath;
+  bool isCapturingPhoto = false;
+
+  /// A photo that can't be retried (rejected, invalid): take another one.
+  String? photoErrorMessage;
 
   List<Quest> catalog = [];
   List<QuestRecommendation> recommendations = [];
@@ -43,6 +105,11 @@ class QuestViewModel extends ChangeNotifier {
   int selectedMinutes = 30;
   String selectedLocationScope = 'all'; // all | gps | anywhere
   String? selectedCategory; // null = "Todo", 'sponsored', or a real category
+
+  /// "¿Cómo te sientes hoy?" (BQ5): overrides the profile's social level
+  /// for this session only — never saved to user_preferences. null = use
+  /// UserPreferences.socialLevel.
+  String? sessionSocialLevel; // solo | social | group
 
   final Set<String> _sessionSkippedQuestIds = {};
 
@@ -68,7 +135,17 @@ class QuestViewModel extends ChangeNotifier {
     this._analyticsTracker,
     this._userId, {
     SimilarQuestRecommender similarQuestRecommender = const SimilarQuestRecommender(),
-  }) : _similarQuestRecommender = similarQuestRecommender;
+    CompletionLikelihood completionLikelihood = const CompletionLikelihood(),
+    StepCounterService? stepCounter,
+    LocationCheckInService? locationCheckIn,
+    PhotoCaptureService? photoCapture,
+  }) : _similarQuestRecommender = similarQuestRecommender,
+       _completionLikelihood = completionLikelihood,
+       _stepCounter = stepCounter ?? StepCounterService(),
+       _checkIn = locationCheckIn ?? LocationCheckInService(),
+       _photoCapture = photoCapture ?? PhotoCaptureService() {
+    _stepCounterSubscription = _stepCounter.onChange.listen((_) => _onStepCounterChange());
+  }
 
   /// The quest to resume from "Continúa donde lo dejaste" / the Misión tab:
   /// the most recently touched quest that isn't completed. `userQuests` is
@@ -119,10 +196,13 @@ class QuestViewModel extends ChangeNotifier {
     try {
       catalog = await _questRepository.getCatalog();
       userQuests = await _questRepository.getUserQuests(_userId);
+      unawaited(_resumeStepTracking());
+      unawaited(retryPendingPhotoUploads());
     } on AppException catch (e) {
       errorMessage = e.message;
     } finally {
       isLoading = false;
+      _syncCheckIn();
       notifyListeners();
     }
   }
@@ -138,6 +218,19 @@ class QuestViewModel extends ChangeNotifier {
     registerInteraction();
     notifyListeners();
   }
+
+  /// Counts as a BQ4 browsing interaction, like the other Explore filters.
+  /// The caller reloads recommendations, as with setMinutes/setLocationScope.
+  void setSessionSocialLevel(String level) {
+    sessionSocialLevel = level;
+    registerInteraction();
+    notifyListeners();
+  }
+
+  /// The social level recommend_quests actually gets: the session override
+  /// if the user picked one, else the profile's.
+  String effectiveSocialLevel(UserPreferences profile) =>
+      sessionSocialLevel ?? profile.socialLevel;
 
   /// BQ10 (location-independent mode usage) is measured from this event.
   void setLocationScope(String scope) {
@@ -163,9 +256,13 @@ class QuestViewModel extends ChangeNotifier {
     try {
       final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
       currentContext = context;
+      final effectivePreferences = preferences.copyWith(
+        locationMode: selectedLocationScope,
+        socialLevel: sessionSocialLevel,
+      );
       recommendations = await _questRepository.getRecommendations(
         context: context,
-        preferences: preferences.copyWith(locationMode: selectedLocationScope),
+        preferences: effectivePreferences,
         excludedQuestIds: _sessionSkippedQuestIds.toList(),
       );
       // One batch_id per RPC call so BQ8 can group the events of one list.
@@ -183,11 +280,13 @@ class QuestViewModel extends ChangeNotifier {
           questId: recommendation.questId,
           category: recommendation.category,
           availableMinutes: selectedMinutes,
+          socialLevel: effectivePreferences.socialLevel,
           locationMode: selectedLocationScope,
           metadata: {
             'variant': recommendation.variant,
             'rank': recommendation.rankPosition,
             'batch_id': batchId,
+            'social_level_source': sessionSocialLevel != null ? 'session' : 'profile',
           },
         );
       }
@@ -231,6 +330,9 @@ class QuestViewModel extends ChangeNotifier {
         questId: questId,
       );
       _replaceUserQuest(userQuest);
+      // Not awaited: the permission dialog shows over the Misión screen
+      // instead of holding up the navigation to it.
+      unawaited(_startStepTracking(userQuest));
       final quest = questById(questId);
       // BQ4: how much a ready-to-execute plan (vs. browsing the detail page)
       // shortens the trip from seeing recommendations to starting a quest.
@@ -308,7 +410,9 @@ class QuestViewModel extends ChangeNotifier {
       errorMessage = e.message;
     } finally {
       isLoadingSteps = false;
+      _syncCheckIn();
       notifyListeners();
+      unawaited(_refreshPhotoProofs());
     }
   }
 
@@ -316,7 +420,14 @@ class QuestViewModel extends ChangeNotifier {
   /// Transitions 'accepted' -> 'in_progress' on the first step so the
   /// backend's lifecycle trigger stamps `started_at` for real.
   /// Returns true only when this call completed the whole quest.
+  ///
+  /// Shared by the "Completar" button and the automatic location check-in;
+  /// [isCompletingStep] keeps the two from advancing the same step twice.
   Future<bool> completeCurrentStep(UserQuest userQuest) async {
+    if (_isCompletingStep) return false;
+    _isCompletingStep = true;
+    notifyListeners();
+
     final nextCompleted = [...userQuest.completedSteps, userQuest.currentStep];
     final isLastStep = _stepsQuestId == userQuest.questId &&
         userQuest.currentStep >= steps.length - 1;
@@ -345,11 +456,19 @@ class QuestViewModel extends ChangeNotifier {
         );
       }
       _replaceUserQuest(updated);
+      if (isLastStep) {
+        await _finishStepTracking(updated.id);
+      } else if (userQuest.status == 'abandoned') {
+        // Resuming an abandoned attempt keeps adding to its saved total.
+        unawaited(_startStepTracking(updated));
+      }
       return isLastStep;
     } on AppException catch (e) {
       errorMessage = e.message;
-      notifyListeners();
       return false;
+    } finally {
+      _isCompletingStep = false;
+      notifyListeners();
     }
   }
 
@@ -392,6 +511,16 @@ class QuestViewModel extends ChangeNotifier {
   List<Quest> similarQuests({required Quest completed, required int rating}) =>
       _similarQuestRecommender.recommend(completed, catalog, userQuests, rating, selectedMinutes);
 
+  /// "Probabilidad de que la termines" on Explore's cards, per category.
+  /// Recomputed on every read (no caching) — Explore reads it once per
+  /// section build and hands each card its level, so completing or
+  /// abandoning a quest updates the labels on the next notifyListeners().
+  Map<String, CompletionLevel> get completionLikelihoodByCategory =>
+      _completionLikelihood.byCategory(catalog, userQuests);
+
+  CompletionLevel completionLevelFor(Quest quest, Map<String, CompletionLevel> byCategory) =>
+      _completionLikelihood.levelFor(quest, byCategory);
+
   void trackSimilarQuestOpened({
     required String openedQuestId,
     required String sourceQuestId,
@@ -408,6 +537,7 @@ class QuestViewModel extends ChangeNotifier {
     try {
       final updated = await _questRepository.abandonQuest(userQuest, reason: reason);
       _replaceUserQuest(updated);
+      await _finishStepTracking(updated.id);
       final quest = questById(updated.questId);
       _analyticsTracker.track(
         AnalyticsEventType.questAbandoned,
@@ -445,8 +575,412 @@ class QuestViewModel extends ChangeNotifier {
     );
   }
 
+  // --- Feature (a): walked steps during a mission (podómetro). Counting
+  // starts when a quest is accepted, survives app restarts through the
+  // persisted session, and the attempt's total is saved locally when it's
+  // completed or abandoned. ---
+
+  StepCounterStatus get stepStatus => _stepCounter.status;
+
+  /// The attempt (`user_quests.id`) being counted, null when not counting.
+  String? get stepTrackedUserQuestId => _stepCounter.session?.userQuestId;
+
+  /// Walked steps of the attempt being counted; null = no reading yet
+  /// (distinct from 0 steps walked).
+  int? get missionSteps {
+    final session = _stepCounter.session;
+    return session == null || !session.hasData ? null : session.steps;
+  }
+
+  /// "Permitir" / "Abrir ajustes" / "Contar mis pasos" on the Misión tab.
+  /// Opens system settings only if the permission was already permanently
+  /// denied before this tap — Android won't show its dialog again then.
+  Future<void> retryStepTracking() async {
+    final mission = currentMission;
+    if (mission == null || !_activeMissionStatuses.contains(mission.status)) return;
+    final wasPermanentlyDenied = stepStatus == StepCounterStatus.permissionPermanentlyDenied;
+    final saved = _questRepository.getActiveStepSession();
+    await _startStepTracking(mission, resume: saved?.userQuestId == mission.id ? saved : null);
+    if (wasPermanentlyDenied && stepStatus == StepCounterStatus.permissionPermanentlyDenied) {
+      await _stepCounter.openSettings();
+    }
+  }
+
+  /// After an app restart: picks the persisted session back up, including
+  /// the steps walked while the app was closed (the OS kept counting).
+  Future<void> _resumeStepTracking() async {
+    final mission = currentMission;
+    if (mission == null || !_activeMissionStatuses.contains(mission.status)) return;
+    final saved = _questRepository.getActiveStepSession();
+    if (saved == null || saved.userQuestId != mission.id) return;
+    await _startStepTracking(mission, resume: saved);
+  }
+
+  Future<void> _startStepTracking(UserQuest userQuest, {StepSession? resume}) async {
+    if (_stepCounter.session?.userQuestId == userQuest.id) return;
+    // Permission first: when it isn't granted (or there's no sensor),
+    // nothing else is touched.
+    final access = await _stepCounter.requestAccess();
+    if (access != StepCounterStatus.counting) return;
+
+    // The quest may have been completed or abandoned while the
+    // permission dialog was up.
+    final current = userQuests.cast<UserQuest?>().firstWhere(
+      (uq) => uq!.id == userQuest.id,
+      orElse: () => null,
+    );
+    if (current == null || !_activeMissionStatuses.contains(current.status)) return;
+
+    // Accepting a second quest while another is counted: bank the first.
+    final previous = _stepCounter.session;
+    if (previous != null && previous.userQuestId != userQuest.id) {
+      await _finishStepTracking(previous.userQuestId);
+    }
+
+    final session = resume ??
+        StepSession(
+          userQuestId: userQuest.id,
+          carried: _questRepository.getStepTotals()[userQuest.id] ?? 0,
+        );
+    _lastPersistedSteps = null;
+    _stepCounter.start(session);
+    await _questRepository.saveActiveStepSession(session);
+  }
+
+  /// Saves the attempt's total and clears the active session. Also covers
+  /// an attempt that was persisted but isn't being counted right now (app
+  /// restarted with the permission since revoked).
+  Future<void> _finishStepTracking(String userQuestId) async {
+    final isCounting = _stepCounter.session?.userQuestId == userQuestId;
+    final finished = isCounting ? _stepCounter.stop() : _questRepository.getActiveStepSession();
+    if (finished == null || finished.userQuestId != userQuestId) return;
+    _lastPersistedSteps = null;
+    if (finished.hasData) {
+      await _questRepository.saveStepTotal(userQuestId, finished.steps);
+    }
+    await _questRepository.saveActiveStepSession(null);
+  }
+
+  void _onStepCounterChange() {
+    final session = _stepCounter.session;
+    if (session != null && session.baseline != null) {
+      final steps = session.steps;
+      if (_lastPersistedSteps == null || steps - _lastPersistedSteps! >= _stepPersistInterval) {
+        _lastPersistedSteps = steps;
+        unawaited(_questRepository.saveActiveStepSession(session));
+      }
+    }
+    notifyListeners();
+  }
+
+  // --- Feature (c): automatic location check-in (Strategy pattern). While
+  // a mission is active and its current step needs a location, the GPS is
+  // watched (stream + distanceFilter, adapted to proximity and battery by
+  // LocationCheckInService); within 50 m of the quest the step completes
+  // itself through completeCurrentStep — the same transition as the
+  // button, so no backend change. The GPS is off in every other case. ---
+
+  bool get isCompletingStep => _isCompletingStep;
+
+  /// One event per automatic check-in (HomeShell shows a SnackBar).
+  Stream<CheckInEvent> get checkInEvents => _checkInEvents.stream;
+
+  StepVerificationStrategy verificationStrategyFor(QuestStep step) =>
+      strategyFor(step.verificationType);
+
+  /// Evaluated against the latest evidence (GPS fix, access, uploaded
+  /// photo) of the current step.
+  VerificationResult verificationResultFor(StepVerificationStrategy strategy, Quest quest) =>
+      strategy.verify(quest, _currentStepEvidence());
+
+  /// The "Completar" button: blocked while a step is being completed, and
+  /// for a photo step until its proof is uploaded (location never blocks).
+  bool canCompleteCurrentStep(QuestStep step, Quest quest) =>
+      !_isCompletingStep &&
+      strategyFor(step.verificationType).allowsManualCompletion(quest, _currentStepEvidence());
+
+  /// HomeShell: the GPS only runs while the app is in the foreground.
+  /// Coming back is also a good moment to retry pending photo uploads.
+  void setForeground(bool isForeground) {
+    if (_isForeground == isForeground) return;
+    _isForeground = isForeground;
+    _syncCheckIn();
+    if (isForeground) unawaited(retryPendingPhotoUploads());
+  }
+
+  /// Location evidence from the GPS + the current step's uploaded photo.
+  VerificationEvidence _currentStepEvidence() {
+    final mission = currentMission;
+    final proof = mission == null || mission.id != _photoProofsAttemptId
+        ? null
+        : _photoProofs[mission.currentStep];
+    return _evidence.withPhoto(proof?.storagePath);
+  }
+
+  /// Starts, keeps or stops the GPS watch so it only runs for an active
+  /// mission's current step that needs a location and has coordinates.
+  void _syncCheckIn() {
+    final target = _checkInTarget();
+    final key = target == null ? null : '${target.mission.id}:${target.mission.currentStep}';
+    if (key == _checkInKey) return;
+
+    _stopCheckIn();
+    _checkInKey = key;
+    if (key != null) unawaited(_startCheckIn(key, target!.quest));
+  }
+
+  ({UserQuest mission, Quest quest})? _checkInTarget() {
+    final mission = currentMission;
+    if (!_isForeground || mission == null || !_activeMissionStatuses.contains(mission.status)) {
+      return null;
+    }
+    if (_stepsQuestId != mission.questId || isLoadingSteps) return null;
+    if (mission.currentStep >= steps.length) return null;
+    if (!strategyFor(steps[mission.currentStep].verificationType).needsLocation) return null;
+
+    // No coordinates (migration 003): nothing to compare against, so the
+    // GPS stays off and LocationVerification reports it as unavailable.
+    final quest = questById(mission.questId);
+    if (quest == null || quest.latitude == null || quest.longitude == null) return null;
+    return (mission: mission, quest: quest);
+  }
+
+  Future<void> _startCheckIn(String key, Quest quest) async {
+    final access = await _checkIn.start(latitude: quest.latitude!, longitude: quest.longitude!);
+    if (_checkInKey != key) return; // superseded while the permission dialog was up
+
+    _evidence = VerificationEvidence(locationAccess: access);
+    if (access == LocationAccess.granted) {
+      _checkInSubscription = _checkIn.fixes.listen(
+        (fix) => _onCheckInFix(key, quest, fix),
+        onError: (Object _) {
+          // e.g. GPS switched off mid-walk; the service already stopped.
+          _evidence = const VerificationEvidence(locationAccess: LocationAccess.serviceDisabled);
+          notifyListeners();
+        },
+      );
+    }
+    notifyListeners();
+  }
+
+  void _onCheckInFix(String key, Quest quest, CheckInFix fix) {
+    if (_checkInKey != key) return;
+    _evidence = VerificationEvidence(
+      locationAccess: LocationAccess.granted,
+      latitude: fix.latitude,
+      longitude: fix.longitude,
+      accuracyMeters: fix.accuracyMeters,
+    );
+    notifyListeners();
+    _maybeAutoCompleteByLocation();
+  }
+
+  /// Completes the current step on its own once its location is verified
+  /// — and, for 'photo_and_location', its photo uploaded. Runs on every
+  /// GPS fix and right after a photo upload (the user may already be
+  /// standing at the place, with no new fix coming).
+  void _maybeAutoCompleteByLocation() {
+    final mission = currentMission;
+    if (mission == null || mission.currentStep >= steps.length) return;
+    if (_checkInKey != '${mission.id}:${mission.currentStep}') return; // GPS not on this step
+    final quest = questById(mission.questId);
+    if (quest == null) return;
+    final strategy = strategyFor(steps[mission.currentStep].verificationType);
+    if (!strategy.needsLocation || strategy.verify(quest, _currentStepEvidence()) is! Verified) {
+      return;
+    }
+
+    final now = DateTime.now();
+    if (_isCompletingStep ||
+        (_lastAutoCheckInAt != null && now.difference(_lastAutoCheckInAt!) < _autoCheckInRetryInterval)) {
+      return;
+    }
+    _lastAutoCheckInAt = now;
+    unawaited(_autoCompleteStep(mission, quest));
+  }
+
+  Future<void> _autoCompleteStep(UserQuest mission, Quest quest) async {
+    final completedQuest = await completeCurrentStep(mission);
+    final updated = userQuests.cast<UserQuest?>().firstWhere(
+      (uq) => uq!.id == mission.id,
+      orElse: () => null,
+    );
+    final advanced = completedQuest || (updated != null && updated.currentStep > mission.currentStep);
+    if (advanced) {
+      _lastAutoCheckInAt = null;
+      _checkInEvents.add(CheckInEvent(mission: mission, quest: quest, completedQuest: completedQuest));
+    }
+  }
+
+  // --- Feature (f): photo proof in the private Supabase Storage bucket
+  // (migration 009). The photo is kept on the device first and only
+  // counts once uploaded AND registered; without connection it waits for
+  // "Reintentar subida" or the automatic retries (Retry tactic). ---
+
+  bool get isUploadingPhoto => _uploadingStoragePath != null;
+
+  /// The current step's photo still waiting to be uploaded, if any.
+  PendingPhotoProof? get currentPendingPhotoProof {
+    final mission = currentMission;
+    if (mission == null) return null;
+    return pendingPhotoProofs.cast<PendingPhotoProof?>().firstWhere(
+      (p) => p!.attemptId == mission.id && p.stepOrder == mission.currentStep,
+      orElse: () => null,
+    );
+  }
+
+  /// "Tomar foto" on the current step: camera → saved on the device →
+  /// uploaded + registered.
+  Future<void> capturePhotoProof() async {
+    final mission = currentMission;
+    if (mission == null || !_activeMissionStatuses.contains(mission.status) || isCapturingPhoto) {
+      return;
+    }
+    final stepOrder = mission.currentStep;
+    photoErrorMessage = null;
+    isCapturingPhoto = true;
+    notifyListeners();
+    try {
+      final jpeg = await _photoCapture.capture();
+      if (jpeg == null) return; // backed out of the camera
+      await _storeAndUploadPhoto(mission, stepOrder, jpeg);
+    } on AppException catch (e) {
+      photoErrorMessage = e.message;
+    } catch (_) {
+      photoErrorMessage = 'No se pudo abrir la cámara.';
+    } finally {
+      isCapturingPhoto = false;
+      notifyListeners();
+    }
+  }
+
+  /// "Reintentar subida".
+  Future<void> retryPhotoUpload() async {
+    final pending = currentPendingPhotoProof;
+    if (pending != null) await _uploadPhotoProof(pending, isRetry: true);
+  }
+
+  /// Automatic retries of every pending photo: when the app loads and
+  /// when it comes back to the foreground. Each is tried once per call —
+  /// never a tight loop.
+  Future<void> retryPendingPhotoUploads() async {
+    pendingPhotoProofs = _questRepository.getPendingPhotoProofs();
+    for (final pending in pendingPhotoProofs) {
+      if (_uploadingStoragePath != null) return;
+      await _uploadPhotoProof(pending, isRetry: true);
+    }
+  }
+
+  /// Android may have killed the app while the camera was open: the photo
+  /// comes back on the next launch (MissionTabView asks on open).
+  Future<void> recoverLostPhotoProof() async {
+    final mission = currentMission;
+    if (mission == null || !_activeMissionStatuses.contains(mission.status)) return;
+    if (_stepsQuestId != mission.questId || mission.currentStep >= steps.length) return;
+    if (!strategyFor(steps[mission.currentStep].verificationType).needsPhoto) return;
+    try {
+      final jpeg = await _photoCapture.retrieveLost();
+      if (jpeg != null) await _storeAndUploadPhoto(mission, mission.currentStep, jpeg);
+    } on AppException catch (e) {
+      photoErrorMessage = e.message;
+      notifyListeners();
+    } catch (_) {
+      // Nothing to recover on this platform.
+    }
+  }
+
+  Future<void> _storeAndUploadPhoto(UserQuest mission, int stepOrder, Uint8List jpeg) async {
+    final pending = await _questRepository.savePendingPhotoProof(
+      attempt: mission,
+      stepOrder: stepOrder,
+      jpeg: jpeg,
+    );
+    pendingPhotoProofs = _questRepository.getPendingPhotoProofs();
+    await _uploadPhotoProof(pending, isRetry: false);
+  }
+
+  Future<void> _uploadPhotoProof(PendingPhotoProof pending, {required bool isRetry}) async {
+    if (_uploadingStoragePath != null) return;
+    _uploadingStoragePath = pending.storagePath;
+    photoErrorMessage = null;
+    notifyListeners();
+    try {
+      final proof = await _questRepository.uploadPendingPhotoProof(pending);
+      if (_photoProofsAttemptId != proof.attemptId) {
+        _photoProofsAttemptId = proof.attemptId;
+        _photoProofs = {};
+      }
+      _photoProofs[proof.stepOrder] = proof;
+
+      final quest = questById(pending.questId);
+      // Same name Kotlin emits; only after the table insert succeeded.
+      _analyticsTracker.track(
+        AnalyticsEventType.photoProofUploaded,
+        questId: pending.questId,
+        category: quest?.category,
+        metadata: {
+          'attempt_id': proof.attemptId,
+          'step_order': proof.stepOrder,
+          'was_retry': isRetry || pending.attempts > 0,
+          'size_bytes': pending.sizeBytes,
+        },
+      );
+    } on AppException catch (e) {
+      // Retryable: the repository kept the photo with this message as
+      // its lastError ("Reintentar subida"). Not retryable: it's gone.
+      if (!e.isRetryable) photoErrorMessage = e.message;
+    } finally {
+      _uploadingStoragePath = null;
+      pendingPhotoProofs = _questRepository.getPendingPhotoProofs();
+      notifyListeners();
+    }
+    _maybeAutoCompleteByLocation();
+  }
+
+  /// This attempt's registered proofs, so evidence survives an app
+  /// restart or a new device. Offline: keep what's known.
+  Future<void> _refreshPhotoProofs() async {
+    final mission = currentMission;
+    if (mission == null || _stepsQuestId != mission.questId) return;
+    final hasPhotoSteps = steps.any((step) => strategyFor(step.verificationType).needsPhoto);
+    if (hasPhotoSteps) {
+      pendingPhotoProofs = _questRepository.getPendingPhotoProofs();
+      try {
+        final proofs = await _questRepository.getPhotoProofs(mission.id);
+        _photoProofsAttemptId = mission.id;
+        // Newest first from the repository: the first one per step wins.
+        _photoProofs = {};
+        for (final proof in proofs) {
+          _photoProofs.putIfAbsent(proof.stepOrder, () => proof);
+        }
+      } on AppException {
+        // Offline.
+      }
+    }
+    notifyListeners();
+    _maybeAutoCompleteByLocation();
+  }
+
+  void _stopCheckIn() {
+    _checkInSubscription?.cancel();
+    _checkInSubscription = null;
+    _checkIn.stop();
+    _evidence = const VerificationEvidence();
+  }
+
+  @override
+  void dispose() {
+    _stepCounterSubscription.cancel();
+    _stepCounter.dispose();
+    _stopCheckIn();
+    _checkIn.dispose();
+    _checkInEvents.close();
+    super.dispose();
+  }
+
   void _replaceUserQuest(UserQuest updated) {
     userQuests = [updated, ...userQuests.where((uq) => uq.id != updated.id)];
+    _syncCheckIn();
     notifyListeners();
   }
 

@@ -3,11 +3,13 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/category_labels.dart';
+import '../../core/completion_likelihood.dart';
 import '../../models/app_context.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../widgets/completion_likelihood_label.dart';
 import 'mission_tab_view.dart';
 import 'quest_detail_view.dart';
 
@@ -67,6 +69,12 @@ class _ExploreViewState extends State<ExploreView> {
               const SizedBox(height: 20),
               _TimeAndScopeFilters(
                 key: const ValueKey('filters'),
+                questViewModel: questViewModel,
+                profileViewModel: profileViewModel,
+              ),
+              const SizedBox(height: 16),
+              _SocialMoodFilter(
+                key: const ValueKey('social-mood'),
                 questViewModel: questViewModel,
                 profileViewModel: profileViewModel,
               ),
@@ -207,6 +215,60 @@ class _TimeAndScopeFilters extends StatelessWidget {
   }
 }
 
+/// "¿Cómo te sientes hoy?" (BQ5): overrides the profile's social level for
+/// this session only and reloads recommend_quests. Starts on the profile's
+/// value so the user sees what they're changing from.
+class _SocialMoodFilter extends StatelessWidget {
+  final QuestViewModel questViewModel;
+  final ProfileViewModel profileViewModel;
+
+  const _SocialMoodFilter({
+    super.key,
+    required this.questViewModel,
+    required this.profileViewModel,
+  });
+
+  static const _levels = [
+    ('solo', '🙋 Solo yo'),
+    ('social', '👫 Con alguien'),
+    ('group', '👥 En grupo'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final current = questViewModel.effectiveSocialLevel(profileViewModel.preferences);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '¿CÓMO TE SIENTES HOY?',
+          style: Theme.of(
+            context,
+          ).textTheme.labelMedium?.copyWith(letterSpacing: 1, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _levels.map((entry) {
+            final (value, label) = entry;
+            return ChoiceChip(
+              label: Text(label),
+              selected: current == value,
+              selectedColor: AppColors.secondary,
+              onSelected: (_) {
+                questViewModel.setSessionSocialLevel(value);
+                questViewModel.loadRecommendations(profileViewModel.preferences);
+              },
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+}
+
 class _ContinueBanner extends StatelessWidget {
   final String userQuestId;
 
@@ -320,6 +382,8 @@ class _RecommendedSection extends StatelessWidget {
     }
     if (questViewModel.recommendations.isEmpty) return const SizedBox.shrink();
 
+    final likelihoodByCategory = questViewModel.completionLikelihoodByCategory;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -357,6 +421,7 @@ class _RecommendedSection extends StatelessWidget {
               rank: index + 1,
               quest: quest,
               recommendation: recommendation,
+              completionLevel: questViewModel.completionLevelFor(quest, likelihoodByCategory),
               onDismiss: () =>
                   questViewModel.skipRecommendation(quest.id, profileViewModel.preferences),
               onTap: () {
@@ -379,6 +444,7 @@ class _RecommendationCard extends StatefulWidget {
   final int rank;
   final Quest quest;
   final QuestRecommendation recommendation;
+  final CompletionLevel completionLevel;
   final VoidCallback onDismiss;
   final VoidCallback onTap;
 
@@ -386,6 +452,7 @@ class _RecommendationCard extends StatefulWidget {
     required this.rank,
     required this.quest,
     required this.recommendation,
+    required this.completionLevel,
     required this.onDismiss,
     required this.onTap,
   });
@@ -498,6 +565,7 @@ class _RecommendationCardState extends State<_RecommendationCard> {
                   icon: Icons.location_on_outlined,
                   label: quest.locationMode == 'anywhere' ? 'Donde sea' : 'Cerca',
                 ),
+                CompletionLikelihoodLabel(level: widget.completionLevel),
               ],
             ),
             if (reasons.isNotEmpty) ...[
@@ -567,6 +635,7 @@ class _AllMissionsSection extends StatelessWidget {
     }
 
     final categoryOptions = [null, 'sponsored', ...questViewModel.categories];
+    final likelihoodByCategory = questViewModel.completionLikelihoodByCategory;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -605,6 +674,7 @@ class _AllMissionsSection extends StatelessWidget {
           ...questViewModel.filteredCatalog.map(
             (quest) => _QuestRow(
               quest: quest,
+              completionLevel: questViewModel.completionLevelFor(quest, likelihoodByCategory),
               onTap: () {
                 questViewModel.registerInteraction();
                 Navigator.of(
@@ -620,9 +690,10 @@ class _AllMissionsSection extends StatelessWidget {
 
 class _QuestRow extends StatelessWidget {
   final Quest quest;
+  final CompletionLevel completionLevel;
   final VoidCallback onTap;
 
-  const _QuestRow({required this.quest, required this.onTap});
+  const _QuestRow({required this.quest, required this.completionLevel, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -635,7 +706,13 @@ class _QuestRow extends StatelessWidget {
         subtitle: Text(
           '${quest.durationMinutes} min · ${quest.estimatedCost > 0 ? '-\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Gratis'} · ${_difficultyLabel(quest.difficulty)}',
         ),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CompletionLikelihoodLabel(level: completionLevel),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
       ),
     );
   }
