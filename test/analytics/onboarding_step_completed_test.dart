@@ -6,6 +6,7 @@ import 'package:sidequests/analytics/analytics_tracker.dart';
 import 'package:sidequests/analytics/onboarding_step.dart';
 import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
+import 'package:sidequests/data/services/biometric_service.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/repository/auth_repository.dart';
 import 'package:sidequests/viewmodel/auth/auth_view_model.dart';
@@ -62,6 +63,24 @@ class _FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() async {}
+
+  @override
+  Future<void> sendLoginCode(String email) async {}
+
+  @override
+  Future<void> verifyLoginCode({required String email, required String code}) async {}
+
+  @override
+  bool get isBiometricEnabled => false;
+
+  @override
+  Future<void> setBiometricEnabled(bool value) async {}
+}
+
+/// Never reached: onboarding tracking doesn't touch biometrics.
+class _NoBiometrics implements BiometricService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// Records the exact arguments AuthViewModel.trackOnboardingStep passes to
@@ -102,7 +121,7 @@ class _SpyAnalyticsTracker extends AnalyticsTracker {
 void main() {
   test('AuthViewModel.trackOnboardingStep sends step_order/step_name matching OnboardingStep', () {
     final spyTracker = _SpyAnalyticsTracker();
-    final authViewModel = AuthViewModel(_FakeAuthRepository(), spyTracker);
+    final authViewModel = AuthViewModel(_FakeAuthRepository(), _NoBiometrics(), spyTracker);
 
     authViewModel.trackOnboardingStep(OnboardingStep.welcome);
     authViewModel.trackOnboardingStep(OnboardingStep.preferences);

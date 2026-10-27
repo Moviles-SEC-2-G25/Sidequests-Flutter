@@ -74,6 +74,14 @@ class _FakeRemote implements SupabaseRemoteDataSource {
 class _FakeLocal implements LocalDataSource {
   List<Map<String, dynamic>> pending = [];
   final Map<String, Uint8List> files = {};
+  final Map<String, List<Map<String, dynamic>>> registered = {};
+
+  @override
+  List<Map<String, dynamic>>? getPhotoProofs(String attemptId) => registered[attemptId];
+
+  @override
+  Future<void> cachePhotoProofs(String attemptId, List<Map<String, dynamic>> proofs) async =>
+      registered[attemptId] = proofs;
 
   @override
   List<Map<String, dynamic>> getPendingPhotoProofs() => [...pending];
@@ -163,6 +171,17 @@ void main() {
       expect(proof.attemptId, 'attempt-1');
       expect(repository.getPendingPhotoProofs(), isEmpty);
       expect(local.files, isEmpty);
+      // Write-through: the new proof is cached as this attempt's evidence.
+      expect(local.registered['attempt-1'], [remote.rows.single]);
+    });
+
+    test('rejected: nothing is written to the proofs cache', () async {
+      await repository.savePendingPhotoProof(attempt: _attempt, stepOrder: 0, jpeg: _jpeg);
+      remote.insertError = const PostgrestException(message: 'new row violates row-level security', code: '42501');
+
+      await uploadExpectingFailure();
+
+      expect(local.registered, isEmpty);
     });
 
     test('no connection: retryable, the photo is kept with the error and attempt count', () async {

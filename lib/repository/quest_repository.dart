@@ -22,6 +22,8 @@ class QuestRepository {
   static const _offlineMessage =
       'Sin conexión: tu foto quedó guardada en el teléfono. Reintenta cuando tengas internet.';
   static const _serverRetryMessage = 'No se pudo subir la foto ahora. Inténtalo de nuevo.';
+  static const _noCacheMessage =
+      'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
 
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
@@ -40,12 +42,19 @@ class QuestRepository {
     }
   }
 
+  /// Falls back to the cache, so a mission opened once online can still be
+  /// followed offline.
   Future<List<QuestStep>> getSteps(String questId) async {
     try {
       final rows = await _remoteDataSource.getQuestSteps(questId);
+      await _localDataSource.cacheQuestSteps(questId, rows);
       return rows.map(QuestStep.fromJson).toList();
-    } on PostgrestException catch (e) {
-      throw AppException(e.message);
+    } catch (error) {
+      final cached = _localDataSource.getQuestSteps(questId);
+      if (cached != null) return cached.map(QuestStep.fromJson).toList();
+      throw error is PostgrestException
+          ? AppException(error.message)
+          : const AppException(_noCacheMessage, isRetryable: true);
     }
   }
 
@@ -93,6 +102,17 @@ class QuestRepository {
     }
   }
 
+  /// Write-through of an attempt the backend just saved: replaces its
+  /// cached copy, or adds it, at the front — the list is newest first. So
+  /// the offline fallback never shows a stale status or misses a mission.
+  Future<UserQuest> _cacheUserQuest(Map<String, dynamic> json) async {
+    await _localDataSource.cacheUserQuests([
+      json,
+      ..._localDataSource.getUserQuests().where((row) => row['id'] != json['id']),
+    ]);
+    return UserQuest.fromJson(json);
+  }
+
   /// Walked steps per attempt (`user_quests.id`), local-only.
   Map<String, int> getStepTotals() => _localDataSource.getStepTotals();
 
@@ -112,12 +132,16 @@ class QuestRepository {
   // quest_photo_proofs row exist. Until then it's kept on the device
   // (Retry tactic) and offered as "Reintentar subida". ---
 
-  /// This attempt's registered proofs, newest first.
+  /// This attempt's registered proofs, newest first. Falls back to the
+  /// cache, so the photo evidence survives an app restart offline.
   Future<List<QuestPhotoProof>> getPhotoProofs(String attemptId) async {
     try {
       final rows = await _remoteDataSource.getQuestPhotoProofs(attemptId);
+      await _localDataSource.cachePhotoProofs(attemptId, rows);
       return rows.map(QuestPhotoProof.fromJson).toList();
     } catch (error) {
+      final cached = _localDataSource.getPhotoProofs(attemptId);
+      if (cached != null) return cached.map(QuestPhotoProof.fromJson).toList();
       throw _photoProofException(error);
     }
   }
@@ -186,14 +210,13 @@ class QuestRepository {
       throw await _failPending(pending, _photoProofException(error));
     }
 
+    final Map<String, dynamic> row;
     try {
-      final row = await _remoteDataSource.insertQuestPhotoProof(
+      row = await _remoteDataSource.insertQuestPhotoProof(
         attemptId: pending.attemptId,
         stepOrder: pending.stepOrder,
         storagePath: pending.storagePath,
       );
-      await discardPendingPhotoProof(pending);
-      return QuestPhotoProof.fromJson(row);
     } catch (error) {
       // Contract: an upload without its row isn't a proof — remove it. If
       // that fails too (offline), the retry finds it via the 409 below.
@@ -202,6 +225,15 @@ class QuestRepository {
       } catch (_) {}
       throw await _failPending(pending, _photoProofException(error));
     }
+
+    // Outside the try above: a local failure must never undo a proof the
+    // backend already has.
+    await discardPendingPhotoProof(pending);
+    await _localDataSource.cachePhotoProofs(pending.attemptId, [
+      row,
+      ...?_localDataSource.getPhotoProofs(pending.attemptId),
+    ]);
+    return QuestPhotoProof.fromJson(row);
   }
 
   Future<void> discardPendingPhotoProof(PendingPhotoProof pending) async {
@@ -284,7 +316,7 @@ class QuestRepository {
         'status': 'accepted',
       });
       await _localDataSource.cacheActiveQuestId(questId);
-      return UserQuest.fromJson(json);
+      return await _cacheUserQuest(json);
     } on PostgrestException catch (e) {
       throw AppException(e.message);
     }
@@ -300,7 +332,7 @@ class QuestRepository {
         'current_step': userQuest.currentStep,
         'completed_steps': userQuest.completedSteps,
       });
-      return UserQuest.fromJson(json);
+      return await _cacheUserQuest(json);
     } on PostgrestException catch (e) {
       throw AppException(e.message);
     }
@@ -316,7 +348,7 @@ class QuestRepository {
         'abandon_reason': reason,
       });
       await _localDataSource.cacheActiveQuestId(null);
-      return UserQuest.fromJson(json);
+      return await _cacheUserQuest(json);
     } on PostgrestException catch (e) {
       throw AppException(e.message);
     }
@@ -331,7 +363,7 @@ class QuestRepository {
         'status': 'completed',
       });
       await _localDataSource.cacheActiveQuestId(null);
-      return UserQuest.fromJson(json);
+      return await _cacheUserQuest(json);
     } on PostgrestException catch (e) {
       throw AppException(e.message);
     }
@@ -350,7 +382,7 @@ class QuestRepository {
         rating: rating,
         feedbackTags: tags,
       );
-      return UserQuest.fromJson(json);
+      return await _cacheUserQuest(json);
     } on PostgrestException catch (e) {
       throw AppException(e.message);
     }

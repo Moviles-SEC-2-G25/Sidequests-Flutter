@@ -11,20 +11,34 @@ class ProfileRepository {
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
 
+  static const _offlineMessage =
+      'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
+
   ProfileRepository(this._remoteDataSource, this._localDataSource);
 
+  /// Falls back to the cache when the network is unavailable.
   Future<Profile> getProfile(String userId) async {
     try {
       final json = await _remoteDataSource.getProfile(userId);
+      await _localDataSource.cacheProfile(json);
       return Profile.fromJson(json);
-    } on PostgrestException catch (e) {
-      throw AppException(e.message);
+    } catch (error) {
+      final cached = _localDataSource.getProfile();
+      if (cached != null) return Profile.fromJson(cached);
+      throw error is PostgrestException
+          ? AppException(error.message)
+          : const AppException(_offlineMessage, isRetryable: true);
     }
   }
 
   Future<void> updateProfile(Profile profile) async {
     try {
       await _remoteDataSource.upsertProfile(profile.toJson());
+      // toJson() leaves out created_at: keep the cached one.
+      await _localDataSource.cacheProfile({
+        ...?_localDataSource.getProfile(),
+        ...profile.toJson(),
+      });
     } on PostgrestException catch (e) {
       throw AppException(e.message);
     }

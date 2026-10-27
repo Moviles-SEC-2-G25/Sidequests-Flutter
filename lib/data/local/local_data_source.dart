@@ -5,18 +5,22 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Local cache: preferences, quest catalog, active quest and progress.
+/// Local cache: profile, preferences, quest catalog and steps, the user's
+/// attempts and their photo proofs, active quest and progress.
 /// Repositories read from here when the network is unavailable and write
-/// through on every successful remote fetch. Session persistence is handled
-/// by supabase_flutter itself, not duplicated here.
+/// through on every successful remote fetch or write. Session persistence
+/// is handled by supabase_flutter itself, not duplicated here.
 ///
 /// Structured/larger records live in a Hive box; small standalone flags use
 /// SharedPreferences, matching the architecture's Local Data Source stack.
 class LocalDataSource {
   static const _boxName = 'sidequests_cache';
 
+  static const _keyProfile = 'profile';
   static const _keyPreferences = 'preferences';
   static const _keyQuestCatalog = 'quest_catalog';
+  static const _keyQuestSteps = 'quest_steps';
+  static const _keyPhotoProofs = 'photo_proofs';
   static const _keyUserQuests = 'user_quests';
   static const _keyActiveQuestId = 'active_quest_id';
   static const _keyStepTotals = 'step_totals';
@@ -72,6 +76,12 @@ class LocalDataSource {
   Future<void> setBiometricEnabled(bool value) =>
       _prefs.setBool(_keyBiometricEnabled, value);
 
+  Map<String, dynamic>? getProfile() =>
+      (_box.get(_keyProfile) as Map?)?.cast<String, dynamic>();
+
+  Future<void> cacheProfile(Map<String, dynamic> profile) =>
+      _box.put(_keyProfile, profile);
+
   Map<String, dynamic>? getPreferences() =>
       (_box.get(_keyPreferences) as Map?)?.cast<String, dynamic>();
 
@@ -86,6 +96,32 @@ class LocalDataSource {
 
   Future<void> cacheQuestCatalog(List<Map<String, dynamic>> quests) =>
       _box.put(_keyQuestCatalog, quests);
+
+  /// Steps of [questId]; null when that quest was never opened online.
+  List<Map<String, dynamic>>? getQuestSteps(String questId) =>
+      _getRowsFor(_keyQuestSteps, questId);
+
+  Future<void> cacheQuestSteps(String questId, List<Map<String, dynamic>> steps) =>
+      _putRowsFor(_keyQuestSteps, questId, steps);
+
+  /// Registered photo proofs of one attempt (`user_quests.id`); null when
+  /// they were never fetched online.
+  List<Map<String, dynamic>>? getPhotoProofs(String attemptId) =>
+      _getRowsFor(_keyPhotoProofs, attemptId);
+
+  Future<void> cachePhotoProofs(String attemptId, List<Map<String, dynamic>> proofs) =>
+      _putRowsFor(_keyPhotoProofs, attemptId, proofs);
+
+  /// Rows stored per id under one key, so "nothing cached for this id"
+  /// (null) stays distinct from "cached, and empty".
+  List<Map<String, dynamic>>? _getRowsFor(String key, String id) =>
+      ((_box.get(key) as Map?)?[id] as List?)
+          ?.cast<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+
+  Future<void> _putRowsFor(String key, String id, List<Map<String, dynamic>> rows) =>
+      _box.put(key, {...(_box.get(key) as Map? ?? const {}), id: rows});
 
   List<Map<String, dynamic>> getUserQuests() =>
       (_box.get(_keyUserQuests) as List? ?? const [])
