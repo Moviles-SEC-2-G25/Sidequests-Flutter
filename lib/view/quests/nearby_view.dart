@@ -96,7 +96,6 @@ class _NearbyViewState extends State<NearbyView> {
               for (final quest in withoutDistance)
                 _NearbyCard(
                   quest: quest,
-                  distanceLabel: quest.locationName ?? 'Ubicación no especificada',
                   onTap: () => Navigator.of(
                     context,
                   ).push(MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest))),
@@ -152,13 +151,17 @@ class _RadarGraphic extends StatelessWidget {
 
 class _NearbyCard extends StatelessWidget {
   final Quest quest;
-  final String distanceLabel;
+
+  /// Only set when a real distance is known; the location name always lives
+  /// under the title so long names can't squeeze the title column.
+  final String? distanceLabel;
   final VoidCallback onTap;
 
-  const _NearbyCard({required this.quest, required this.distanceLabel, required this.onTap});
+  const _NearbyCard({required this.quest, this.distanceLabel, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final bodySmall = Theme.of(context).textTheme.bodySmall;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
@@ -177,24 +180,42 @@ class _NearbyCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(quest.title, style: Theme.of(context).textTheme.titleSmall),
+                    Text(
+                      quest.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
                     const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined, size: 14, color: AppColors.primary),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            quest.locationName ?? 'Ubicación no especificada',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
                     Wrap(
                       spacing: 8,
                       children: [
-                        Text(_difficultyLabel(quest.difficulty), style: Theme.of(context).textTheme.bodySmall),
-                        Text('${quest.durationMinutes} min', style: Theme.of(context).textTheme.bodySmall),
+                        Text(_difficultyLabel(quest.difficulty), style: bodySmall),
+                        Text('${quest.durationMinutes} min', style: bodySmall),
                       ],
                     ),
                   ],
                 ),
               ),
-              Text(
-                distanceLabel,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-              ),
+              if (distanceLabel != null) ...[
+                const SizedBox(width: 8),
+                Text(distanceLabel!, style: bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+              ],
             ],
           ),
         ),

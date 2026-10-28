@@ -21,6 +21,7 @@ class LocationService {
         permission == LocationPermission.deniedForever) {
       return null;
     }
+    
 
     try {
       return await Geolocator.getCurrentPosition(

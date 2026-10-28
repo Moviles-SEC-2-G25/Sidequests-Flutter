@@ -30,6 +30,7 @@ class BiometricService {
       );
     } catch (_) {
       return false;
+      
     }
   }
 }
