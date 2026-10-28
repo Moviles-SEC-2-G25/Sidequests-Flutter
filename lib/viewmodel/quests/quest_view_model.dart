@@ -102,6 +102,10 @@ class QuestViewModel extends ChangeNotifier {
   bool isSubmittingRating = false;
   String? ratingErrorMessage;
 
+  /// Why the last [completeCurrentStep] couldn't be saved (e.g. offline);
+  /// null when it went through or is still running.
+  String? stepErrorMessage;
+
   int selectedMinutes = 30;
   String selectedLocationScope = 'all'; // all | gps | anywhere
   String? selectedCategory; // null = "Todo", 'sponsored', or a real category
@@ -300,8 +304,9 @@ class QuestViewModel extends ChangeNotifier {
 
   /// [wasRecommended] also picks BQ4's start_path: 'standard' from a
   /// recommendation's detail view, 'catalog' from "Todas las misiones".
-  Future<void> acceptQuest(String questId, {bool wasRecommended = false}) async {
-    await _acceptQuest(
+  /// Returns false (with [errorMessage] set) when it couldn't be saved.
+  Future<bool> acceptQuest(String questId, {bool wasRecommended = false}) {
+    return _acceptQuest(
       questId,
       startPath: wasRecommended ? 'standard' : 'catalog',
       wasRecommended: wasRecommended,
@@ -419,11 +424,13 @@ class QuestViewModel extends ChangeNotifier {
   /// Advances the current step (or completes the quest on the last one).
   /// Transitions 'accepted' -> 'in_progress' on the first step so the
   /// backend's lifecycle trigger stamps `started_at` for real.
-  /// Returns true only when this call completed the whole quest.
+  /// Returns true only when this call completed the whole quest; when it
+  /// couldn't be saved, [stepErrorMessage] says why.
   ///
   /// Shared by the "Completar" button and the automatic location check-in;
   /// [isCompletingStep] keeps the two from advancing the same step twice.
   Future<bool> completeCurrentStep(UserQuest userQuest) async {
+    stepErrorMessage = null;
     if (_isCompletingStep) return false;
     _isCompletingStep = true;
     notifyListeners();
@@ -464,7 +471,7 @@ class QuestViewModel extends ChangeNotifier {
       }
       return isLastStep;
     } on AppException catch (e) {
-      errorMessage = e.message;
+      stepErrorMessage = e.message;
       return false;
     } finally {
       _isCompletingStep = false;
@@ -533,7 +540,9 @@ class QuestViewModel extends ChangeNotifier {
     );
   }
 
-  Future<void> abandonQuest(UserQuest userQuest, {required String reason}) async {
+  /// Returns false (with [errorMessage] set) when it couldn't be saved —
+  /// e.g. offline — so the mission is still active and nothing is tracked.
+  Future<bool> abandonQuest(UserQuest userQuest, {required String reason}) async {
     try {
       final updated = await _questRepository.abandonQuest(userQuest, reason: reason);
       _replaceUserQuest(updated);
@@ -554,9 +563,11 @@ class QuestViewModel extends ChangeNotifier {
           'completed_steps': userQuest.completedSteps.length,
         },
       );
+      return true;
     } on AppException catch (e) {
       errorMessage = e.message;
       notifyListeners();
+      return false;
     }
   }
 

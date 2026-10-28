@@ -17,6 +17,10 @@ class ContextBanner extends StatelessWidget {
       icon = Icons.wifi_off;
       text = 'Sin conexión: las misiones nuevas no cargarán hasta reconectar';
       color = Colors.red.shade700;
+    } else if (status.justReconnected) {
+      icon = Icons.wifi;
+      text = 'Conexión restablecida: actualizando misiones';
+      color = Colors.green.shade700;
     } else if (status.isLowBattery) {
       icon = Icons.battery_alert;
       text = 'Batería baja: usamos menos GPS para ahorrar energía';

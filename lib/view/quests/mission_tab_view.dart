@@ -213,7 +213,14 @@ class _MissionChecklist extends StatelessWidget {
                       questViewModel.canCompleteCurrentStep(steps[currentIndex], quest)
                   ? () async {
                       final navigator = Navigator.of(context);
+                      final messenger = ScaffoldMessenger.of(context);
                       final completedMission = await questViewModel.completeCurrentStep(mission);
+                      final error = questViewModel.stepErrorMessage;
+                      if (error != null) {
+                        // Not saved (e.g. offline): the step stays where it was.
+                        messenger.showSnackBar(SnackBar(content: Text(error)));
+                        return;
+                      }
                       if (!completedMission || !navigator.mounted) return;
                       navigator.push(
                         MaterialPageRoute(

@@ -40,8 +40,19 @@ class _QuestDetailViewState extends State<QuestDetailView> {
   Future<void> _accept() async {
     setState(() => _isAccepting = true);
     final questViewModel = context.read<QuestViewModel>();
-    await questViewModel.acceptQuest(widget.quest.id, wasRecommended: widget.wasRecommended);
+    final accepted = await questViewModel.acceptQuest(
+      widget.quest.id,
+      wasRecommended: widget.wasRecommended,
+    );
     if (!mounted) return;
+    if (!accepted) {
+      // Not started (e.g. offline): no mission to show, stay here.
+      setState(() => _isAccepting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(questViewModel.errorMessage ?? 'No se pudo iniciar la misión.')),
+      );
+      return;
+    }
     Navigator.of(
       context,
     ).pushReplacement(MaterialPageRoute(builder: (_) => const MissionTabView(isTab: false)));

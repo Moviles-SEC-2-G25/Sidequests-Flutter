@@ -24,6 +24,8 @@ class QuestRepository {
   static const _serverRetryMessage = 'No se pudo subir la foto ahora. Inténtalo de nuevo.';
   static const _noCacheMessage =
       'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
+  static const _offlineWriteMessage =
+      'Sin conexión: no se pudo guardar el cambio. Inténtalo de nuevo cuando tengas internet.';
 
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
@@ -309,64 +311,56 @@ class QuestRepository {
   }
 
   Future<UserQuest> acceptQuest({required String userId, required String questId}) async {
-    try {
-      final json = await _remoteDataSource.upsertUserQuest({
+    final json = await _remoteWrite(
+      () => _remoteDataSource.upsertUserQuest({
         'user_id': userId,
         'quest_id': questId,
         'status': 'accepted',
-      });
-      await _localDataSource.cacheActiveQuestId(questId);
-      return await _cacheUserQuest(json);
-    } on PostgrestException catch (e) {
-      throw AppException(e.message);
-    }
+      }),
+    );
+    await _localDataSource.cacheActiveQuestId(questId);
+    return _cacheUserQuest(json);
   }
 
   Future<UserQuest> updateProgress(UserQuest userQuest) async {
-    try {
-      final json = await _remoteDataSource.upsertUserQuest({
+    final json = await _remoteWrite(
+      () => _remoteDataSource.upsertUserQuest({
         'id': userQuest.id,
         'user_id': userQuest.userId,
         'quest_id': userQuest.questId,
         'status': userQuest.status,
         'current_step': userQuest.currentStep,
         'completed_steps': userQuest.completedSteps,
-      });
-      return await _cacheUserQuest(json);
-    } on PostgrestException catch (e) {
-      throw AppException(e.message);
-    }
+      }),
+    );
+    return _cacheUserQuest(json);
   }
 
   Future<UserQuest> abandonQuest(UserQuest userQuest, {required String reason}) async {
-    try {
-      final json = await _remoteDataSource.upsertUserQuest({
+    final json = await _remoteWrite(
+      () => _remoteDataSource.upsertUserQuest({
         'id': userQuest.id,
         'user_id': userQuest.userId,
         'quest_id': userQuest.questId,
         'status': 'abandoned',
         'abandon_reason': reason,
-      });
-      await _localDataSource.cacheActiveQuestId(null);
-      return await _cacheUserQuest(json);
-    } on PostgrestException catch (e) {
-      throw AppException(e.message);
-    }
+      }),
+    );
+    await _localDataSource.cacheActiveQuestId(null);
+    return _cacheUserQuest(json);
   }
 
   Future<UserQuest> completeQuest(UserQuest userQuest) async {
-    try {
-      final json = await _remoteDataSource.upsertUserQuest({
+    final json = await _remoteWrite(
+      () => _remoteDataSource.upsertUserQuest({
         'id': userQuest.id,
         'user_id': userQuest.userId,
         'quest_id': userQuest.questId,
         'status': 'completed',
-      });
-      await _localDataSource.cacheActiveQuestId(null);
-      return await _cacheUserQuest(json);
-    } on PostgrestException catch (e) {
-      throw AppException(e.message);
-    }
+      }),
+    );
+    await _localDataSource.cacheActiveQuestId(null);
+    return _cacheUserQuest(json);
   }
 
   Future<UserQuest> rateQuest(
@@ -374,17 +368,29 @@ class QuestRepository {
     int rating,
     List<String> tags,
   ) async {
-    try {
-      final json = await _remoteDataSource.rateUserQuest(
+    final json = await _remoteWrite(
+      () => _remoteDataSource.rateUserQuest(
         id: userQuest.id,
         userId: userQuest.userId,
         questId: userQuest.questId,
         rating: rating,
         feedbackTags: tags,
-      );
-      return await _cacheUserQuest(json);
+      ),
+    );
+    return _cacheUserQuest(json);
+  }
+
+  /// The backend half of a mission write. A PostgREST rejection keeps its
+  /// message; anything else means no answer came back — postgrest rethrows
+  /// SocketException/ClientException/TimeoutException unwrapped — so it's
+  /// reported as offline and retryable instead of escaping the ViewModel.
+  Future<T> _remoteWrite<T>(Future<T> Function() write) async {
+    try {
+      return await write();
     } on PostgrestException catch (e) {
       throw AppException(e.message);
+    } catch (_) {
+      throw const AppException(_offlineWriteMessage, isRetryable: true);
     }
   }
 }

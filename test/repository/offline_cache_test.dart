@@ -329,5 +329,35 @@ void main() {
       remote.serverError = null;
       expect((await readOffline()).single.status, 'accepted');
     });
+
+    test('offline, every mission write is a retryable AppException, not a raw SocketException',
+        () async {
+      final accepted = await repository.acceptQuest(userId: 'user-1', questId: 'ramen-spot');
+      remote.offline = true;
+
+      final writes = <Future<Object?>>[
+        repository.acceptQuest(userId: 'user-1', questId: 'mural-walk'),
+        repository.updateProgress(accepted.copyWithProgress(currentStep: 1, completedSteps: [0])),
+        repository.abandonQuest(accepted, reason: 'too_far'),
+        repository.completeQuest(accepted),
+        repository.rateQuest(accepted, 4, const []),
+      ];
+      for (final write in writes) {
+        final error = await _expectAppException(write);
+        expect(error.isRetryable, isTrue);
+        expect(error.message, startsWith('Sin conexión'));
+      }
+      expect((await readOffline()).single.status, 'accepted');
+    });
+
+    test('a server rejection keeps its message and is not retryable', () async {
+      final accepted = await repository.acceptQuest(userId: 'user-1', questId: 'ramen-spot');
+      remote.serverError = const PostgrestException(message: 'permission denied');
+
+      final error = await _expectAppException(repository.abandonQuest(accepted, reason: 'too_far'));
+
+      expect(error.message, 'permission denied');
+      expect(error.isRetryable, isFalse);
+    });
   });
 }

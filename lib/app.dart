@@ -10,6 +10,7 @@ import 'data/local/local_data_source.dart';
 import 'data/remote/supabase_remote_data_source.dart';
 import 'data/services/biometric_service.dart';
 import 'data/services/location_service.dart';
+import 'data/services/reverse_geocoding_service.dart';
 import 'data/services/weather_service.dart';
 import 'repository/auth_repository.dart';
 import 'repository/profile_repository.dart';
@@ -45,6 +46,8 @@ class SidequestsApp extends StatelessWidget {
       // non-uuid value here makes every event insert fail RLS/type
       // validation silently (AnalyticsTracker.track swallows the error).
       sessionId: const Uuid().v4(),
+      // Offline queue: failed inserts wait here until the next one succeeds.
+      localDataSource: localDataSource,
     );
 
     return MultiProvider(
@@ -56,6 +59,9 @@ class SidequestsApp extends StatelessWidget {
         Provider(create: (_) => BiometricService()),
         Provider(create: (_) => LocationService()),
         Provider.value(value: weatherService),
+        Provider(
+          create: (_) => ReverseGeocodingService(localDataSource: localDataSource),
+        ),
         Provider(
           create: (_) => AuthRepository(remoteDataSource, localDataSource),
         ),

@@ -161,6 +161,8 @@ void main() {
     checkIn = LocationCheckInService(
       requestAccess: () => requestAccess(),
       isLowBattery: () async => false,
+      isOffline: () async => false,
+      offlineChanges: () => const Stream.empty(),
       positions: (_, _) {
         gpsSubscriptions++;
         return gps.stream;

@@ -11,14 +11,22 @@ const double kCheckInNearMeters = 300;
 /// confirmed with a fix that's off by hundreds of meters. Low battery
 /// samples less (bigger distanceFilter) but never drops below what the
 /// check-in needs once near — same idea as ContextManager's battery rule.
+///
+/// Offline, far away asks for GPS as well: the coarse/balanced tiers are
+/// mostly Wi-Fi/cell positioning (Android's low-power and balanced
+/// priorities), which needs a network lookup — without it the stream can go
+/// quiet and the user never "arrives" within 300 m. The far distanceFilter
+/// still keeps it sparse.
 ({CheckInPrecision precision, int distanceFilterMeters}) checkInSampling({
   required bool lowBattery,
+  bool offline = false,
   double? distanceMeters,
 }) {
   final isNear = distanceMeters != null && distanceMeters <= kCheckInNearMeters;
   if (!isNear) {
+    final networkTier = lowBattery ? CheckInPrecision.coarse : CheckInPrecision.balanced;
     return (
-      precision: lowBattery ? CheckInPrecision.coarse : CheckInPrecision.balanced,
+      precision: offline ? CheckInPrecision.precise : networkTier,
       distanceFilterMeters: lowBattery ? 100 : 50,
     );
   }

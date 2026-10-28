@@ -6,7 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local cache: profile, preferences, quest catalog and steps, the user's
-/// attempts and their photo proofs, active quest and progress.
+/// attempts and their photo proofs, active quest and progress, analytics
+/// events waiting for a connection and resolved quest addresses.
 /// Repositories read from here when the network is unavailable and write
 /// through on every successful remote fetch or write. Session persistence
 /// is handled by supabase_flutter itself, not duplicated here.
@@ -27,6 +28,8 @@ class LocalDataSource {
   static const _keyActiveStepSession = 'active_step_session';
   static const _keyPendingPhotoProofs = 'pending_photo_proofs';
   static const _pendingProofsDir = 'pending_proofs';
+  static const _keyPendingAnalyticsEvents = 'pending_analytics_events';
+  static const _keyAddresses = 'addresses';
   static const _keyOnboardingComplete = 'onboarding_complete';
   static const _keyDarkMode = 'dark_mode';
   static const _keyMissionNotifications = 'mission_notifications_enabled';
@@ -184,6 +187,29 @@ class LocalDataSource {
     final file = File(path);
     if (await file.exists()) await file.delete();
   }
+
+  /// Analytics events whose insert failed for lack of connection, oldest
+  /// first (store-and-forward), each exactly as it was built. Cleared on
+  /// sign-out with the rest of the box: the backend stamps `user_id` from
+  /// the session at insert time, so they must not outlive their account.
+  List<Map<String, dynamic>> getPendingAnalyticsEvents() =>
+      (_box.get(_keyPendingAnalyticsEvents) as List? ?? const [])
+          .cast<Map>()
+          .map((event) => event.cast<String, dynamic>())
+          .toList();
+
+  Future<void> savePendingAnalyticsEvents(List<Map<String, dynamic>> events) =>
+      _box.put(_keyPendingAnalyticsEvents, events);
+
+  /// Reverse-geocoded address of [coordinatesKey]; null when it was never
+  /// resolved online.
+  String? getAddress(String coordinatesKey) =>
+      (_box.get(_keyAddresses) as Map?)?[coordinatesKey] as String?;
+
+  Future<void> cacheAddress(String coordinatesKey, String address) => _box.put(
+    _keyAddresses,
+    {...(_box.get(_keyAddresses) as Map? ?? const {}), coordinatesKey: address},
+  );
 
   Future<Directory> _pendingProofsDirectory() async {
     final documents = await getApplicationDocumentsDirectory();

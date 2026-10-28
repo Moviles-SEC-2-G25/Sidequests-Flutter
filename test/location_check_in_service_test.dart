@@ -22,6 +22,8 @@ void main() {
   late List<(CheckInPrecision, int)> subscriptions;
   late Future<LocationAccess> Function() requestAccess;
   late bool lowBattery;
+  late bool offline;
+  late StreamController<bool> connectivity;
   late LocationCheckInService service;
 
   setUp(() {
@@ -29,9 +31,13 @@ void main() {
     subscriptions = [];
     requestAccess = () async => LocationAccess.granted;
     lowBattery = false;
+    offline = false;
+    connectivity = StreamController<bool>.broadcast();
     service = LocationCheckInService(
       requestAccess: () => requestAccess(),
       isLowBattery: () async => lowBattery,
+      isOffline: () async => offline,
+      offlineChanges: () => connectivity.stream,
       positions: (precision, distanceFilter) {
         subscriptions.add((precision, distanceFilter));
         return gps.stream;
@@ -83,6 +89,77 @@ void main() {
     gps.add(_fixAt(100));
     await _flush();
     expect(subscriptions.last, (CheckInPrecision.precise, 15));
+  });
+
+  group('offline (Wi-Fi/cell positioning needs the network)', () {
+    void goOffline(bool value) {
+      offline = value;
+      connectivity.add(value);
+    }
+
+    test('starting offline far away uses GPS, still sparse', () async {
+      offline = true;
+      await service.start(latitude: _targetLat, longitude: _targetLon);
+
+      expect(subscriptions, [(CheckInPrecision.precise, 50)]);
+    });
+
+    test('losing the connection while far switches to GPS; getting it back switches back',
+        () async {
+      await service.start(latitude: _targetLat, longitude: _targetLon);
+
+      goOffline(true);
+      await _flush();
+      expect(subscriptions.last, (CheckInPrecision.precise, 50));
+
+      goOffline(false);
+      await _flush();
+      expect(subscriptions.last, (CheckInPrecision.balanced, 50));
+      expect(subscriptions, hasLength(3));
+    });
+
+    test('offline far fixes do not count as "near" (no re-subscription loop)', () async {
+      offline = true;
+      await service.start(latitude: _targetLat, longitude: _targetLon);
+
+      gps
+        ..add(_fixAt(1000))
+        ..add(_fixAt(900));
+      await _flush();
+      expect(subscriptions, hasLength(1));
+
+      gps.add(_fixAt(250));
+      await _flush();
+      expect(subscriptions.last, (CheckInPrecision.precise, 5));
+    });
+
+    test('near the quest a connectivity change re-subscribes nothing', () async {
+      await service.start(latitude: _targetLat, longitude: _targetLon);
+      gps.add(_fixAt(100));
+      await _flush();
+      expect(subscriptions, hasLength(2));
+
+      goOffline(true);
+      await _flush();
+      expect(subscriptions, hasLength(2));
+    });
+
+    test('low battery offline: GPS, with the low-battery distanceFilter', () async {
+      lowBattery = true;
+      offline = true;
+      await service.start(latitude: _targetLat, longitude: _targetLon);
+
+      expect(subscriptions.single, (CheckInPrecision.precise, 100));
+    });
+
+    test('after stop, connectivity changes are ignored', () async {
+      await service.start(latitude: _targetLat, longitude: _targetLon);
+      service.stop();
+
+      goOffline(true);
+      await _flush();
+      expect(subscriptions, hasLength(1));
+    });
   });
 
   test('every fix is forwarded', () async {

@@ -38,8 +38,19 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
   Future<void> _leave() async {
     setState(() => _isSaving = true);
     final questViewModel = context.read<QuestViewModel>();
-    await questViewModel.abandonQuest(widget.mission, reason: _selectedReason ?? 'not_specified');
+    final saved = await questViewModel.abandonQuest(
+      widget.mission,
+      reason: _selectedReason ?? 'not_specified',
+    );
     if (!mounted) return;
+    if (!saved) {
+      // Not abandoned (e.g. offline): stay, so the user can retry or go on.
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(questViewModel.errorMessage ?? 'No se pudo guardar.')),
+      );
+      return;
+    }
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const ExploreView()),
       (route) => false,

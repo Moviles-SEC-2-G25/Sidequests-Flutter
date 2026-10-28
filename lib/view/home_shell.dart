@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../analytics/analytics_tracker.dart';
 import '../data/services/shake_detector.dart';
 import '../viewmodel/context/context_status_view_model.dart';
+import '../viewmodel/profile/profile_view_model.dart';
 import '../viewmodel/quests/quest_view_model.dart';
 import 'widgets/context_banner.dart';
 
@@ -63,6 +65,28 @@ class _HomeShellState extends State<HomeShell> {
         state == AppLifecycleState.resumed || state == AppLifecycleState.inactive,
       ),
     );
+  }
+
+  /// Back online, and the connection held (ContextStatusViewModel waits it
+  /// out): reloads what the offline banner said couldn't load. load() also
+  /// retries pending photo uploads; analytics queued offline go out too.
+  Future<void> _refreshAfterReconnect() async {
+    if (!mounted) return;
+    final questViewModel = context.read<QuestViewModel>();
+    final profileViewModel = context.read<ProfileViewModel>();
+    unawaited(context.read<AnalyticsTracker>().flushPending());
+    try {
+      await questViewModel.load();
+      // Only when Explore has nothing to show (it failed offline): reloading
+      // a list the user already has would log recommendation_shown again
+      // for a list they may not even be looking at (BQ8 impressions).
+      if (questViewModel.recommendations.isEmpty) {
+        await questViewModel.loadRecommendations(profileViewModel.preferences);
+      }
+    } catch (_) {
+      // Dropped again mid-reload: the cached data stays and the next
+      // reconnection tries again.
+    }
   }
 
   void _onCheckIn(CheckInEvent event) {
@@ -133,7 +157,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => ContextStatusViewModel(),
+      create: (_) => ContextStatusViewModel(onReconnected: _refreshAfterReconnect),
       child: Scaffold(
       body: Column(
         children: [

@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../data/services/reverse_geocoding_service.dart';
 import '../../models/quest.dart';
 
 /// Shows the quest's street address, resolved through the external
-/// reverse-geocoding service. Hidden when the quest has no coordinates or the
-/// lookup fails.
+/// reverse-geocoding service (or its local copy). Hidden when the quest has
+/// no coordinates, or the lookup fails and it was never resolved before.
 class QuestAddress extends StatefulWidget {
   final Quest quest;
 
@@ -25,7 +26,7 @@ class _QuestAddressState extends State<QuestAddress> {
     final lat = widget.quest.latitude;
     final lng = widget.quest.longitude;
     if (lat != null && lng != null) {
-      _address = ReverseGeocodingService().addressFor(lat, lng);
+      _address = context.read<ReverseGeocodingService>().addressFor(lat, lng);
     }
   }
 

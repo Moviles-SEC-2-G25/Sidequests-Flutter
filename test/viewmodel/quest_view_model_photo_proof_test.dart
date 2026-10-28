@@ -225,6 +225,8 @@ void main() {
       locationCheckIn: LocationCheckInService(
         requestAccess: () async => LocationAccess.granted,
         isLowBattery: () async => false,
+        isOffline: () async => false,
+        offlineChanges: () => const Stream.empty(),
         positions: (_, _) => gps.stream,
       ),
       photoCapture: camera,

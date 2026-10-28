@@ -185,5 +185,23 @@ void main() {
         distanceFilterMeters: 15,
       ));
     });
+
+    test('offline far away: GPS instead of Wi-Fi/cell positioning, still sparse', () {
+      expect(checkInSampling(lowBattery: false, offline: true), (
+        precision: CheckInPrecision.precise,
+        distanceFilterMeters: 50,
+      ));
+      expect(checkInSampling(lowBattery: true, offline: true, distanceMeters: 2000), (
+        precision: CheckInPrecision.precise,
+        distanceFilterMeters: 100,
+      ));
+    });
+
+    test('offline near the quest: unchanged (already precise GPS)', () {
+      expect(checkInSampling(lowBattery: false, offline: true, distanceMeters: 100), (
+        precision: CheckInPrecision.precise,
+        distanceFilterMeters: 5,
+      ));
+    });
   });
 }

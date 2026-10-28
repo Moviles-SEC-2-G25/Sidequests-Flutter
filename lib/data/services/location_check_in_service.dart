@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../core/distance.dart';
@@ -28,7 +29,8 @@ class CheckInFix {
 /// adapts it (see [checkInSampling]): coarse and sparse while far away,
 /// precise in the last ~300 m, sparser on low battery. Re-subscribes only
 /// when crossing that boundary, with hysteresis so GPS noise around 300 m
-/// doesn't flip it back and forth.
+/// doesn't flip it back and forth — or, while still far, when the phone
+/// goes offline or back online, since the far tiers rely on the network.
 class LocationCheckInService {
   /// Once precise, stays precise until this much farther than the switch
   /// distance.
@@ -37,12 +39,21 @@ class LocationCheckInService {
   final Future<LocationAccess> Function() _requestAccess;
   final Stream<CheckInFix> Function(CheckInPrecision precision, int distanceFilterMeters) _positions;
   final Future<bool> Function() _isLowBattery;
+  final Future<bool> Function() _isOffline;
+  final Stream<bool> Function() _offlineChanges;
 
   final StreamController<CheckInFix> _controller = StreamController<CheckInFix>.broadcast();
   StreamSubscription<CheckInFix>? _subscription;
+  StreamSubscription<bool>? _offlineSubscription;
   ({double latitude, double longitude})? _target;
   CheckInPrecision? _precision;
+
+  /// Set by [start]/[_onFix], not derived from [_precision]: offline, the
+  /// far tier is precise too.
   bool _isNear = false;
+
+  /// Whether the current stream was chosen offline (null when not watching).
+  bool? _subscribedOffline;
 
   /// Bumped on every start/stop so a start still awaiting the permission
   /// dialog can tell it was superseded.
@@ -54,9 +65,13 @@ class LocationCheckInService {
     Future<LocationAccess> Function()? requestAccess,
     Stream<CheckInFix> Function(CheckInPrecision precision, int distanceFilterMeters)? positions,
     Future<bool> Function()? isLowBattery,
+    Future<bool> Function()? isOffline,
+    Stream<bool> Function()? offlineChanges,
   }) : _requestAccess = requestAccess ?? (locationService ?? LocationService()).ensureAccess,
        _positions = positions ?? _geolocatorPositions(locationService ?? LocationService()),
-       _isLowBattery = isLowBattery ?? (batteryMonitor ?? BatteryMonitor()).isLow;
+       _isLowBattery = isLowBattery ?? (batteryMonitor ?? BatteryMonitor()).isLow,
+       _isOffline = isOffline ?? _connectivityIsOffline,
+       _offlineChanges = offlineChanges ?? _connectivityOfflineChanges;
 
   /// Every fix while watching. Errors (e.g. GPS switched off mid-walk)
   /// are forwarded and stop the watch.
@@ -76,6 +91,7 @@ class LocationCheckInService {
     if (generation != _generation || access != LocationAccess.granted) return access;
 
     _target = (latitude: latitude, longitude: longitude);
+    _offlineSubscription = _offlineChanges().listen(_onOfflineChanged, onError: (Object _) {});
     await _subscribe(distanceMeters: null, generation: generation);
     return access;
   }
@@ -84,19 +100,27 @@ class LocationCheckInService {
     _generation++;
     _subscription?.cancel();
     _subscription = null;
+    _offlineSubscription?.cancel();
+    _offlineSubscription = null;
     _target = null;
     _precision = null;
     _isNear = false;
+    _subscribedOffline = null;
   }
 
   Future<void> _subscribe({required double? distanceMeters, required int generation}) async {
     final lowBattery = await _safeIsLowBattery();
+    final offline = await _safeIsOffline();
     if (generation != _generation) return;
 
-    final sampling = checkInSampling(lowBattery: lowBattery, distanceMeters: distanceMeters);
+    final sampling = checkInSampling(
+      lowBattery: lowBattery,
+      offline: offline,
+      distanceMeters: distanceMeters,
+    );
     _subscription?.cancel();
     _precision = sampling.precision;
-    _isNear = sampling.precision == CheckInPrecision.precise;
+    _subscribedOffline = offline;
     _subscription = _positions(sampling.precision, sampling.distanceFilterMeters).listen(
       _onFix,
       onError: (Object error) {
@@ -123,6 +147,13 @@ class LocationCheckInService {
     }
   }
 
+  /// Only the far tiers depend on the network; near the quest it's precise
+  /// GPS either way, so a change there needs no re-subscription.
+  void _onOfflineChanged(bool offline) {
+    if (_target == null || _isNear || offline == _subscribedOffline) return;
+    unawaited(_subscribe(distanceMeters: null, generation: _generation));
+  }
+
   // A missing battery API must never stop the check-in (as in ContextManager).
   Future<bool> _safeIsLowBattery() async {
     try {
@@ -131,6 +162,22 @@ class LocationCheckInService {
       return false;
     }
   }
+
+  // Unknown connectivity keeps the usual network tiers.
+  Future<bool> _safeIsOffline() async {
+    try {
+      return await _isOffline();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> _connectivityIsOffline() async =>
+      (await Connectivity().checkConnectivity()).contains(ConnectivityResult.none);
+
+  static Stream<bool> _connectivityOfflineChanges() => Connectivity().onConnectivityChanged.map(
+    (results) => results.contains(ConnectivityResult.none),
+  );
 
   static Stream<CheckInFix> Function(CheckInPrecision, int) _geolocatorPositions(
     LocationService locationService,
