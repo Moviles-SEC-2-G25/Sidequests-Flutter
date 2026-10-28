@@ -5,6 +5,7 @@ import 'package:battery_plus/battery_plus.dart';
 /// instead of aggressive polling (QS5).
 class BatteryMonitor {
   static const _lowBatteryThreshold = 20;
+  
 
   final Battery _battery = Battery();
 
