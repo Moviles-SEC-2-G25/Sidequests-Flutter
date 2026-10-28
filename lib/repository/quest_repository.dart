@@ -16,6 +16,8 @@ import '../models/step_session.dart';
 import '../models/user_preferences.dart';
 import '../models/user_quest.dart';
 
+
+
 /// Single source of truth for the quest catalogue, recommendations and a
 /// user's quest progress. Falls back to the cache when the network fails.
 class QuestRepository {
