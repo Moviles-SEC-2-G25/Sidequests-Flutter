@@ -76,9 +76,13 @@ class _SpyTracker extends AnalyticsTracker {
 class _FakeCamera extends PhotoCaptureService {
   Uint8List? next = _jpeg;
   Uint8List? lost;
+  Object? failure;
 
   @override
-  Future<Uint8List?> capture() async => next;
+  Future<Uint8List?> capture() async {
+    if (failure != null) throw failure!;
+    return next;
+  }
 
   @override
   Future<Uint8List?> retrieveLost() async => lost;
@@ -143,6 +147,32 @@ class _FakeQuestRepository implements QuestRepository {
   @override
   List<PendingPhotoProof> getPendingPhotoProofs() => [...pending];
 
+  /// false = the web build (no device storage for pending photos).
+  bool keepsPhotosOnDevice = true;
+  int directUploads = 0;
+
+  @override
+  bool get canKeepPhotosOnDevice => keepsPhotosOnDevice;
+
+  @override
+  Future<QuestPhotoProof> uploadPhotoProofDirectly({
+    required UserQuest attempt,
+    required int stepOrder,
+    required Uint8List jpeg,
+  }) async {
+    directUploads++;
+    if (uploadFailure != null) throw uploadFailure!;
+    final registered = QuestPhotoProof(
+      id: 'direct-$directUploads',
+      attemptId: attempt.id,
+      stepOrder: stepOrder,
+      storagePath: '${attempt.userId}/${attempt.id}/${attempt.questId}/step-${stepOrder + 1}-d.jpg',
+      uploadedAt: DateTime(2026, 10, 1),
+    );
+    serverProofs.add(registered);
+    return registered;
+  }
+
   @override
   Future<List<QuestPhotoProof>> getPhotoProofs(String attemptId) async =>
       serverProofs.where((p) => p.attemptId == attemptId).toList();
@@ -152,6 +182,7 @@ class _FakeQuestRepository implements QuestRepository {
     required UserQuest attempt,
     required int stepOrder,
     required Uint8List jpeg,
+    String? verificationType,
   }) async {
     if (!isJpeg(jpeg)) throw const AppException('La foto no es JPEG. Toma otra.');
     final proof = PendingPhotoProof(
@@ -168,6 +199,7 @@ class _FakeQuestRepository implements QuestRepository {
       stepOrder: stepOrder,
       sizeBytes: jpeg.length,
       capturedAt: DateTime(2026, 10, 1),
+      verificationType: verificationType,
     );
     pending = [...pending.where((p) => p.stepOrder != stepOrder), proof];
     return proof;
@@ -272,6 +304,66 @@ void main() {
     expect(repository.progressUpdates, isEmpty);
   });
 
+  test('uses the step\'s real step_order, not its position, when step_order starts at 1', () async {
+    // Position 0 in the list is step_order 1 in quest_steps: the proof
+    // must say 1, or migration 009's RLS rejects it ("no admite foto").
+    await openMission([_step(1, 'photo'), _step(2, 'none')]);
+
+    await viewModel.capturePhotoProof();
+
+    expect(repository.serverProofs.single.stepOrder, 1);
+    expect(repository.serverProofs.single.storagePath, endsWith('/step-2-u0.jpg'));
+    expect(photoResult(), isA<Verified>());
+    expect(canComplete(), isTrue);
+  });
+
+  test('a camera failure and a storage failure say different things', () async {
+    await openMission([_step(0, 'photo'), _step(1, 'none')]);
+    camera.failure = Exception('camera unavailable');
+
+    await viewModel.capturePhotoProof();
+
+    expect(viewModel.photoErrorMessage, 'No se pudo abrir la cámara.');
+  });
+
+  group('web build (no device storage)', () {
+    setUp(() => repository.keepsPhotosOnDevice = false);
+
+    test('the photo goes up straight from memory and unblocks the step', () async {
+      await openMission([_step(0, 'photo'), _step(1, 'none')]);
+
+      await viewModel.capturePhotoProof();
+
+      expect(repository.directUploads, 1);
+      expect(repository.pending, isEmpty); // nothing kept on the device
+      expect(photoResult(), isA<Verified>());
+      expect(canComplete(), isTrue);
+      expect(uploadEvents().single, {
+        'attempt_id': 'uq-1',
+        'step_index': 0,
+        'storage_path': 'user-1/uq-1/ramen-spot/step-1-d.jpg',
+        'byte_count': _jpeg.length,
+        'verification_type': 'photo',
+        'was_retry': false,
+      });
+    });
+
+    test('offline: no "Reintentar subida" (nothing kept) — it asks for a new photo', () async {
+      await openMission([_step(0, 'photo'), _step(1, 'none')]);
+      repository.uploadFailure = const AppException(
+        'Sin conexión: no se pudo subir la foto. Tómala de nuevo cuando tengas internet.',
+        isRetryable: true,
+      );
+
+      await viewModel.capturePhotoProof();
+
+      expect(viewModel.photoErrorMessage, contains('Tómala de nuevo'));
+      expect(viewModel.currentPendingPhotoProof, isNull);
+      expect(viewModel.isUploadingPhoto, isFalse);
+      expect(canComplete(), isFalse);
+    });
+  });
+
   test('photo_proof_uploaded is emitted once, after registration, with its metadata', () async {
     await openMission([_step(0, 'photo'), _step(1, 'none')]);
 
@@ -279,9 +371,11 @@ void main() {
 
     expect(uploadEvents().single, {
       'attempt_id': 'uq-1',
-      'step_order': 0,
+      'step_index': 0,
+      'storage_path': 'user-1/uq-1/ramen-spot/step-1-u0.jpg',
+      'byte_count': _jpeg.length,
+      'verification_type': 'photo',
       'was_retry': false,
-      'size_bytes': _jpeg.length,
     });
   });
 

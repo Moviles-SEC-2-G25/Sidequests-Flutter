@@ -722,10 +722,22 @@ class QuestViewModel extends ChangeNotifier {
   /// Location evidence from the GPS + the current step's uploaded photo.
   VerificationEvidence _currentStepEvidence() {
     final mission = currentMission;
-    final proof = mission == null || mission.id != _photoProofsAttemptId
+    final stepOrder = _currentStepOrder();
+    final proof = mission == null || mission.id != _photoProofsAttemptId || stepOrder == null
         ? null
-        : _photoProofs[mission.currentStep];
+        : _photoProofs[stepOrder];
     return _evidence.withPhoto(proof?.storagePath);
+  }
+
+  /// The current step's real `quest_steps.step_order`. Photo proofs are
+  /// keyed by it (migration 009 checks it against quest_steps), and it is
+  /// NOT the same as `user_quests.current_step` — that's a position in the
+  /// ordered list, while step_order values may start at 1 or have gaps.
+  int? _currentStepOrder() {
+    final mission = currentMission;
+    if (mission == null || _stepsQuestId != mission.questId) return null;
+    if (mission.currentStep >= steps.length) return null;
+    return steps[mission.currentStep].stepOrder;
   }
 
   /// Starts, keeps or stops the GPS watch so it only runs for an active
@@ -833,9 +845,10 @@ class QuestViewModel extends ChangeNotifier {
   /// The current step's photo still waiting to be uploaded, if any.
   PendingPhotoProof? get currentPendingPhotoProof {
     final mission = currentMission;
-    if (mission == null) return null;
+    final stepOrder = _currentStepOrder();
+    if (mission == null || stepOrder == null) return null;
     return pendingPhotoProofs.cast<PendingPhotoProof?>().firstWhere(
-      (p) => p!.attemptId == mission.id && p.stepOrder == mission.currentStep,
+      (p) => p!.attemptId == mission.id && p.stepOrder == stepOrder,
       orElse: () => null,
     );
   }
@@ -844,21 +857,32 @@ class QuestViewModel extends ChangeNotifier {
   /// uploaded + registered.
   Future<void> capturePhotoProof() async {
     final mission = currentMission;
-    if (mission == null || !_activeMissionStatuses.contains(mission.status) || isCapturingPhoto) {
+    final stepOrder = _currentStepOrder();
+    if (mission == null ||
+        stepOrder == null ||
+        !_activeMissionStatuses.contains(mission.status) ||
+        isCapturingPhoto) {
       return;
     }
-    final stepOrder = mission.currentStep;
     photoErrorMessage = null;
     isCapturingPhoto = true;
     notifyListeners();
     try {
-      final jpeg = await _photoCapture.capture();
+      final Uint8List? jpeg;
+      try {
+        jpeg = await _photoCapture.capture();
+      } catch (_) {
+        photoErrorMessage = 'No se pudo abrir la cámara.';
+        return;
+      }
       if (jpeg == null) return; // backed out of the camera
-      await _storeAndUploadPhoto(mission, stepOrder, jpeg);
+      await _storeAndUploadPhoto(mission, stepOrder, jpeg, steps[mission.currentStep].verificationType);
     } on AppException catch (e) {
       photoErrorMessage = e.message;
     } catch (_) {
-      photoErrorMessage = 'No se pudo abrir la cámara.';
+      // Camera worked; keeping the photo on the device didn't (e.g. the
+      // web build, which has no app documents folder).
+      photoErrorMessage = 'No se pudo guardar la foto en este dispositivo.';
     } finally {
       isCapturingPhoto = false;
       notifyListeners();
@@ -887,11 +911,14 @@ class QuestViewModel extends ChangeNotifier {
   Future<void> recoverLostPhotoProof() async {
     final mission = currentMission;
     if (mission == null || !_activeMissionStatuses.contains(mission.status)) return;
-    if (_stepsQuestId != mission.questId || mission.currentStep >= steps.length) return;
+    final stepOrder = _currentStepOrder();
+    if (stepOrder == null) return;
     if (!strategyFor(steps[mission.currentStep].verificationType).needsPhoto) return;
     try {
       final jpeg = await _photoCapture.retrieveLost();
-      if (jpeg != null) await _storeAndUploadPhoto(mission, mission.currentStep, jpeg);
+      if (jpeg != null) {
+        await _storeAndUploadPhoto(mission, stepOrder, jpeg, steps[mission.currentStep].verificationType);
+      }
     } on AppException catch (e) {
       photoErrorMessage = e.message;
       notifyListeners();
@@ -900,11 +927,21 @@ class QuestViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> _storeAndUploadPhoto(UserQuest mission, int stepOrder, Uint8List jpeg) async {
+  Future<void> _storeAndUploadPhoto(
+    UserQuest mission,
+    int stepOrder,
+    Uint8List jpeg,
+    String verificationType,
+  ) async {
+    if (!_questRepository.canKeepPhotosOnDevice) {
+      await _uploadPhotoDirectly(mission, stepOrder, jpeg, verificationType);
+      return;
+    }
     final pending = await _questRepository.savePendingPhotoProof(
       attempt: mission,
       stepOrder: stepOrder,
       jpeg: jpeg,
+      verificationType: verificationType,
     );
     pendingPhotoProofs = _questRepository.getPendingPhotoProofs();
     await _uploadPhotoProof(pending, isRetry: false);
@@ -917,24 +954,12 @@ class QuestViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       final proof = await _questRepository.uploadPendingPhotoProof(pending);
-      if (_photoProofsAttemptId != proof.attemptId) {
-        _photoProofsAttemptId = proof.attemptId;
-        _photoProofs = {};
-      }
-      _photoProofs[proof.stepOrder] = proof;
-
-      final quest = questById(pending.questId);
-      // Same name Kotlin emits; only after the table insert succeeded.
-      _analyticsTracker.track(
-        AnalyticsEventType.photoProofUploaded,
+      _onPhotoProofRegistered(
+        proof,
         questId: pending.questId,
-        category: quest?.category,
-        metadata: {
-          'attempt_id': proof.attemptId,
-          'step_order': proof.stepOrder,
-          'was_retry': isRetry || pending.attempts > 0,
-          'size_bytes': pending.sizeBytes,
-        },
+        byteCount: pending.sizeBytes,
+        verificationType: pending.verificationType,
+        wasRetry: isRetry || pending.attempts > 0,
       );
     } on AppException catch (e) {
       // Retryable: the repository kept the photo with this message as
@@ -946,6 +971,74 @@ class QuestViewModel extends ChangeNotifier {
       notifyListeners();
     }
     _maybeAutoCompleteByLocation();
+  }
+
+  /// Web build: no device storage to keep the photo in, so it goes up
+  /// straight from memory; a failure (even offline) asks for a new photo.
+  Future<void> _uploadPhotoDirectly(
+    UserQuest mission,
+    int stepOrder,
+    Uint8List jpeg,
+    String verificationType,
+  ) async {
+    if (_uploadingStoragePath != null) return;
+    _uploadingStoragePath = _directUploadMarker;
+    photoErrorMessage = null;
+    notifyListeners();
+    try {
+      final proof = await _questRepository.uploadPhotoProofDirectly(
+        attempt: mission,
+        stepOrder: stepOrder,
+        jpeg: jpeg,
+      );
+      _onPhotoProofRegistered(
+        proof,
+        questId: mission.questId,
+        byteCount: jpeg.length,
+        verificationType: verificationType,
+        wasRetry: false,
+      );
+    } on AppException catch (e) {
+      photoErrorMessage = e.message;
+    } finally {
+      _uploadingStoragePath = null;
+      notifyListeners();
+    }
+    _maybeAutoCompleteByLocation();
+  }
+
+  /// [_uploadingStoragePath] while a web upload (no pending path) runs.
+  static const _directUploadMarker = '<direct-upload>';
+
+  /// Makes the proof the step's evidence and emits photo_proof_uploaded,
+  /// only after the table insert succeeded. Same name AND metadata keys as
+  /// Kotlin (see EVENT_SCHEMA.md); was_retry is Flutter's optional extra.
+  void _onPhotoProofRegistered(
+    QuestPhotoProof proof, {
+    required String questId,
+    required int byteCount,
+    required String? verificationType,
+    required bool wasRetry,
+  }) {
+    if (_photoProofsAttemptId != proof.attemptId) {
+      _photoProofsAttemptId = proof.attemptId;
+      _photoProofs = {};
+    }
+    _photoProofs[proof.stepOrder] = proof;
+
+    _analyticsTracker.track(
+      AnalyticsEventType.photoProofUploaded,
+      questId: questId,
+      category: questById(questId)?.category,
+      metadata: {
+        'attempt_id': proof.attemptId,
+        'step_index': proof.stepOrder, // zero-based, = quest_photo_proofs.step_order
+        'storage_path': proof.storagePath,
+        'byte_count': byteCount,
+        'verification_type': ?verificationType,
+        'was_retry': wasRetry,
+      },
+    );
   }
 
   /// This attempt's registered proofs, so evidence survives an app

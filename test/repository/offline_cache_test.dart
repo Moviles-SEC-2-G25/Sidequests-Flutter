@@ -250,6 +250,25 @@ void main() {
       expect(error.message, contains('Sin conexión'));
     });
 
+    test('getSteps: always in step_order, even if the server answers in reverse', () async {
+      // postgrest's order() defaults to DESCENDING; current_step is a
+      // position in this list, so reversed steps break every mission.
+      remote.steps['ramen-spot'] = remote.steps['ramen-spot']!.reversed.toList();
+
+      final steps = await repository.getSteps('ramen-spot');
+
+      expect(steps.map((s) => s.stepOrder), [0, 1]);
+    });
+
+    test('getSteps: a cache saved in the old reversed order is sorted too', () async {
+      local.steps['ramen-spot'] = remote.steps['ramen-spot']!.reversed.toList();
+      remote.offline = true;
+
+      final steps = await repository.getSteps('ramen-spot');
+
+      expect(steps.map((s) => s.title), ['Llega', 'Pide']);
+    });
+
     test('getSteps: a cached empty list is still a cache hit', () async {
       await repository.getSteps('no-steps-quest');
       remote.offline = true;

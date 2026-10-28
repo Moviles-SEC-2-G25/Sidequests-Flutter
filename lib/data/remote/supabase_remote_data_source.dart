@@ -77,7 +77,8 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
         .from('quest_steps')
         .select()
         .eq('quest_id', questId)
-        .order('step_order');
+        // postgrest's order() is DESCENDING unless asked otherwise.
+        .order('step_order', ascending: true);
     return (rows as List).cast<Map<String, dynamic>>();
   }
 

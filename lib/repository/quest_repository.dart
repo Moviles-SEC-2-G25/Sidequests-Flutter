@@ -22,6 +22,8 @@ class QuestRepository {
   static const _offlineMessage =
       'Sin conexión: tu foto quedó guardada en el teléfono. Reintenta cuando tengas internet.';
   static const _serverRetryMessage = 'No se pudo subir la foto ahora. Inténtalo de nuevo.';
+  static const _offlineNoCopyMessage =
+      'Sin conexión: no se pudo subir la foto. Tómala de nuevo cuando tengas internet.';
   static const _noCacheMessage =
       'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
   static const _offlineWriteMessage =
@@ -46,14 +48,20 @@ class QuestRepository {
 
   /// Falls back to the cache, so a mission opened once online can still be
   /// followed offline.
+  /// Always in step_order, ascending: user_quests.current_step is a position
+  /// in this list, so the order must be the same everywhere (and match
+  /// Kotlin) — whatever order the server or an older cache returned.
   Future<List<QuestStep>> getSteps(String questId) async {
+    List<QuestStep> sorted(List<Map<String, dynamic>> rows) =>
+        rows.map(QuestStep.fromJson).toList()..sort((a, b) => a.stepOrder.compareTo(b.stepOrder));
+
     try {
       final rows = await _remoteDataSource.getQuestSteps(questId);
       await _localDataSource.cacheQuestSteps(questId, rows);
-      return rows.map(QuestStep.fromJson).toList();
+      return sorted(rows);
     } catch (error) {
       final cached = _localDataSource.getQuestSteps(questId);
-      if (cached != null) return cached.map(QuestStep.fromJson).toList();
+      if (cached != null) return sorted(cached);
       throw error is PostgrestException
           ? AppException(error.message)
           : const AppException(_noCacheMessage, isRetryable: true);
@@ -159,11 +167,9 @@ class QuestRepository {
     required UserQuest attempt,
     required int stepOrder,
     required Uint8List jpeg,
+    String? verificationType,
   }) async {
-    if (!isJpeg(jpeg)) throw const AppException('La foto no es JPEG. Toma otra.');
-    if (jpeg.length > kQuestProofMaxBytes) {
-      throw const AppException('La foto pesa más de 25 MB. Toma otra.');
-    }
+    _checkPhoto(jpeg);
 
     final id = _newId();
     final localPath = await _localDataSource.writePendingProofFile('$id.jpg', jpeg);
@@ -181,6 +187,7 @@ class QuestRepository {
       stepOrder: stepOrder,
       sizeBytes: jpeg.length,
       capturedAt: DateTime.now(),
+      verificationType: verificationType,
     );
 
     final others = <PendingPhotoProof>[];
@@ -236,6 +243,70 @@ class QuestRepository {
       ...?_localDataSource.getPhotoProofs(pending.attemptId),
     ]);
     return QuestPhotoProof.fromJson(row);
+  }
+
+  /// Whether a photo can wait on the device for its upload (Retry tactic).
+  /// False on the web build — see [uploadPhotoProofDirectly].
+  bool get canKeepPhotosOnDevice => _localDataSource.canKeepPhotoFiles;
+
+  /// Web build: uploads and registers the photo straight from memory. Same
+  /// contract as [uploadPendingPhotoProof] (JPEG check, remove the object
+  /// if the insert fails), but with nowhere to keep the photo there's no
+  /// "Reintentar subida": a failure asks for a new photo.
+  Future<QuestPhotoProof> uploadPhotoProofDirectly({
+    required UserQuest attempt,
+    required int stepOrder,
+    required Uint8List jpeg,
+  }) async {
+    _checkPhoto(jpeg);
+    final storagePath = questProofStoragePath(
+      userId: attempt.userId,
+      attemptId: attempt.id,
+      questId: attempt.questId,
+      stepOrder: stepOrder,
+      uniqueId: _newId(),
+    );
+
+    try {
+      await _remoteDataSource.uploadQuestProof(storagePath, jpeg);
+    } catch (error) {
+      throw _directUploadException(error);
+    }
+
+    final Map<String, dynamic> row;
+    try {
+      row = await _remoteDataSource.insertQuestPhotoProof(
+        attemptId: attempt.id,
+        stepOrder: stepOrder,
+        storagePath: storagePath,
+      );
+    } catch (error) {
+      try {
+        await _remoteDataSource.removeQuestProof(storagePath);
+      } catch (_) {}
+      throw _directUploadException(error);
+    }
+
+    await _localDataSource.cachePhotoProofs(attempt.id, [
+      row,
+      ...?_localDataSource.getPhotoProofs(attempt.id),
+    ]);
+    return QuestPhotoProof.fromJson(row);
+  }
+
+  void _checkPhoto(Uint8List jpeg) {
+    if (!isJpeg(jpeg)) throw const AppException('La foto no es JPEG. Toma otra.');
+    if (jpeg.length > kQuestProofMaxBytes) {
+      throw const AppException('La foto pesa más de 25 MB. Toma otra.');
+    }
+  }
+
+  /// Like [_photoProofException], but never promises the photo was kept.
+  AppException _directUploadException(Object error) {
+    final exception = _photoProofException(error);
+    return exception.message == _offlineMessage
+        ? const AppException(_offlineNoCopyMessage, isRetryable: true)
+        : exception;
   }
 
   Future<void> discardPendingPhotoProof(PendingPhotoProof pending) async {

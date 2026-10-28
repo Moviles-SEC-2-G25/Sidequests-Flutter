@@ -40,6 +40,10 @@ class PendingPhotoProof {
   final int attempts;
   final String? lastError;
 
+  /// `photo` | `photo_and_location`, for photo_proof_uploaded's metadata
+  /// (Kotlin sends it) even when the upload happens on a later retry.
+  final String? verificationType;
+
   const PendingPhotoProof({
     required this.localPath,
     required this.storagePath,
@@ -50,6 +54,7 @@ class PendingPhotoProof {
     required this.capturedAt,
     this.attempts = 0,
     this.lastError,
+    this.verificationType,
   });
 
   PendingPhotoProof failedWith(String error) => PendingPhotoProof(
@@ -62,6 +67,7 @@ class PendingPhotoProof {
     capturedAt: capturedAt,
     attempts: attempts + 1,
     lastError: error,
+    verificationType: verificationType,
   );
 
   factory PendingPhotoProof.fromJson(Map<String, dynamic> json) => PendingPhotoProof(
@@ -74,6 +80,7 @@ class PendingPhotoProof {
     capturedAt: DateTime.parse(json['captured_at'] as String),
     attempts: (json['attempts'] as num?)?.toInt() ?? 0,
     lastError: json['last_error'] as String?,
+    verificationType: json['verification_type'] as String?,
   );
 
   Map<String, dynamic> toJson() => {
@@ -86,5 +93,6 @@ class PendingPhotoProof {
     'captured_at': capturedAt.toIso8601String(),
     'attempts': attempts,
     if (lastError != null) 'last_error': lastError,
+    if (verificationType != null) 'verification_type': verificationType,
   };
 }

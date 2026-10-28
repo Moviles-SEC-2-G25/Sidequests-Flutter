@@ -254,4 +254,54 @@ void main() {
       expect(remote.calls, isEmpty);
     });
   });
+
+  group('uploadPhotoProofDirectly (web build: no device storage)', () {
+    test('uploads then registers straight from memory, keeping nothing pending', () async {
+      final proof = await repository.uploadPhotoProofDirectly(attempt: _attempt, stepOrder: 3, jpeg: _jpeg);
+
+      expect(remote.calls, ['upload', 'insert']);
+      expect(proof.stepOrder, 3);
+      expect(proof.storagePath, 'user-1/attempt-1/ramen-spot/step-4-uuid-1.jpg');
+      expect(repository.getPendingPhotoProofs(), isEmpty);
+      expect(local.files, isEmpty);
+      expect(local.registered['attempt-1'], hasLength(1)); // cached as evidence
+    });
+
+    test('offline: asks for a new photo instead of promising it was kept', () async {
+      remote.uploadError = const StorageException('Connection failed', statusCode: 'ClientException');
+
+      await expectLater(
+        repository.uploadPhotoProofDirectly(attempt: _attempt, stepOrder: 0, jpeg: _jpeg),
+        throwsA(
+          isA<AppException>()
+              .having((e) => e.message, 'message', contains('Tómala de nuevo'))
+              .having((e) => e.message, 'message', isNot(contains('guardada'))),
+        ),
+      );
+      expect(repository.getPendingPhotoProofs(), isEmpty);
+    });
+
+    test('rejected when registering: the uploaded object is removed', () async {
+      remote.insertError = const PostgrestException(message: 'rls', code: '42501');
+
+      await expectLater(
+        repository.uploadPhotoProofDirectly(attempt: _attempt, stepOrder: 0, jpeg: _jpeg),
+        throwsA(isA<AppException>().having((e) => e.message, 'message', contains('no admite foto'))),
+      );
+      expect(remote.calls, ['upload', 'insert', 'remove']);
+      expect(remote.objects, isEmpty);
+    });
+
+    test('still refuses bytes that are not JPEG', () async {
+      await expectLater(
+        repository.uploadPhotoProofDirectly(
+          attempt: _attempt,
+          stepOrder: 0,
+          jpeg: Uint8List.fromList([0x89, 0x50, 0x4E, 0x47]),
+        ),
+        throwsA(isA<AppException>()),
+      );
+      expect(remote.calls, isEmpty);
+    });
+  });
 }

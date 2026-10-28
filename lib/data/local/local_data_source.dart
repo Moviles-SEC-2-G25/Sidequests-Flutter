@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -170,6 +170,10 @@ class LocalDataSource {
 
   Future<void> savePendingPhotoProofs(List<Map<String, dynamic>> proofs) =>
       _box.put(_keyPendingPhotoProofs, proofs);
+
+  /// False on the web build: there's no app documents folder (dart:io
+  /// files / path_provider) to keep a photo in until it's uploaded.
+  bool get canKeepPhotoFiles => !kIsWeb;
 
   Future<String> writePendingProofFile(String fileName, Uint8List bytes) async {
     final dir = await _pendingProofsDirectory();
