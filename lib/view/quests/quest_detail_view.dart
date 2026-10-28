@@ -174,6 +174,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                   ],
                 ),
               ),
+              _WeatherCard(quest: quest),
               const SizedBox(height: 16),
               QuestCompass(quest: quest),
               Text(
