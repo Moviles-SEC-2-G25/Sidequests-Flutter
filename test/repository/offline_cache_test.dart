@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sidequests/core/app_exception.dart';
 import 'package:sidequests/data/local/local_data_source.dart';
 import 'package:sidequests/data/remote/supabase_remote_data_source.dart';
+import 'package:sidequests/models/app_context.dart';
+import 'package:sidequests/models/user_preferences.dart';
 import 'package:sidequests/models/user_quest.dart';
 import 'package:sidequests/repository/profile_repository.dart';
 import 'package:sidequests/repository/quest_repository.dart';
@@ -76,6 +78,22 @@ class _FakeRemote implements SupabaseRemoteDataSource {
   Future<List<Map<String, dynamic>>> getUserQuests(String userId) async {
     _failIfDown();
     return [...userQuests];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> recommendQuests({
+    required int availableMinutes,
+    required String socialLevel,
+    List<String> interests = const [],
+    String locationMode = 'all',
+    List<String> excludedQuestIds = const [],
+    int limit = 3,
+  }) async {
+    _failIfDown();
+    return [
+      {'quest_id': 'ramen-spot', 'score': 9, 'rank_position': 1},
+      {'quest_id': 'mural-walk', 'score': 7, 'rank_position': 2},
+    ];
   }
 
   @override
@@ -291,6 +309,43 @@ void main() {
       final error = await _expectAppException(repository.getPhotoProofs('attempt-1'));
 
       expect(error.isRetryable, isTrue);
+    });
+  });
+
+  group('QuestRepository.getRecommendations (BQ5: ranked server-side, never cached)', () {
+    late QuestRepository repository;
+    const context = AppContext(timeOfDay: 'afternoon', dayOfWeek: 'tuesday', isConnected: true);
+
+    setUp(() => repository = QuestRepository(remote, local));
+
+    Future<Object?> recommend() =>
+        repository.getRecommendations(context: context, preferences: const UserPreferences());
+
+    test('online: the RPC rows, in its order', () async {
+      final recommendations = await repository.getRecommendations(
+        context: context,
+        preferences: const UserPreferences(),
+      );
+
+      expect(recommendations.map((r) => r.questId), ['ramen-spot', 'mural-walk']);
+    });
+
+    test('offline: a retryable "Sin conexión" error, not a raw SocketException', () async {
+      remote.offline = true;
+
+      final error = await _expectAppException(recommend());
+
+      expect(error.isRetryable, isTrue);
+      expect(error.message, contains('Sin conexión'));
+    });
+
+    test('server rejection: its message, not retryable', () async {
+      remote.serverError = const PostgrestException(message: 'permission denied');
+
+      final error = await _expectAppException(recommend());
+
+      expect(error.message, 'permission denied');
+      expect(error.isRetryable, isFalse);
     });
   });
 

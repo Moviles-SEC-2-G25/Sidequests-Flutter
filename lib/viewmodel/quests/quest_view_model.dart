@@ -26,6 +26,14 @@ import '../../repository/quest_repository.dart';
 
 const List<int> kAvailableMinuteOptions = [10, 20, 30, 45, 60];
 
+/// The "TENGO..." chip for a profile's typical time (5–240 min): the largest
+/// option that still fits in it, so no recommended quest is longer than the
+/// user said they usually have — or the shortest option below that.
+int minuteOptionFor(int minutes) => kAvailableMinuteOptions.lastWhere(
+  (option) => option <= minutes,
+  orElse: () => kAvailableMinuteOptions.first,
+);
+
 /// Statuses that mean "not finished yet" — a quest in one of these can still
 /// be resumed from the Explore "continue" banner or the Misión tab.
 const _unfinishedStatuses = {'accepted', 'in_progress', 'abandoned'};
@@ -99,6 +107,10 @@ class QuestViewModel extends ChangeNotifier {
   bool isLoadingRecommendations = false;
   bool isLoadingSteps = false;
   String? errorMessage;
+
+  /// Why the last [loadRecommendations] failed (e.g. offline); null when it
+  /// went through or is still running.
+  String? recommendationsErrorMessage;
   bool isSubmittingRating = false;
   String? ratingErrorMessage;
 
@@ -106,7 +118,12 @@ class QuestViewModel extends ChangeNotifier {
   /// null when it went through or is still running.
   String? stepErrorMessage;
 
+  /// The session's available time ("TENGO...", BQ5's time criterion). Until
+  /// the user picks a chip it follows the profile's typical time (see
+  /// [loadRecommendations]); like [sessionSocialLevel], a pick is never
+  /// saved to user_preferences.
   int selectedMinutes = 30;
+  bool _hasSessionMinutes = false;
   String selectedLocationScope = 'all'; // all | gps | anywhere
   String? selectedCategory; // null = "Todo", 'sponsored', or a real category
 
@@ -116,6 +133,10 @@ class QuestViewModel extends ChangeNotifier {
   String? sessionSocialLevel; // solo | social | group
 
   final Set<String> _sessionSkippedQuestIds = {};
+
+  /// The profile the last list was ranked for, so the session's own quest
+  /// history can rebuild it; null until Explore loads one.
+  UserPreferences? _recommendationProfile;
 
   double? userLatitude;
   double? userLongitude;
@@ -213,6 +234,7 @@ class QuestViewModel extends ChangeNotifier {
 
   void setMinutes(int minutes) {
     selectedMinutes = minutes;
+    _hasSessionMinutes = true;
     registerInteraction();
     notifyListeners();
   }
@@ -254,8 +276,15 @@ class QuestViewModel extends ChangeNotifier {
     _interactionCount++;
   }
 
+  /// BQ5: the three most relevant available quests for this session, ranked
+  /// by recommend_quests on the session's time, social level, interests and
+  /// quest history. [preferences] is the profile; the session's own choices
+  /// (time chip, social level, location scope, "Ahora no") go on top of it.
   Future<void> loadRecommendations(UserPreferences preferences) async {
+    _recommendationProfile = preferences;
+    if (!_hasSessionMinutes) selectedMinutes = minuteOptionFor(preferences.typicalTimeMinutes);
     isLoadingRecommendations = true;
+    recommendationsErrorMessage = null;
     notifyListeners();
     try {
       final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
@@ -295,11 +324,23 @@ class QuestViewModel extends ChangeNotifier {
         );
       }
     } on AppException catch (e) {
-      errorMessage = e.message;
+      // What was on screen may have been ranked for other criteria (a chip
+      // just changed), and offline none of it could be started anyway.
+      // Empty also lets HomeShell reload it once the connection is back.
+      recommendations = [];
+      recommendationsErrorMessage = e.message;
     } finally {
       isLoadingRecommendations = false;
       notifyListeners();
     }
+  }
+
+  /// A quest was completed or abandoned: recommend_quests ranks on that
+  /// history (completed ones excluded, abandoned ones demoted), so the
+  /// session's list is rebuilt — only once Explore has loaded one.
+  Future<void> _refreshRecommendations() async {
+    final profile = _recommendationProfile;
+    if (profile != null) await loadRecommendations(profile);
   }
 
   /// [wasRecommended] also picks BQ4's start_path: 'standard' from a
@@ -334,6 +375,12 @@ class QuestViewModel extends ChangeNotifier {
         userId: _userId,
         questId: questId,
       );
+      // Active now, so no longer available (recommend_quests excludes it
+      // too) — a second "Empezar ya" would open a duplicate attempt. Dropped
+      // without a reload: the user is heading into the mission, and a reload
+      // would log a list nobody sees and start BQ4's next decision clock
+      // mid-mission. Completing or abandoning it reloads.
+      recommendations = recommendations.where((r) => r.questId != questId).toList();
       _replaceUserQuest(userQuest);
       // Not awaited: the permission dialog shows over the Misión screen
       // instead of holding up the navigation to it.
@@ -465,6 +512,7 @@ class QuestViewModel extends ChangeNotifier {
       _replaceUserQuest(updated);
       if (isLastStep) {
         await _finishStepTracking(updated.id);
+        unawaited(_refreshRecommendations());
       } else if (userQuest.status == 'abandoned') {
         // Resuming an abandoned attempt keeps adding to its saved total.
         unawaited(_startStepTracking(updated));
@@ -563,6 +611,7 @@ class QuestViewModel extends ChangeNotifier {
           'completed_steps': userQuest.completedSteps.length,
         },
       );
+      unawaited(_refreshRecommendations());
       return true;
     } on AppException catch (e) {
       errorMessage = e.message;

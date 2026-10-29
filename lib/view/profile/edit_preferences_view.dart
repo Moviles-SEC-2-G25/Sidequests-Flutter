@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/category_labels.dart';
 import '../../models/user_preferences.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
+import '../../viewmodel/quests/quest_view_model.dart';
 
 /// "Editar" on the profile's "Mis preferencias" section. Adds the interests
 /// picker the Figma reference shows but the original onboarding flow never
@@ -34,6 +37,9 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
     final saved = await context.read<ProfileViewModel>().updatePreferences(_preferences);
     if (!mounted) return;
     if (saved) {
+      // Interests, social level and typical time all feed recommend_quests
+      // (BQ5): Explore's list for this session is ranked again on them.
+      unawaited(context.read<QuestViewModel>().loadRecommendations(_preferences));
       Navigator.of(context).pop();
     } else {
       setState(() => _isSaving = false);

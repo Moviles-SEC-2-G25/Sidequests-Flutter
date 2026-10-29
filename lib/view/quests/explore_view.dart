@@ -380,7 +380,19 @@ class _RecommendedSection extends StatelessWidget {
         child: Center(child: CircularProgressIndicator()),
       );
     }
-    if (questViewModel.recommendations.isEmpty) return const SizedBox.shrink();
+    if (questViewModel.recommendations.isEmpty) {
+      final error = questViewModel.recommendationsErrorMessage;
+      if (error == null) return const SizedBox.shrink();
+      return Row(
+        children: [
+          Expanded(child: Text(error, style: Theme.of(context).textTheme.bodySmall)),
+          TextButton(
+            onPressed: () => questViewModel.loadRecommendations(profileViewModel.preferences),
+            child: const Text('Reintentar'),
+          ),
+        ],
+      );
+    }
 
     final likelihoodByCategory = questViewModel.completionLikelihoodByCategory;
 

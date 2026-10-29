@@ -30,6 +30,8 @@ class QuestRepository {
       'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
   static const _offlineWriteMessage =
       'Sin conexión: no se pudo guardar el cambio. Inténtalo de nuevo cuando tengas internet.';
+  static const _offlineRecommendationsMessage =
+      'Sin conexión: no pudimos cargar tus recomendaciones. Reintenta cuando tengas internet.';
 
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
@@ -71,7 +73,9 @@ class QuestRepository {
   }
 
   /// Delegates ranking to the shared `recommend_quests` RPC (BQ5) so Kotlin
-  /// and Flutter never duplicate the recommendation logic.
+  /// and Flutter never duplicate the recommendation logic. Not cached: a
+  /// ranking depends on the session's criteria and history, so an old one
+  /// would recommend quests already done or that no longer fit.
   Future<List<QuestRecommendation>> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,
@@ -90,6 +94,9 @@ class QuestRepository {
       return rows.map(QuestRecommendation.fromJson).toList();
     } on PostgrestException catch (e) {
       throw AppException(e.message);
+    } catch (_) {
+      // No answer came back (SocketException/ClientException/TimeoutException).
+      throw const AppException(_offlineRecommendationsMessage, isRetryable: true);
     }
   }
 
