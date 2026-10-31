@@ -33,12 +33,18 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
 
   Future<void> _save(QuestViewModel questViewModel) async {
     final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final success = await questViewModel.submitRating(
       widget.mission,
       rating: _rating,
       // Keep the chip order stable regardless of tap order.
       tags: _feedbackTags.keys.where(_tags.contains).toList(),
     );
+    if (success && questViewModel.ratingQueued) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Calificación guardada en el teléfono: se enviará al reconectar')),
+      );
+    }
     if (success && navigator.mounted) navigator.pop();
   }
 

@@ -946,6 +946,7 @@ void main() {
     expect(tracker.of(AnalyticsEventType.recommendationShown), isEmpty);
 
     await tester.ensureVisible(find.text('Empezar ya →').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Empezar ya →').first);
     await tester.pump();
     await tester.pump();

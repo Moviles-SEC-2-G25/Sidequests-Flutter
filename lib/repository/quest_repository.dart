@@ -164,7 +164,9 @@ class QuestRepository {
   ) async {
     await syncPendingWrites();
     try {
-      final rows = _withUnsyncedAttempts(await _remoteDataSource.getUserQuests(userId), userId);
+      final rows = _withUnsentRatings(
+        _withUnsyncedAttempts(await _remoteDataSource.getUserQuests(userId), userId),
+      );
       await _localDataSource.cacheUserQuests(rows);
       return (userQuests: rows.map(UserQuest.fromJson).toList(), fromCache: false);
     } catch (_) {
@@ -200,6 +202,22 @@ class QuestRepository {
             !serverIds.contains(row['id']),
       ),
       ...rows,
+    ];
+  }
+
+  /// Same for ratings: the server's row doesn't have them yet.
+  List<Map<String, dynamic>> _withUnsentRatings(List<Map<String, dynamic>> rows) {
+    final ratings = {
+      for (final write in _pendingWrites())
+        if (write.type == PendingWrite.rateQuest) write.payload['id']: write.payload,
+    };
+    if (ratings.isEmpty) return rows;
+    return [
+      for (final row in rows)
+        if (ratings[row['id']] case final rating?)
+          {...row, 'rating': rating['rating'], 'feedback_tags': rating['feedback_tags']}
+        else
+          row,
     ];
   }
 
@@ -247,17 +265,34 @@ class QuestRepository {
     switch (write.type) {
       case PendingWrite.acceptQuest:
         await _remoteDataSource.insertUserQuestIfAbsent(write.payload);
+      case PendingWrite.rateQuest:
+        await _remoteDataSource.rateUserQuest(
+          id: write.payload['id'] as String,
+          userId: write.payload['user_id'] as String,
+          questId: write.payload['quest_id'] as String,
+          rating: write.payload['rating'] as int,
+          feedbackTags: (write.payload['feedback_tags'] as List).cast<String>(),
+        );
       default:
         debugPrint('Unknown pending write ${write.type}, discarding it');
     }
   }
 
-  /// The server said no: the mission that only existed on this device goes.
+  /// The server said no: the mission that only existed on this device goes,
+  /// and so does what's queued behind it — a rating is an upsert, and sending
+  /// it would create the row that was just rejected. A rejected rating just
+  /// leaves: the next read replaces the cached one with the server's.
   Future<void> _undoPendingWrite(PendingWrite write) async {
     if (write.type != PendingWrite.acceptQuest) return;
+    final attemptId = write.payload['id'];
     await _localDataSource.cacheUserQuests(
-      _localDataSource.getUserQuests().where((row) => row['id'] != write.payload['id']).toList(),
+      _localDataSource.getUserQuests().where((row) => row['id'] != attemptId).toList(),
     );
+    final queue = _localDataSource.getPendingWrites();
+    await _localDataSource.savePendingWrites([
+      queue.first, // the caller removes this one
+      ...queue.skip(1).where((entry) => (entry['payload'] as Map)['id'] != attemptId),
+    ]);
   }
 
   /// Whether a server error can go away on its own, as opposed to a real
@@ -682,6 +717,54 @@ class QuestRepository {
       ),
     );
     return _cacheUserQuest(json);
+  }
+
+  /// Like [rateQuest], but without a connection the rating stays on the device
+  /// and is queued. An attempt whose acceptance is still queued goes first, so
+  /// the rating always reaches the server after it.
+  Future<({UserQuest userQuest, bool queued})> rateQuestOrQueue(
+    UserQuest userQuest,
+    int rating,
+    List<String> tags,
+  ) async {
+    if (await _attemptReachedServer(userQuest.id)) {
+      try {
+        return (userQuest: await rateQuest(userQuest, rating, tags), queued: false);
+      } on AppException catch (error) {
+        if (!error.isRetryable) rethrow;
+      }
+    }
+    return (userQuest: await _queueRating(userQuest, rating, tags), queued: true);
+  }
+
+  /// Rates the cached row, not [userQuest]: QuestCompletedView holds the copy
+  /// from before the mission was completed, and caching that would bring the
+  /// finished mission back as active. Fails like [rateQuest] if it can't be
+  /// kept, so the view offers "Reintentar" instead of losing the rating.
+  Future<UserQuest> _queueRating(UserQuest userQuest, int rating, List<String> tags) async {
+    try {
+      final cached = _localDataSource.getUserQuests().firstWhere(
+        (row) => row['id'] == userQuest.id,
+      );
+      final write = PendingWrite(
+        type: PendingWrite.rateQuest,
+        payload: {
+          'id': userQuest.id,
+          'user_id': userQuest.userId,
+          'quest_id': userQuest.questId,
+          'rating': rating,
+          'feedback_tags': tags,
+        },
+        createdAt: DateTime.now(),
+      );
+      await _localDataSource.savePendingWrites([
+        ..._localDataSource.getPendingWrites(),
+        write.toJson(),
+      ]);
+      return await _cacheUserQuest({...cached, 'rating': rating, 'feedback_tags': tags});
+    } catch (_) {
+      throw const AppException(_offlineWriteMessage, isRetryable: true);
+    }
   }
 
   /// The backend half of a mission write. A PostgREST rejection keeps its
