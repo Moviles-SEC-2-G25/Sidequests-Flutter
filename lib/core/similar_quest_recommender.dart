@@ -30,8 +30,9 @@ class SimilarQuestRecommender {
   /// [maxMinutes]. [rating] is the user's pending rating for [completed]
   /// (not yet saved) — a low one (<=2) turns "same category" from a plus
   /// into a minus, since it's a signal to steer away from it rather than
-  /// toward it. Returns at most 3 quests, best score first, ties broken by
-  /// the shorter duration.
+  /// toward it; 0 means no stars yet, which says nothing about the category.
+  /// Returns at most 3 quests, best score first, ties broken by the shorter
+  /// duration.
   List<Quest> recommend(
     Quest completed,
     List<Quest> catalog,
@@ -64,7 +65,7 @@ class SimilarQuestRecommender {
   int _score(Quest completed, Quest candidate, int rating) {
     var score = 0;
 
-    if (candidate.category == completed.category) {
+    if (rating != 0 && candidate.category == completed.category) {
       score += rating <= _lowRatingThreshold
           ? _sameCategoryLowRatingPenalty
           : _sameCategoryScore;

@@ -11,6 +11,7 @@ import '../../core/similar_quest_recommender.dart';
 import '../../core/verification/step_verification_strategy.dart';
 import '../../core/verification/verification_strategies.dart';
 import '../../data/context/context_manager.dart';
+import '../../data/remote/network_guard.dart';
 import '../../data/services/location_check_in_service.dart';
 import '../../data/services/photo_capture_service.dart';
 import '../../data/services/step_counter_service.dart';
@@ -99,6 +100,10 @@ class QuestViewModel extends ChangeNotifier {
   List<UserQuest> userQuests = [];
   List<QuestStep> steps = [];
   String? _stepsQuestId;
+
+  /// Steps of a quest other than the active mission, opened in its detail.
+  /// Apart from [steps], which the mission keeps using meanwhile.
+  ({String questId, List<QuestStep> steps})? _otherQuestSteps;
   ({String questId, String message})? _stepsUnavailable;
   bool isLoading = false;
   bool isLoadingRecommendations = false;
@@ -145,6 +150,15 @@ class QuestViewModel extends ChangeNotifier {
   String? _decisionBatchId;
   int _interactionCount = 0;
 
+  /// Batch of the list on screen; it can outlive a journey (see
+  /// [onExploreVisible]).
+  String? _visibleBatchId;
+
+  /// Where the clock counts from when no list started it: nothing was on
+  /// screen, or the quest was started elsewhere.
+  DateTime _lastJourneyEndedAt;
+  final DateTime Function() _now;
+
   QuestViewModel(
     this._questRepository,
     this._contextManager,
@@ -156,7 +170,10 @@ class QuestViewModel extends ChangeNotifier {
     StepCounterService? stepCounter,
     LocationCheckInService? locationCheckIn,
     PhotoCaptureService? photoCapture,
-  }) : selectedMinutes = initialFilters.minutes,
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now,
+       _lastJourneyEndedAt = (now ?? DateTime.now)(),
+       selectedMinutes = initialFilters.minutes,
        selectedLocationScope = initialFilters.locationScope,
        selectedCategory = initialFilters.category,
        _similarQuestRecommender = similarQuestRecommender,
@@ -318,7 +335,7 @@ class QuestViewModel extends ChangeNotifier {
     isLoadingRecommendations = true;
     notifyListeners();
     try {
-      final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
+      final context = await _contextWithinLimit();
       currentContext = context;
       final effectivePreferences = preferences.copyWith(
         locationMode: selectedLocationScope,
@@ -337,8 +354,9 @@ class QuestViewModel extends ChangeNotifier {
       // since the app opened (or since the last quest was started) — later
       // reloads (filter changes, "Ahora no") don't restart it.
       if (recommendations.isNotEmpty) {
-        _decisionStartedAt ??= DateTime.now();
+        _decisionStartedAt ??= _now();
         _decisionBatchId ??= batchId;
+        _visibleBatchId = batchId;
       }
       // A saved list logged its impressions when it was first shown (BQ8).
       if (batch.fromCache) return;
@@ -364,6 +382,50 @@ class QuestViewModel extends ChangeNotifier {
       isLoadingRecommendations = false;
       notifyListeners();
     }
+  }
+
+  /// The GPS alone can take 10 s, and recommend_quests doesn't use the position.
+  /// Past the limit Explore goes on with what the device knows on its own (the
+  /// time of day), and the full reading replaces it when it arrives.
+  Future<AppContext> _contextWithinLimit() async {
+    final reading = _contextManager.snapshot(availableMinutes: selectedMinutes);
+    try {
+      return await reading.timeout(NetworkGuard.timeout);
+    } on TimeoutException {
+      unawaited(
+        reading.then(
+          (context) {
+            currentContext = context;
+            notifyListeners();
+          },
+          onError: (Object _) {},
+        ),
+      );
+      return _contextManager.localSnapshot(availableMinutes: selectedMinutes);
+    }
+  }
+
+  /// When the catalog already fell back to the cache there's no point making
+  /// Explore wait for another request to show the saved list. Logs nothing: it
+  /// logged its impressions when it was first shown (BQ8).
+  void showSavedRecommendationsIfOffline() {
+    if (recommendations.isNotEmpty) return;
+    final saved = _questRepository.savedRecommendations(_sessionSkippedQuestIds.toList());
+    if (saved == null || saved.recommendations.isEmpty) return;
+    recommendations = saved.recommendations;
+    recommendationsFromCache = true;
+    _decisionStartedAt ??= _now();
+    _decisionBatchId ??= saved.batchId;
+    _visibleBatchId = saved.batchId;
+    notifyListeners();
+  }
+
+  /// The user is back on Explore with the list from before starting a quest:
+  /// that's where the next decision journey starts, since no new list will.
+  void onExploreVisible() {
+    if (_decisionStartedAt != null || recommendations.isEmpty) return;
+    _decisionStartedAt = _now();
+    _decisionBatchId = _visibleBatchId;
   }
 
   /// Just the context (weather, time of day), so Explore can adapt again
@@ -417,7 +479,8 @@ class QuestViewModel extends ChangeNotifier {
       canQueue: true,
     );
     if (!started) return false;
-    await loadSteps(quest.id);
+    // Queued: the network already failed, and the steps are known to be saved.
+    await loadSteps(quest.id, cacheOnly: instantPlanQueued);
     return true;
   }
 
@@ -433,6 +496,11 @@ class QuestViewModel extends ChangeNotifier {
         final result = await _questRepository.acceptQuestOrQueue(userId: _userId, questId: questId);
         userQuest = result.userQuest;
         instantPlanQueued = result.queued;
+        if (result.alreadyStarted) {
+          // Same mission, not a new start (BQ4: exactly one event per start).
+          _replaceUserQuest(userQuest);
+          return true;
+        }
       } else {
         userQuest = await _questRepository.acceptQuest(userId: _userId, questId: questId);
       }
@@ -443,9 +511,7 @@ class QuestViewModel extends ChangeNotifier {
       final quest = questById(questId);
       // BQ4: how much a ready-to-execute plan (vs. browsing the detail page)
       // shortens the trip from seeing recommendations to starting a quest.
-      final secondsToStart = _decisionStartedAt == null
-          ? 0
-          : DateTime.now().difference(_decisionStartedAt!).inSeconds;
+      final secondsToStart = _now().difference(_decisionStartedAt ?? _lastJourneyEndedAt).inSeconds;
       _analyticsTracker.track(
         wasRecommended
             ? AnalyticsEventType.recommendationAccepted
@@ -459,7 +525,7 @@ class QuestViewModel extends ChangeNotifier {
           'start_path': startPath,
           'seconds_to_start': secondsToStart,
           'interactions_to_start': _interactionCount,
-          'batch_id': _decisionBatchId,
+          'batch_id': _decisionBatchId ?? (recommendations.isEmpty ? null : _visibleBatchId),
         },
       );
       _resetDecisionJourney();
@@ -471,11 +537,13 @@ class QuestViewModel extends ChangeNotifier {
     }
   }
 
-  /// A new decision journey starts the next time recommendations are shown.
+  /// A new decision journey starts the next time recommendations are shown, or
+  /// when the user returns to the ones still on screen ([onExploreVisible]).
   void _resetDecisionJourney() {
     _decisionStartedAt = null;
     _decisionBatchId = null;
     _interactionCount = 0;
+    _lastJourneyEndedAt = _now();
   }
 
   /// "Ahora no" on a recommendation card: excludes it from this session's
@@ -508,24 +576,33 @@ class QuestViewModel extends ChangeNotifier {
   }
 
   /// [questId]'s steps, once loaded; [steps] alone may belong to another quest.
-  List<QuestStep> stepsOf(String questId) =>
-      _stepsQuestId == questId && !isLoadingSteps ? steps : const [];
+  List<QuestStep> stepsOf(String questId) {
+    if (_stepsQuestId == questId) return isLoadingSteps ? const [] : steps;
+    return _otherQuestSteps?.questId == questId ? _otherQuestSteps!.steps : const [];
+  }
 
   /// Why [questId]'s steps couldn't load: no connection and none cached.
   String? stepsUnavailableMessage(String questId) =>
       _stepsUnavailable?.questId == questId ? _stepsUnavailable?.message : null;
 
-  /// A failure leaves [steps] and [_stepsQuestId] as they were: they may be
-  /// the active mission's, and opening another quest's detail offline must
-  /// not take them away from it.
-  Future<void> loadSteps(String questId) async {
+  /// [steps] always belongs to the active mission when there is one: it's what
+  /// the Misión tab shows, the GPS check-in watches and [completeCurrentStep]
+  /// counts, so opening another quest's detail must not replace it.
+  /// A failure leaves [steps] and [_stepsQuestId] as they were.
+  /// [cacheOnly] skips the network, for when it's already known to be down.
+  Future<void> loadSteps(String questId, {bool cacheOnly = false}) async {
+    final mission = currentMission;
+    if (mission != null && mission.questId != questId) return _loadOtherQuestSteps(questId);
+
     final previousQuestId = _stepsQuestId;
     isLoadingSteps = true;
     _stepsQuestId = questId;
     _stepsUnavailable = null;
     notifyListeners();
     try {
-      steps = await _questRepository.getSteps(questId);
+      steps = cacheOnly
+          ? await _questRepository.getCachedSteps(questId)
+          : await _questRepository.getSteps(questId);
     } on AppException catch (e) {
       errorMessage = e.message;
       if (e.isRetryable) _stepsUnavailable = (questId: questId, message: e.message);
@@ -536,6 +613,19 @@ class QuestViewModel extends ChangeNotifier {
       notifyListeners();
       unawaited(_refreshPhotoProofs());
     }
+  }
+
+  Future<void> _loadOtherQuestSteps(String questId) async {
+    _otherQuestSteps = null;
+    _stepsUnavailable = null;
+    notifyListeners();
+    try {
+      _otherQuestSteps = (questId: questId, steps: await _questRepository.getSteps(questId));
+    } on AppException catch (e) {
+      errorMessage = e.message;
+      if (e.isRetryable) _stepsUnavailable = (questId: questId, message: e.message);
+    }
+    notifyListeners();
   }
 
   /// Advances the current step (or completes the quest on the last one).
@@ -631,6 +721,10 @@ class QuestViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// A new QuestCompletedView shouldn't open with the last one's error. Doesn't
+  /// notify: it runs while that view is being built, and it's the only reader.
+  void clearRatingError() => ratingErrorMessage = null;
 
   /// "Te podría gustar" on QuestCompletedView. Pure recomputation from
   /// [rating] each call (no caching), so the view just re-invokes it as the

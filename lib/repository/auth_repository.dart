@@ -84,6 +84,10 @@ class AuthRepository {
     }
   }
 
+  /// The session ended without [signOut] (token rejected by the server): same
+  /// cleanup, so the next account doesn't inherit this one's data or queues.
+  Future<void> clearLocalData() => _localDataSource.clear();
+
   /// gotrue drops the local session first and only then tells the server, so
   /// a failure there (no connection) means the user is already out: the cache
   /// must still go, or the next account would inherit it.

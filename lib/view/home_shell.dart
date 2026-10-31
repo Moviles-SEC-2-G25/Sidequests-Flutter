@@ -45,6 +45,10 @@ class _HomeShellState extends State<HomeShell> {
   /// Kept here because this State's context is above its provider (see
   /// build), so it can't read it from there; the provider still disposes it.
   ContextStatusViewModel? _contextStatus;
+
+  /// No other screen on top of this one.
+  bool _isRouteCurrent = true;
+  bool _isAppResumed = true;
   late final StreamSubscription<CheckInEvent> _checkInSubscription;
   late final AppLifecycleListener _lifecycleListener;
 
@@ -68,10 +72,27 @@ class _HomeShellState extends State<HomeShell> {
     _checkInSubscription = questViewModel.checkInEvents.listen(_onCheckIn);
     // The location check-in's GPS only runs in the foreground.
     _lifecycleListener = AppLifecycleListener(
-      onStateChange: (state) => questViewModel.setForeground(
-        state == AppLifecycleState.resumed || state == AppLifecycleState.inactive,
-      ),
+      onStateChange: (state) {
+        questViewModel.setForeground(
+          state == AppLifecycleState.resumed || state == AppLifecycleState.inactive,
+        );
+        _isAppResumed = state == AppLifecycleState.resumed;
+        _updateShakeSubscription();
+      },
     );
+  }
+
+  /// Runs when another screen is pushed on top of this one or popped off it.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isCurrent = ModalRoute.isCurrentOf(context) ?? true;
+    if (isCurrent == _isRouteCurrent) return;
+    _isRouteCurrent = isCurrent;
+    _updateShakeSubscription();
+    if (isCurrent && _index == _exploreTabIndex) {
+      context.read<QuestViewModel>().onExploreVisible();
+    }
   }
 
   /// Back online, and the connection held (ContextStatusViewModel waits it
@@ -118,9 +139,11 @@ class _HomeShellState extends State<HomeShell> {
 
   /// "Shake to decide" only fires while Explorar (IndexedStack index 0) is
   /// the visible tab — IndexedStack keeps every page mounted, so this can't
-  /// rely on ExploreView's own lifecycle and must gate on `_index` instead.
+  /// rely on ExploreView's own lifecycle and must gate on `_index` instead —
+  /// with no other screen on top and the app in the foreground. Cancelling
+  /// also turns the sensor off.
   void _updateShakeSubscription() {
-    final shouldListen = _index == _exploreTabIndex;
+    final shouldListen = _index == _exploreTabIndex && _isRouteCurrent && _isAppResumed;
     final isListening = _shakeSubscription != null;
     if (shouldListen == isListening) return;
     if (shouldListen) {
@@ -132,6 +155,8 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _onShake() {
+    // A shake right after a push, before the route change reaches this State.
+    if (!(ModalRoute.isCurrentOf(context) ?? true)) return;
     final questViewModel = context.read<QuestViewModel>();
     final isOffline = _contextStatus?.isOffline ?? false;
     final candidates = questViewModel.shakeCandidates(isOffline: isOffline);
@@ -179,6 +204,7 @@ class _HomeShellState extends State<HomeShell> {
         onDestinationSelected: (index) => setState(() {
           _index = index;
           _updateShakeSubscription();
+          if (index == _exploreTabIndex) context.read<QuestViewModel>().onExploreVisible();
         }),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.explore_outlined), label: 'Explorar'),

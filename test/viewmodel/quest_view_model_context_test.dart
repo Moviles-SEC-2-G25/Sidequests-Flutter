@@ -135,6 +135,9 @@ class _FakeQuestRepository implements QuestRepository {
   _FakeQuestRepository(this.quests);
 
   @override
+  bool get catalogFromCache => false;
+
+  @override
   Future<RecommendationBatch> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,

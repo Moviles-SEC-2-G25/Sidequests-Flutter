@@ -31,6 +31,12 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
   int _rating = 0;
   final Set<String> _tags = {};
 
+  @override
+  void initState() {
+    super.initState();
+    context.read<QuestViewModel>().clearRatingError();
+  }
+
   Future<void> _save(QuestViewModel questViewModel) async {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
