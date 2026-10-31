@@ -65,6 +65,7 @@ ContextManager _contextManager() =>
 /// else would throw.
 class _FakeQuestRepository implements QuestRepository {
   final List<Map<String, dynamic>> recommendationRows;
+  int _batches = 0;
 
   _FakeQuestRepository({this.recommendationRows = const []});
 
@@ -72,16 +73,25 @@ class _FakeQuestRepository implements QuestRepository {
   Future<void> saveExploreFilters(ExploreFilters filters) async {}
 
   @override
-  Future<List<QuestRecommendation>> getRecommendations({
+  Future<RecommendationBatch> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,
     List<String> excludedQuestIds = const [],
     int limit = 3,
-  }) async => recommendationRows.map(QuestRecommendation.fromJson).toList();
+  }) async => RecommendationBatch(
+    recommendations: recommendationRows.map(QuestRecommendation.fromJson).toList(),
+    batchId: 'batch-${++_batches}',
+  );
 
   @override
   Future<UserQuest> acceptQuest({required String userId, required String questId}) async =>
       UserQuest(id: 'uq-$questId', userId: userId, questId: questId, acceptedAt: DateTime(2026, 1, 1));
+
+  @override
+  Future<({UserQuest userQuest, bool queued})> acceptQuestOrQueue({
+    required String userId,
+    required String questId,
+  }) async => (userQuest: await acceptQuest(userId: userId, questId: questId), queued: false);
 
   @override
   Future<List<QuestStep>> getSteps(String questId) async => const [];

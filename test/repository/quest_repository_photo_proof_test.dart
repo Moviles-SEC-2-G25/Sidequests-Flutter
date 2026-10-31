@@ -103,6 +103,9 @@ class _FakeLocal implements LocalDataSource {
   Future<void> deletePendingProofFile(String path) async => files.remove(path);
 
   @override
+  List<Map<String, dynamic>> getPendingWrites() => const [];
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

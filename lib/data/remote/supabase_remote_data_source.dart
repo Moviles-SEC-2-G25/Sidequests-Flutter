@@ -156,6 +156,11 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
     Map<String, dynamic> userQuest,
   ) => _client.from('user_quests').upsert(userQuest).select().single();
 
+  /// Upsert that leaves an existing row alone (`ON CONFLICT DO NOTHING`), so
+  /// replaying a queued acceptance can never undo progress saved meanwhile.
+  Future<void> insertUserQuestIfAbsent(Map<String, dynamic> userQuest) =>
+      _client.from('user_quests').upsert(userQuest, ignoreDuplicates: true);
+
   /// Upserts only the rating columns of an existing `user_quests` row (RLS
   /// lets the user update their own rows).
   Future<Map<String, dynamic>> rateUserQuest({

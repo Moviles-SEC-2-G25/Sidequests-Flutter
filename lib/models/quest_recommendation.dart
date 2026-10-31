@@ -40,3 +40,21 @@ class QuestRecommendation {
         category: json['category'] as String?,
       );
 }
+
+/// One list from `recommend_quests`, or the last one saved on the device.
+class RecommendationBatch {
+  final List<QuestRecommendation> recommendations;
+
+  /// Groups the BQ8 events of this list; a saved list keeps its original one.
+  final String batchId;
+
+  /// True when the network failed and this list was already shown (and its
+  /// `recommendation_shown` events logged) when it was saved.
+  final bool fromCache;
+
+  const RecommendationBatch({
+    required this.recommendations,
+    required this.batchId,
+    this.fromCache = false,
+  });
+}

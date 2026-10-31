@@ -68,8 +68,9 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   /// Back online, and the connection held (ContextStatusViewModel waits it
-  /// out): reloads what the offline banner said couldn't load. load() also
-  /// retries pending photo uploads; analytics queued offline go out too.
+  /// out): reloads what the offline banner said couldn't load. load() first
+  /// syncs the queued quest writes, then retries pending photo uploads;
+  /// analytics queued offline go out too.
   Future<void> _refreshAfterReconnect() async {
     if (!mounted) return;
     final questViewModel = context.read<QuestViewModel>();
@@ -77,10 +78,11 @@ class _HomeShellState extends State<HomeShell> {
     unawaited(context.read<AnalyticsTracker>().flushPending());
     try {
       await questViewModel.load();
-      // Only when Explore has nothing to show (it failed offline): reloading
-      // a list the user already has would log recommendation_shown again
-      // for a list they may not even be looking at (BQ8 impressions).
-      if (questViewModel.recommendations.isEmpty) {
+      // Only when Explore has nothing to show or only the saved list (it
+      // failed offline): reloading a live list the user already has would log
+      // recommendation_shown again for a list they may not even be looking at
+      // (BQ8 impressions).
+      if (questViewModel.recommendations.isEmpty || questViewModel.recommendationsFromCache) {
         await questViewModel.loadRecommendations(profileViewModel.preferences);
       }
     } catch (_) {

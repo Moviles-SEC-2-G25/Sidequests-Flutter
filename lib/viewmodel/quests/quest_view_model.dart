@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../analytics/analytics_event_type.dart';
 import '../../analytics/analytics_tracker.dart';
@@ -93,6 +92,9 @@ class QuestViewModel extends ChangeNotifier {
 
   List<Quest> catalog = [];
   List<QuestRecommendation> recommendations = [];
+
+  /// [recommendations] is the list saved on the device: the network failed.
+  bool recommendationsFromCache = false;
   List<UserQuest> userQuests = [];
   List<QuestStep> steps = [];
   String? _stepsQuestId;
@@ -100,6 +102,9 @@ class QuestViewModel extends ChangeNotifier {
   bool isLoadingRecommendations = false;
   bool isLoadingSteps = false;
   String? errorMessage;
+
+  /// The last [startInstantPlan] started on the device, pending sync.
+  bool instantPlanQueued = false;
   bool isSubmittingRating = false;
   String? ratingErrorMessage;
 
@@ -304,13 +309,15 @@ class QuestViewModel extends ChangeNotifier {
         locationMode: selectedLocationScope,
         socialLevel: sessionSocialLevel,
       );
-      recommendations = await _questRepository.getRecommendations(
+      final batch = await _questRepository.getRecommendations(
         context: context,
         preferences: effectivePreferences,
         excludedQuestIds: _sessionSkippedQuestIds.toList(),
       );
+      recommendations = batch.recommendations;
+      recommendationsFromCache = batch.fromCache;
       // One batch_id per RPC call so BQ8 can group the events of one list.
-      final batchId = const Uuid().v4();
+      final batchId = batch.batchId;
       // BQ4: starts the decision clock on the first non-empty list shown
       // since the app opened (or since the last quest was started) — later
       // reloads (filter changes, "Ahora no") don't restart it.
@@ -318,6 +325,8 @@ class QuestViewModel extends ChangeNotifier {
         _decisionStartedAt ??= DateTime.now();
         _decisionBatchId ??= batchId;
       }
+      // A saved list logged its impressions when it was first shown (BQ8).
+      if (batch.fromCache) return;
       for (final recommendation in recommendations) {
         _analyticsTracker.track(
           AnalyticsEventType.recommendationShown,
@@ -356,9 +365,16 @@ class QuestViewModel extends ChangeNotifier {
   /// "Empezar ya" on a recommendation card (BQ4's 'instant_plan' start
   /// path): accepts the quest and preloads its steps, skipping
   /// QuestDetailView entirely. The caller navigates to MissionTabView once
-  /// this returns true.
+  /// this returns true. Without a connection the mission starts anyway, on
+  /// the device: see [instantPlanQueued].
   Future<bool> startInstantPlan(Quest quest) async {
-    final started = await _acceptQuest(quest.id, startPath: 'instant_plan', wasRecommended: true);
+    instantPlanQueued = false;
+    final started = await _acceptQuest(
+      quest.id,
+      startPath: 'instant_plan',
+      wasRecommended: true,
+      canQueue: true,
+    );
     if (!started) return false;
     await loadSteps(quest.id);
     return true;
@@ -368,12 +384,17 @@ class QuestViewModel extends ChangeNotifier {
     String questId, {
     required String startPath,
     required bool wasRecommended,
+    bool canQueue = false,
   }) async {
     try {
-      final userQuest = await _questRepository.acceptQuest(
-        userId: _userId,
-        questId: questId,
-      );
+      final UserQuest userQuest;
+      if (canQueue) {
+        final result = await _questRepository.acceptQuestOrQueue(userId: _userId, questId: questId);
+        userQuest = result.userQuest;
+        instantPlanQueued = result.queued;
+      } else {
+        userQuest = await _questRepository.acceptQuest(userId: _userId, questId: questId);
+      }
       _replaceUserQuest(userQuest);
       // Not awaited: the permission dialog shows over the Misión screen
       // instead of holding up the navigation to it.
