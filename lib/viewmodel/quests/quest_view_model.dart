@@ -204,9 +204,18 @@ class QuestViewModel extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
     try {
-      catalog = await _questRepository.getCatalog();
-      _dropMissingCategory();
-      userQuests = await _questRepository.getUserQuests(_userId);
+      // Both requests at once. Each result is kept as it arrives, so one
+      // failing doesn't lose the other; the first error is rethrown once
+      // both have finished.
+      await Future.wait([
+        _questRepository.getCatalog().then((quests) {
+          catalog = quests;
+          _dropMissingCategory();
+        }),
+        _questRepository.getUserQuests(_userId).then((attempts) {
+          userQuests = attempts;
+        }),
+      ]);
       unawaited(_resumeStepTracking());
       unawaited(retryPendingPhotoUploads());
     } on AppException catch (e) {
