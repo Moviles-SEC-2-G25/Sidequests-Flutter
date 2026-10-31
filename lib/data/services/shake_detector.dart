@@ -23,7 +23,7 @@ class ShakeDetector {
   final Stream<UserAccelerometerEvent>? _accelerometerEvents;
   late final StreamController<void> _controller = StreamController<void>.broadcast(
     onListen: _startSensor,
-    
+    onCancel: _stopSensor,
   );
   StreamSubscription<UserAccelerometerEvent>? _subscription;
   DateTime? _lastShakeAt;
