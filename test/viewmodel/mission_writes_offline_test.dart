@@ -18,6 +18,7 @@ import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_step.dart';
 import 'package:sidequests/models/step_session.dart';
 import 'package:sidequests/models/user_quest.dart';
+import 'package:sidequests/models/verified_check_in.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/view/quests/abandon_mission_view.dart';
 import 'package:sidequests/view/quests/mission_tab_view.dart';
@@ -142,6 +143,9 @@ class _FakeQuestRepository implements QuestRepository {
   // Podómetro and photo proofs: nothing stored in these tests.
   @override
   StepSession? getActiveStepSession() => null;
+
+  @override
+  VerifiedCheckIn? getVerifiedCheckIn() => null;
 
   @override
   List<PendingPhotoProof> getPendingPhotoProofs() => const [];

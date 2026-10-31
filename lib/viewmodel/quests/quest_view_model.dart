@@ -23,6 +23,7 @@ import '../../models/quest_step.dart';
 import '../../models/step_session.dart';
 import '../../models/user_preferences.dart';
 import '../../models/user_quest.dart';
+import '../../models/verified_check_in.dart';
 import '../../repository/quest_repository.dart';
 
 const List<int> kAvailableMinuteOptions = [10, 20, 30, 45, 60];
@@ -75,6 +76,14 @@ class QuestViewModel extends ChangeNotifier {
   bool _isForeground = true;
   bool _isCompletingStep = false;
   DateTime? _lastAutoCheckInAt;
+  final DateTime Function() _now;
+
+  /// In memory what the repository has, so the view can read it on every build.
+  VerifiedCheckIn? _savedCheckIn;
+
+  /// The last [completeCurrentStep] failed for lack of a connection, as
+  /// opposed to being rejected.
+  bool _lastStepFailedForConnection = false;
 
   final PhotoCaptureService _photoCapture;
 
@@ -160,7 +169,9 @@ class QuestViewModel extends ChangeNotifier {
     StepCounterService? stepCounter,
     LocationCheckInService? locationCheckIn,
     PhotoCaptureService? photoCapture,
-  }) : selectedMinutes = initialFilters.minutes,
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now,
+       selectedMinutes = initialFilters.minutes,
        selectedLocationScope = initialFilters.locationScope,
        selectedCategory = initialFilters.category,
        _similarQuestRecommender = similarQuestRecommender,
@@ -239,6 +250,7 @@ class QuestViewModel extends ChangeNotifier {
       _syncCheckIn();
       notifyListeners();
     }
+    await _applySavedCheckIn();
   }
 
   /// A saved category can leave the catalog between launches; keeping it
@@ -563,6 +575,7 @@ class QuestViewModel extends ChangeNotifier {
     stepErrorMessage = null;
     if (_isCompletingStep) return false;
     _isCompletingStep = true;
+    _lastStepFailedForConnection = false;
     notifyListeners();
 
     final nextCompleted = [...userQuest.completedSteps, userQuest.currentStep];
@@ -602,6 +615,7 @@ class QuestViewModel extends ChangeNotifier {
       return isLastStep;
     } on AppException catch (e) {
       stepErrorMessage = e.message;
+      _lastStepFailedForConnection = e.isRetryable;
       return false;
     } finally {
       _isCompletingStep = false;
@@ -855,14 +869,16 @@ class QuestViewModel extends ChangeNotifier {
       strategyFor(step.verificationType).allowsManualCompletion(quest, _currentStepEvidence());
 
   /// HomeShell: the GPS only runs while the app is in the foreground.
-  /// Coming back is also a good moment to retry pending photo uploads, and to
-  /// re-read a last known weather: hours may have gone by, and it ages out.
+  /// Coming back is also a good moment to retry pending photo uploads and a
+  /// saved check-in (a failed request isn't always a connectivity change), and
+  /// to re-read a last known weather: hours may have gone by, and it ages out.
   void setForeground(bool isForeground) {
     if (_isForeground == isForeground) return;
     _isForeground = isForeground;
     _syncCheckIn();
     if (isForeground) {
       unawaited(retryPendingPhotoUploads());
+      unawaited(_applySavedCheckIn());
       if (currentContext?.weatherIsStale ?? false) unawaited(refreshContext());
     }
   }
@@ -960,8 +976,10 @@ class QuestViewModel extends ChangeNotifier {
     if (!strategy.needsLocation || strategy.verify(quest, _currentStepEvidence()) is! Verified) {
       return;
     }
+    // Already on the device: another GPS fix can't help until load() runs.
+    if (isCheckInSavedForCurrentStep) return;
 
-    final now = DateTime.now();
+    final now = _now();
     if (_isCompletingStep ||
         (_lastAutoCheckInAt != null && now.difference(_lastAutoCheckInAt!) < _autoCheckInRetryInterval)) {
       return;
@@ -979,7 +997,73 @@ class QuestViewModel extends ChangeNotifier {
     final advanced = completedQuest || (updated != null && updated.currentStep > mission.currentStep);
     if (advanced) {
       _lastAutoCheckInAt = null;
+      await _setSavedCheckIn(null);
       _checkInEvents.add(CheckInEvent(mission: mission, quest: quest, completedQuest: completedQuest));
+    } else if (!_lastStepFailedForConnection) {
+      // The server said no: asking again later wouldn't change that.
+      await _setSavedCheckIn(null);
+    } else if (_savedCheckIn == null) {
+      await _setSavedCheckIn(
+        VerifiedCheckIn(userQuestId: mission.id, stepIndex: mission.currentStep, verifiedAt: _now()),
+      );
+    }
+  }
+
+  /// The current step's location was verified and only the connection is
+  /// missing: the step shows it, whether or not the user is still there.
+  bool get isCheckInSavedForCurrentStep {
+    final saved = _savedCheckIn;
+    final mission = currentMission;
+    return saved != null &&
+        mission != null &&
+        saved.userQuestId == mission.id &&
+        saved.stepIndex == mission.currentStep;
+  }
+
+  Future<void> _setSavedCheckIn(VerifiedCheckIn? checkIn) async {
+    if (checkIn == null && _savedCheckIn == null) return;
+    _savedCheckIn = checkIn;
+    notifyListeners();
+    await _questRepository.saveVerifiedCheckIn(checkIn);
+  }
+
+  /// Completes the step of a saved check-in, or drops the check-in if that step
+  /// is no longer the current one of an active mission. From load() and not
+  /// only on reconnecting: an app opened with a connection never reconnects.
+  /// Without a connection it fails like any other attempt and stays saved.
+  Future<void> _applySavedCheckIn() async {
+    final saved = _questRepository.getVerifiedCheckIn();
+    _savedCheckIn = saved;
+    if (saved == null) return;
+
+    try {
+      if (userQuests.isEmpty) return; // nothing known to compare it with yet
+      final mission = currentMission;
+      if (mission == null ||
+          !_activeMissionStatuses.contains(mission.status) ||
+          !isCheckInSavedForCurrentStep) {
+        await _setSavedCheckIn(null);
+        return;
+      }
+
+      // Without its steps, completeCurrentStep can't tell the last one apart.
+      if (stepsOf(mission.questId).isEmpty) await loadSteps(mission.questId);
+      final loaded = stepsOf(mission.questId);
+      final quest = questById(mission.questId);
+      if (mission.currentStep >= loaded.length || quest == null) return;
+
+      final strategy = strategyFor(loaded[mission.currentStep].verificationType);
+      if (strategy.needsPhoto) await _refreshPhotoProofs();
+      // Being there never replaces the photo of a 'photo_and_location' step:
+      // it stays saved until the photo is registered too.
+      if (!isCheckInSavedForCurrentStep ||
+          _isCompletingStep ||
+          !strategy.allowsManualCompletion(quest, _currentStepEvidence())) {
+        return;
+      }
+      await _autoCompleteStep(currentMission!, quest);
+    } finally {
+      notifyListeners();
     }
   }
 
@@ -1119,6 +1203,7 @@ class QuestViewModel extends ChangeNotifier {
       notifyListeners();
     }
     _maybeAutoCompleteByLocation();
+    await _applySavedCheckIn();
   }
 
   /// Web build: no device storage to keep the photo in, so it goes up
@@ -1153,6 +1238,7 @@ class QuestViewModel extends ChangeNotifier {
       notifyListeners();
     }
     _maybeAutoCompleteByLocation();
+    await _applySavedCheckIn();
   }
 
   /// [_uploadingStoragePath] while a web upload (no pending path) runs.

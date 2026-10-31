@@ -142,6 +142,9 @@ class _FakeLocal implements LocalDataSource {
   Map<String, dynamic>? getActiveStepSession() => null;
 
   @override
+  Map<String, dynamic>? getVerifiedCheckIn() => null;
+
+  @override
   Map<String, dynamic>? getExploreFilters() => null;
 
   @override

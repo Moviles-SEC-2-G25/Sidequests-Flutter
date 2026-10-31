@@ -28,6 +28,7 @@ import 'package:sidequests/models/pending_write.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/user_preferences.dart';
 import 'package:sidequests/models/user_quest.dart';
+import 'package:sidequests/models/verified_check_in.dart';
 import 'package:sidequests/repository/auth_repository.dart';
 import 'package:sidequests/repository/profile_repository.dart';
 import 'package:sidequests/repository/quest_repository.dart';
@@ -255,6 +256,9 @@ class _FakeLocal implements LocalDataSource {
 
   @override
   Map<String, dynamic>? getActiveStepSession() => null;
+
+  @override
+  Map<String, dynamic>? getVerifiedCheckIn() => null;
 
   @override
   Map<String, dynamic>? getExploreFilters() => null;
@@ -903,6 +907,29 @@ void main() {
       expect(fromCache, isFalse);
       expect(synced.single.id, started.userQuest.id);
       expect(hive.getPendingWrites(), isEmpty);
+    });
+
+    test('a verified check-in survives restarts, with its time, and signing out clears it', () async {
+      final verifiedAt = DateTime.utc(2026, 10, 31, 15, 30);
+      await repository.saveVerifiedCheckIn(
+        VerifiedCheckIn(userQuestId: 'uq-1', stepIndex: 2, verifiedAt: verifiedAt),
+      );
+
+      await restart();
+
+      final saved = repository.getVerifiedCheckIn()!;
+      expect(saved.userQuestId, 'uq-1');
+      expect(saved.stepIndex, 2);
+      expect(saved.verifiedAt, verifiedAt);
+      expect(hive.getPendingWrites(), isEmpty); // it isn't a queued write
+
+      await repository.saveVerifiedCheckIn(null);
+      await restart();
+      expect(repository.getVerifiedCheckIn(), isNull);
+
+      await repository.saveVerifiedCheckIn(saved);
+      await hive.clear();
+      expect(repository.getVerifiedCheckIn(), isNull);
     });
 
     test('signing out clears the queue and the saved list', () async {

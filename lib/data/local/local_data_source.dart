@@ -28,6 +28,7 @@ class LocalDataSource {
   static const _keyActiveQuestId = 'active_quest_id';
   static const _keyStepTotals = 'step_totals';
   static const _keyActiveStepSession = 'active_step_session';
+  static const _keyVerifiedCheckIn = 'verified_check_in';
   static const _keyPendingPhotoProofs = 'pending_photo_proofs';
   static const _pendingProofsDir = 'pending_proofs';
   static const _keyPendingAnalyticsEvents = 'pending_analytics_events';
@@ -174,6 +175,16 @@ class LocalDataSource {
   Future<void> saveActiveStepSession(Map<String, dynamic>? session) => session == null
       ? _box.delete(_keyActiveStepSession)
       : _box.put(_keyActiveStepSession, session);
+
+  /// A location check-in verified while its step couldn't be saved. Only the
+  /// current step of the current mission can have one, so there's just one.
+  /// Cleared on sign-out with the rest of the box.
+  Map<String, dynamic>? getVerifiedCheckIn() =>
+      (_box.get(_keyVerifiedCheckIn) as Map?)?.cast<String, dynamic>();
+
+  Future<void> saveVerifiedCheckIn(Map<String, dynamic>? checkIn) => checkIn == null
+      ? _box.delete(_keyVerifiedCheckIn)
+      : _box.put(_keyVerifiedCheckIn, checkIn);
 
   /// Photos captured but not uploaded yet (Retry tactic). Only metadata
   /// lives in Hive; the JPEG bytes are files in the app documents folder —

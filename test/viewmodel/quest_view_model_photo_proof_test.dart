@@ -22,6 +22,7 @@ import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_step.dart';
 import 'package:sidequests/models/step_session.dart';
 import 'package:sidequests/models/user_quest.dart';
+import 'package:sidequests/models/verified_check_in.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/view/quests/mission_tab_view.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
@@ -124,6 +125,7 @@ class _FakeQuestRepository implements QuestRepository {
   final List<QuestPhotoProof> serverProofs = [];
   final List<UserQuest> progressUpdates = [];
   AppException? uploadFailure;
+  VerifiedCheckIn? verifiedCheckIn;
   int uploads = 0;
 
   @override
@@ -143,6 +145,12 @@ class _FakeQuestRepository implements QuestRepository {
 
   @override
   StepSession? getActiveStepSession() => null;
+
+  @override
+  VerifiedCheckIn? getVerifiedCheckIn() => verifiedCheckIn;
+
+  @override
+  Future<void> saveVerifiedCheckIn(VerifiedCheckIn? checkIn) async => verifiedCheckIn = checkIn;
 
   @override
   List<PendingPhotoProof> getPendingPhotoProofs() => [...pending];
@@ -348,6 +356,24 @@ void main() {
       });
     });
 
+    test('photo_and_location: location saved earlier, the direct upload completes the step', () async {
+      await openMission([_step(0, 'photo_and_location'), _step(1, 'none')]);
+      repository.verifiedCheckIn = VerifiedCheckIn(
+        userQuestId: viewModel.currentMission!.id,
+        stepIndex: 0,
+        verifiedAt: DateTime.utc(2026, 10, 31),
+      );
+      await viewModel.load();
+      expect(repository.progressUpdates, isEmpty);
+
+      await viewModel.capturePhotoProof();
+      await _flush();
+
+      expect(repository.directUploads, 1);
+      expect(repository.progressUpdates.single.currentStep, 1);
+      expect(repository.verifiedCheckIn, isNull);
+    });
+
     test('offline: no "Reintentar subida" (nothing kept) — it asks for a new photo', () async {
       await openMission([_step(0, 'photo'), _step(1, 'none')]);
       repository.uploadFailure = const AppException(
@@ -439,6 +465,23 @@ void main() {
     await _flush();
 
     expect(repository.progressUpdates.single.currentStep, 1);
+  });
+
+  test('photo_and_location: location saved earlier, the upload completes the step elsewhere', () async {
+    await openMission([_step(0, 'photo_and_location'), _step(1, 'none')]);
+    repository.verifiedCheckIn = VerifiedCheckIn(
+      userQuestId: viewModel.currentMission!.id,
+      stepIndex: 0,
+      verifiedAt: DateTime.utc(2026, 10, 31),
+    );
+    await viewModel.load();
+    expect(repository.progressUpdates, isEmpty); // photo missing, and no GPS fix here
+
+    await viewModel.capturePhotoProof();
+    await _flush();
+
+    expect(repository.progressUpdates.single.currentStep, 1);
+    expect(repository.verifiedCheckIn, isNull);
   });
 
   test('a proof already on the server (reinstall, new phone) counts when the mission opens', () async {
