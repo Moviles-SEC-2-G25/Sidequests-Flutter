@@ -6,6 +6,7 @@ import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/models/app_context.dart';
+import 'package:sidequests/models/explore_filters.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
@@ -30,8 +31,11 @@ class _NullSink implements AnalyticsEventSink {
 ContextManager _contextManager() =>
     ContextManager(locationService: _NoLocation(), batteryMonitor: _FullBattery());
 
-/// Never actually called: `currentContext` is set directly in every test.
+/// Never actually read: `currentContext` is set directly in every test.
 class _UnusedQuestRepository implements QuestRepository {
+  @override
+  Future<void> saveExploreFilters(ExploreFilters filters) async {}
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

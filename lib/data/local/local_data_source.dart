@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -32,6 +33,7 @@ class LocalDataSource {
   static const _keyAddresses = 'addresses';
   static const _keyOnboardingComplete = 'onboarding_complete';
   static const _keyDarkMode = 'dark_mode';
+  static const _keyExploreFilters = 'explore_filters';
   static const _keyMissionNotifications = 'mission_notifications_enabled';
   static const _keyDailyReminders = 'daily_reminders_enabled';
   static const _keyBiometricEnabled = 'biometric_enabled';
@@ -56,6 +58,15 @@ class LocalDataSource {
   bool isDarkMode() => _prefs.getBool(_keyDarkMode) ?? false;
 
   Future<void> setDarkMode(bool value) => _prefs.setBool(_keyDarkMode, value);
+
+  /// Explore's last filters; null until the user changes one.
+  Map<String, dynamic>? getExploreFilters() {
+    final saved = _prefs.getString(_keyExploreFilters);
+    return saved == null ? null : jsonDecode(saved) as Map<String, dynamic>;
+  }
+
+  Future<void> saveExploreFilters(Map<String, dynamic> filters) =>
+      _prefs.setString(_keyExploreFilters, jsonEncode(filters));
 
   /// Local preference only — there is no push-notification backend yet
   /// (Firebase Cloud Messaging and the `notify` edge function are both

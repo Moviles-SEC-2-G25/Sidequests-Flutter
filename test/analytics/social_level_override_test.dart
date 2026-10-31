@@ -7,6 +7,7 @@ import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/models/app_context.dart';
+import 'package:sidequests/models/explore_filters.dart';
 import 'package:sidequests/models/quest_recommendation.dart';
 import 'package:sidequests/models/user_preferences.dart';
 import 'package:sidequests/models/user_quest.dart';
@@ -62,6 +63,9 @@ ContextManager _contextManager() =>
 /// getRecommendations and acceptQuest are exercised.
 class _RecordingQuestRepository implements QuestRepository {
   final List<UserPreferences> sentPreferences = [];
+
+  @override
+  Future<void> saveExploreFilters(ExploreFilters filters) async {}
 
   @override
   Future<List<QuestRecommendation>> getRecommendations({

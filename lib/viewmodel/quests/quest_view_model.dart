@@ -15,6 +15,7 @@ import '../../data/services/location_check_in_service.dart';
 import '../../data/services/photo_capture_service.dart';
 import '../../data/services/step_counter_service.dart';
 import '../../models/app_context.dart';
+import '../../models/explore_filters.dart';
 import '../../models/photo_proof.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
@@ -106,8 +107,9 @@ class QuestViewModel extends ChangeNotifier {
   /// null when it went through or is still running.
   String? stepErrorMessage;
 
-  int selectedMinutes = 30;
-  String selectedLocationScope = 'all'; // all | gps | anywhere
+  // Explore's filters: start as the user left them and are saved on change.
+  int selectedMinutes;
+  String selectedLocationScope; // all | gps | anywhere
   String? selectedCategory; // null = "Todo", 'sponsored', or a real category
 
   /// "¿Cómo te sientes hoy?" (BQ5): overrides the profile's social level
@@ -138,12 +140,16 @@ class QuestViewModel extends ChangeNotifier {
     this._contextManager,
     this._analyticsTracker,
     this._userId, {
+    ExploreFilters initialFilters = const ExploreFilters(),
     SimilarQuestRecommender similarQuestRecommender = const SimilarQuestRecommender(),
     CompletionLikelihood completionLikelihood = const CompletionLikelihood(),
     StepCounterService? stepCounter,
     LocationCheckInService? locationCheckIn,
     PhotoCaptureService? photoCapture,
-  }) : _similarQuestRecommender = similarQuestRecommender,
+  }) : selectedMinutes = initialFilters.minutes,
+       selectedLocationScope = initialFilters.locationScope,
+       selectedCategory = initialFilters.category,
+       _similarQuestRecommender = similarQuestRecommender,
        _completionLikelihood = completionLikelihood,
        _stepCounter = stepCounter ?? StepCounterService(),
        _checkIn = locationCheckIn ?? LocationCheckInService(),
@@ -199,6 +205,7 @@ class QuestViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       catalog = await _questRepository.getCatalog();
+      _dropMissingCategory();
       userQuests = await _questRepository.getUserQuests(_userId);
       unawaited(_resumeStepTracking());
       unawaited(retryPendingPhotoUploads());
@@ -211,14 +218,37 @@ class QuestViewModel extends ChangeNotifier {
     }
   }
 
+  /// A saved category can leave the catalog between launches; keeping it
+  /// would show an empty list with no chip selected to explain why. An empty
+  /// catalog (offline, nothing cached) says nothing about the category.
+  void _dropMissingCategory() {
+    final category = selectedCategory;
+    if (category == null || category == 'sponsored' || catalog.isEmpty) return;
+    if (categories.contains(category)) return;
+    selectedCategory = null;
+    _saveFilters();
+  }
+
+  void _saveFilters() => unawaited(
+    _questRepository.saveExploreFilters(
+      ExploreFilters(
+        minutes: selectedMinutes,
+        locationScope: selectedLocationScope,
+        category: selectedCategory,
+      ),
+    ),
+  );
+
   void setMinutes(int minutes) {
     selectedMinutes = minutes;
+    _saveFilters();
     registerInteraction();
     notifyListeners();
   }
 
   void setCategory(String? category) {
     selectedCategory = category;
+    _saveFilters();
     registerInteraction();
     notifyListeners();
   }
@@ -239,6 +269,7 @@ class QuestViewModel extends ChangeNotifier {
   /// BQ10 (location-independent mode usage) is measured from this event.
   void setLocationScope(String scope) {
     selectedLocationScope = scope;
+    _saveFilters();
     registerInteraction();
     notifyListeners();
     _analyticsTracker.track(
