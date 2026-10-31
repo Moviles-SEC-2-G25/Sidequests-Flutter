@@ -10,6 +10,8 @@ abstract final class AnalyticsEventType {
   static const questCompleted = 'quest_completed';
   static const questRated = 'quest_rated';
   static const locationModeSelected = 'location_mode_selected';
+  static const locationIndependentModeSelected = 'location_independent_mode_selected';
+  static const locationBasedModeSelected = 'location_based_mode_selected';
   static const shakeSurprise = 'shake_surprise';
   static const similarQuestOpened = 'similar_quest_opened';
   static const photoProofUploaded = 'photo_proof_uploaded';

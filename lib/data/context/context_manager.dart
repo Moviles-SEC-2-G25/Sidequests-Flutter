@@ -1,6 +1,7 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../core/bq10_context.dart';
 import '../../models/app_context.dart';
 import '../../models/weather_snapshot.dart';
 import '../services/battery_monitor.dart';
@@ -45,7 +46,7 @@ class ContextManager {
     return AppContext(
       latitude: reading.position?.latitude,
       longitude: reading.position?.longitude,
-      timeOfDay: _timeOfDay(now),
+      timeOfDay: timeOfDayFor(now),
       dayOfWeek: _dayOfWeek(now),
       isConnected: reading.isConnected,
       availableMinutes: availableMinutes,
@@ -90,15 +91,6 @@ class ContextManager {
     } catch (_) {
       return true;
     }
-  }
-
-  String _timeOfDay(DateTime now) {
-    final hour = now.hour;
-    if (hour < 6) return 'night';
-    if (hour < 12) return 'morning';
-    if (hour < 18) return 'afternoon';
-    if (hour < 22) return 'evening';
-    return 'night';
   }
 
   String _dayOfWeek(DateTime now) => const [

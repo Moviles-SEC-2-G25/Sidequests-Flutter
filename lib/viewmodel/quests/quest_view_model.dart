@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../analytics/analytics_event_type.dart';
 import '../../analytics/analytics_tracker.dart';
 import '../../core/app_exception.dart';
+import '../../core/bq10_context.dart';
 import '../../core/completion_likelihood.dart';
 import '../../core/similar_quest_recommender.dart';
 import '../../core/verification/step_verification_strategy.dart';
@@ -275,15 +276,25 @@ class QuestViewModel extends ChangeNotifier {
   String effectiveSocialLevel(UserPreferences profile) =>
       sessionSocialLevel ?? profile.socialLevel;
 
-  /// BQ10 (location-independent mode usage) is measured from this event.
+  /// BQ10 (location-independent mode usage) is measured from the 'anywhere'
+  /// and 'gps' events; 'all' isn't part of it. Its context metadata comes
+  /// from the last snapshot ([currentContext]).
   void setLocationScope(String scope) {
     selectedLocationScope = scope;
     _saveFilters();
     registerInteraction();
     notifyListeners();
+    final bq10EventType = switch (scope) {
+      'anywhere' => AnalyticsEventType.locationIndependentModeSelected,
+      'gps' => AnalyticsEventType.locationBasedModeSelected,
+      _ => null,
+    };
     _analyticsTracker.track(
-      AnalyticsEventType.locationModeSelected,
+      bq10EventType ?? AnalyticsEventType.locationModeSelected,
       locationMode: scope,
+      metadata: bq10EventType == null
+          ? const {}
+          : bq10Metadata(scope, currentContext, DateTime.now()),
     );
   }
 
