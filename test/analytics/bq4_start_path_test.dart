@@ -7,6 +7,7 @@ import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/models/app_context.dart';
+import 'package:sidequests/models/explore_filters.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_recommendation.dart';
 import 'package:sidequests/models/quest_step.dart';
@@ -66,6 +67,9 @@ class _FakeQuestRepository implements QuestRepository {
   final List<Map<String, dynamic>> recommendationRows;
 
   _FakeQuestRepository({this.recommendationRows = const []});
+
+  @override
+  Future<void> saveExploreFilters(ExploreFilters filters) async {}
 
   @override
   Future<List<QuestRecommendation>> getRecommendations({

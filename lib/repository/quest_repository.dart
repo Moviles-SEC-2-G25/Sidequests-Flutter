@@ -8,6 +8,7 @@ import '../core/photo_proof_rules.dart';
 import '../data/local/local_data_source.dart';
 import '../data/remote/supabase_remote_data_source.dart';
 import '../models/app_context.dart';
+import '../models/explore_filters.dart';
 import '../models/photo_proof.dart';
 import '../models/quest.dart';
 import '../models/quest_recommendation.dart';
@@ -124,6 +125,15 @@ class QuestRepository {
     ]);
     return UserQuest.fromJson(json);
   }
+
+  /// Explore's last filters, or the defaults on a first launch. Local-only.
+  ExploreFilters getExploreFilters() {
+    final json = _localDataSource.getExploreFilters();
+    return json == null ? const ExploreFilters() : ExploreFilters.fromJson(json);
+  }
+
+  Future<void> saveExploreFilters(ExploreFilters filters) =>
+      _localDataSource.saveExploreFilters(filters.toJson());
 
   /// Walked steps per attempt (`user_quests.id`), local-only.
   Map<String, int> getStepTotals() => _localDataSource.getStepTotals();
