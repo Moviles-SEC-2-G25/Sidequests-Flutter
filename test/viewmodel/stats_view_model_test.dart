@@ -58,6 +58,9 @@ class _FakeQuestRepository implements QuestRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// compute() replaced: a real isolate never finishes inside testWidgets.
+Future<StatsSummary> _inline(StatsInput input) async => summarizeStats(input);
+
 void main() {
   late _FakeQuestRepository repository;
   late StatsViewModel viewModel;
@@ -80,7 +83,79 @@ void main() {
 
   setUp(() {
     repository = _FakeQuestRepository();
-    viewModel = StatsViewModel(repository, 'user-1');
+    viewModel = StatsViewModel(repository, 'user-1', runner: _inline);
+  });
+
+  group('summarizeStats', () {
+    test('counts attempts without skipped, sorts categories and sums only known attempts', () {
+      seedHistory();
+
+      final summary = summarizeStats(
+        StatsInput(
+          catalog: repository.catalog,
+          userQuests: repository.userQuests,
+          stepTotals: const {'uq-1': 1200, 'uq-3': 34, 'someone-else': 9999},
+        ),
+      );
+
+      expect(summary.attemptCount, 4);
+      expect(summary.completedCount, 3);
+      expect(summary.categoryStats.map((s) => s.category), ['food', 'art']);
+      expect(summary.totalSteps, 1234);
+    });
+
+    test('ties in attempts sort by category; no step data is null, not 0', () {
+      final summary = summarizeStats(
+        StatsInput(
+          catalog: [_quest('m1', 'Music'), _quest('a1', 'Art')],
+          userQuests: [_attempt('uq-1', 'm1', 'completed'), _attempt('uq-2', 'a1', 'abandoned')],
+          stepTotals: const {},
+        ),
+      );
+
+      expect(summary.categoryStats.map((s) => s.category), ['art', 'music']);
+      expect(summary.totalSteps, isNull);
+    });
+  });
+
+  group('runner', () {
+    test('load() hands the runner what it read, step totals included', () async {
+      seedHistory();
+      repository.stepTotals = {'uq-1': 50};
+      StatsInput? received;
+      final recording = StatsViewModel(
+        repository,
+        'user-1',
+        runner: (input) async {
+          received = input;
+          return summarizeStats(input);
+        },
+      );
+
+      await recording.load();
+
+      expect(received!.catalog, repository.catalog);
+      expect(received!.userQuests, repository.userQuests);
+      expect(received!.stepTotals, {'uq-1': 50});
+      expect(recording.totalSteps, 50);
+    });
+
+    // Not inline on purpose: only a real isolate proves that StatsInput and
+    // StatsSummary can cross to it and back.
+    test('the default runner gives the same result through a real isolate', () async {
+      seedHistory();
+      repository.stepTotals = {'uq-1': 1200, 'uq-3': 34};
+      final background = StatsViewModel(repository, 'user-1');
+
+      await background.load();
+
+      expect(background.status, StatsStatus.data);
+      expect(background.completedCount, 3);
+      expect(background.attemptCount, 4);
+      expect(background.categoryStats.map((s) => s.category), ['food', 'art']);
+      expect(background.categoryStats.first.level, CompletionLevel.medium);
+      expect(background.totalSteps, 1234);
+    });
   });
 
   group('StatsViewModel', () {
