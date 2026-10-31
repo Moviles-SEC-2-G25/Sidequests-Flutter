@@ -50,6 +50,7 @@ class _HomeShellState extends State<HomeShell> {
   bool _isRouteCurrent = true;
   bool _isAppResumed = true;
   late final StreamSubscription<CheckInEvent> _checkInSubscription;
+  late final StreamSubscription<void> _exploreTabSubscription;
   late final AppLifecycleListener _lifecycleListener;
 
   static const _pages = [
@@ -70,6 +71,9 @@ class _HomeShellState extends State<HomeShell> {
     // (MissionTabView can also be pushed on top of itself), and the
     // check-in should be announced whichever tab is showing.
     _checkInSubscription = questViewModel.checkInEvents.listen(_onCheckIn);
+    _exploreTabSubscription = questViewModel.exploreTabRequests.listen(
+      (_) => _selectTab(_exploreTabIndex),
+    );
     // The location check-in's GPS only runs in the foreground.
     _lifecycleListener = AppLifecycleListener(
       onStateChange: (state) {
@@ -110,6 +114,15 @@ class _HomeShellState extends State<HomeShell> {
       // Dropped again mid-reload: the cached data stays and the next
       // reconnection tries again.
     }
+  }
+
+  void _selectTab(int index) {
+    if (!mounted) return;
+    setState(() {
+      _index = index;
+      _updateShakeSubscription();
+      if (index == _exploreTabIndex) context.read<QuestViewModel>().onExploreVisible();
+    });
   }
 
   void _onCheckIn(CheckInEvent event) {
@@ -184,6 +197,7 @@ class _HomeShellState extends State<HomeShell> {
     _shakeSubscription?.cancel();
     _shakeDetector.dispose();
     _checkInSubscription.cancel();
+    _exploreTabSubscription.cancel();
     _lifecycleListener.dispose();
     super.dispose();
   }
@@ -201,11 +215,7 @@ class _HomeShellState extends State<HomeShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (index) => setState(() {
-          _index = index;
-          _updateShakeSubscription();
-          if (index == _exploreTabIndex) context.read<QuestViewModel>().onExploreVisible();
-        }),
+        onDestinationSelected: _selectTab,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.explore_outlined), label: 'Explorar'),
           NavigationDestination(icon: Icon(Icons.location_on_outlined), label: 'Cerca'),

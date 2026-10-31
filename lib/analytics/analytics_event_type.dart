@@ -7,6 +7,8 @@ abstract final class AnalyticsEventType {
   static const recommendationSkipped = 'recommendation_skipped';
   static const questStarted = 'quest_started';
   static const questAbandoned = 'quest_abandoned';
+  static const questAlternativeShown = 'quest_alternative_shown';
+  static const questAlternativeSelected = 'quest_alternative_selected';
   static const questCompleted = 'quest_completed';
   static const questRated = 'quest_rated';
   static const locationModeSelected = 'location_mode_selected';

@@ -13,16 +13,19 @@ import 'package:sidequests/data/services/location_check_in_service.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/data/services/step_counter_service.dart';
 import 'package:sidequests/data/services/weather_service.dart';
+import 'package:sidequests/models/abandonment_reason.dart';
 import 'package:sidequests/models/photo_proof.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_step.dart';
 import 'package:sidequests/models/step_session.dart';
+import 'package:sidequests/models/user_preferences.dart';
 import 'package:sidequests/models/user_quest.dart';
 import 'package:sidequests/models/verified_check_in.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/view/quests/abandon_mission_view.dart';
 import 'package:sidequests/view/quests/mission_tab_view.dart';
 import 'package:sidequests/view/quests/quest_detail_view.dart';
+import 'package:sidequests/viewmodel/profile/profile_view_model.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 
 /// What QuestRepository now throws when a write gets no answer.
@@ -83,6 +86,31 @@ class _SpyTracker extends AnalyticsTracker {
     double? questLongitude,
     Map<String, dynamic> metadata = const {},
   }) async => tracked.add(eventType);
+
+  @override
+  Future<void> trackDetailed(
+    String eventType, {
+    String? questId,
+    String? category,
+    int? availableMinutes,
+    String? socialLevel,
+    String? locationMode,
+    int? questDurationMinutes,
+    String? questDifficulty,
+    double? estimatedCost,
+    double? questLatitude,
+    double? questLongitude,
+    required Map<String, dynamic> Function(int? distanceMeters) metadataForDistance,
+    bool withCoordinates = true,
+  }) async => tracked.add(eventType);
+}
+
+class _FakeProfile extends ChangeNotifier implements ProfileViewModel {
+  @override
+  UserPreferences get preferences => const UserPreferences();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 QuestStep _step(int order) =>
@@ -135,9 +163,12 @@ class _FakeQuestRepository implements QuestRepository {
   }
 
   @override
-  Future<UserQuest> abandonQuest(UserQuest userQuest, {required String reason}) async {
+  Future<({UserQuest userQuest, bool queued})> abandonQuestOrQueue(
+    UserQuest userQuest, {
+    required String reason,
+  }) async {
     if (offline) throw _offlineError;
-    return userQuest.copyWithProgress(status: 'abandoned');
+    return (userQuest: userQuest.copyWithProgress(status: 'abandoned'), queued: false);
   }
 
   // Podómetro and photo proofs: nothing stored in these tests.
@@ -181,12 +212,12 @@ void main() {
     );
   });
 
-  group('abandoning offline', () {
+  group('abandoning when it cannot even stay on the device', () {
     test('reports failure, keeps the mission active and tracks nothing', () async {
       await viewModel.load();
       repository.offline = true;
 
-      final saved = await viewModel.abandonQuest(repository.mission, reason: 'too_far');
+      final saved = await viewModel.abandonQuest(repository.mission, reason: AbandonmentReason.tooFar);
 
       expect(saved, isFalse);
       expect(viewModel.errorMessage, startsWith('Sin conexión'));
@@ -197,28 +228,31 @@ void main() {
     test('online it still abandons and tracks quest_abandoned', () async {
       await viewModel.load();
 
-      expect(await viewModel.abandonQuest(repository.mission, reason: 'too_far'), isTrue);
+      expect(await viewModel.abandonQuest(repository.mission, reason: AbandonmentReason.tooFar), isTrue);
       expect(tracker.tracked, contains(AnalyticsEventType.questAbandoned));
     });
 
     testWidgets('the screen stays, says why, and lets the user try again', (tester) async {
       repository.offline = true;
       await tester.pumpWidget(
-        ChangeNotifierProvider<QuestViewModel>.value(
-          value: viewModel,
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<QuestViewModel>.value(value: viewModel),
+            ChangeNotifierProvider<ProfileViewModel>.value(value: _FakeProfile()),
+          ],
           child: MaterialApp(home: AbandonMissionView(mission: repository.mission, totalSteps: 3)),
         ),
       );
 
-      await tester.ensureVisible(find.text('Guardar y volver después'));
-      await tester.tap(find.text('Guardar y volver después'));
+      await tester.ensureVisible(find.text('Empezar otra misión'));
+      await tester.tap(find.text('Empezar otra misión'));
       await tester.pump(); // the write fails
       await tester.pump(); // SnackBar in
 
       expect(find.textContaining('Sin conexión'), findsOneWidget);
       expect(find.byType(AbandonMissionView), findsOneWidget);
-      final button = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Guardar y volver después'),
+      final button = tester.widget<OutlinedButton>(
+        find.widgetWithText(OutlinedButton, 'Empezar otra misión'),
       );
       expect(button.onPressed, isNotNull);
     });

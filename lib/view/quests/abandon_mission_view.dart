@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
+import '../../models/abandonment_reason.dart';
 import '../../models/user_quest.dart';
+import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
-import 'explore_view.dart';
+import 'quest_alternatives_view.dart';
 
-/// "Exit mission" confirmation. Leaving here does not throw progress away —
-/// `current_step`/`completed_steps` are already persisted — it records an
-/// optional reason (BQ6: quest abandonment reasons) via the same
-/// `abandonQuest` used everywhere else, and the quest stays resumable from
-/// the Explore "continue" banner / Misión tab afterwards.
+/// "Exit mission" confirmation. "Guardar y volver después" just goes back: the
+/// progress is already persisted and the mission stays active. "Empezar otra
+/// misión" abandons it, with an optional reason (BQ6: quest abandonment
+/// reasons), and offers alternatives.
 class AbandonMissionView extends StatefulWidget {
   final UserQuest mission;
   final int totalSteps;
@@ -22,38 +23,44 @@ class AbandonMissionView extends StatefulWidget {
 }
 
 class _AbandonMissionViewState extends State<AbandonMissionView> {
-  static const _reasons = [
-    ('ran_out_of_time', '⏰', 'Se me acabó el tiempo'),
-    ('place_closed', '🔒', 'El lugar estaba cerrado'),
-    ('too_far', '📍', 'Quedaba muy lejos'),
-    ('too_expensive', '💸', 'Era muy costosa'),
-    ('too_hard', '🧗', 'Era muy difícil'),
-    ('bad_weather', '🌧️', 'El clima no ayudó'),
-    ('lost_interest', '😴', 'Perdí el interés'),
-  ];
-
-  String? _selectedReason;
+  AbandonmentReason? _selectedReason;
   bool _isSaving = false;
 
-  Future<void> _leave() async {
+  Future<void> _abandon() async {
     setState(() => _isSaving = true);
     final questViewModel = context.read<QuestViewModel>();
     final saved = await questViewModel.abandonQuest(
       widget.mission,
-      reason: _selectedReason ?? 'not_specified',
+      reason: _selectedReason ?? AbandonmentReason.other,
+      preferences: context.read<ProfileViewModel>().preferences,
     );
     if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     if (!saved) {
-      // Not abandoned (e.g. offline): stay, so the user can retry or go on.
+      // Couldn't even be kept on the device: stay, so the user can retry or go on.
       setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(content: Text(questViewModel.errorMessage ?? 'No se pudo guardar.')),
       );
       return;
     }
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const ExploreView()),
-      (route) => false,
+    if (questViewModel.abandonmentQueued) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Misión abandonada sin conexión: se sincronizará al reconectar.')),
+      );
+    }
+    final navigator = Navigator.of(context);
+    if (questViewModel.questAlternatives == null) {
+      // It was already abandoned: nothing new to suggest.
+      questViewModel.requestExploreTab();
+      navigator.popUntil((route) => route.isFirst);
+      return;
+    }
+    // Keeps the first route, the one under AuthGate with HomeShell: back from
+    // the alternatives lands there, and logging out still reaches the login.
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const QuestAlternativesView()),
+      (route) => route.isFirst,
     );
   }
 
@@ -75,7 +82,8 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
               Text('¿Necesitas un descanso? Está bien.', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 8),
               Text(
-                'Tu progreso está guardado. Vuelve cuando quieras — sin límite de tiempo.',
+                'Si guardas, tu progreso te espera: vuelve cuando quieras, sin límite de tiempo. '
+                'Si empiezas otra misión, esta quedará abandonada.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 20),
@@ -147,18 +155,17 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
               ),
               const SizedBox(height: 20),
               Text(
-                '¿Qué pasó? (opcional — nos ayuda a mejorar)',
+                'Si la dejas, ¿qué pasó? (opcional — nos ayuda a mejorar)',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 10),
-              ..._reasons.map((entry) {
-                final (value, emoji, label) = entry;
-                final selected = _selectedReason == value;
+              ...AbandonmentReason.values.map((reason) {
+                final selected = _selectedReason == reason;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(14),
-                    onTap: () => setState(() => _selectedReason = selected ? null : value),
+                    onTap: () => setState(() => _selectedReason = selected ? null : reason),
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(14),
@@ -173,9 +180,9 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
                       ),
                       child: Row(
                         children: [
-                          Text(emoji, style: const TextStyle(fontSize: 18)),
+                          Text(reason.emoji, style: const TextStyle(fontSize: 18)),
                           const SizedBox(width: 10),
-                          Text(label),
+                          Expanded(child: Text(reason.label)),
                         ],
                       ),
                     ),
@@ -184,19 +191,19 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
               }),
               const SizedBox(height: 12),
               FilledButton(
-                onPressed: _isSaving ? null : _leave,
+                onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+                child: const Text('Guardar y volver después'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _isSaving ? null : _abandon,
                 child: _isSaving
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Guardar y volver después'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: _isSaving ? null : _leave,
-                child: const Text('Empezar otra misión'),
+                    : const Text('Empezar otra misión'),
               ),
               const SizedBox(height: 8),
               Center(

@@ -6,7 +6,9 @@ import '../../analytics/analytics_event_type.dart';
 import '../../analytics/analytics_tracker.dart';
 import '../../core/app_exception.dart';
 import '../../core/bq10_context.dart';
+import '../../core/bq6_evidence.dart';
 import '../../core/completion_likelihood.dart';
+import '../../core/quest_alternative_recommender.dart';
 import '../../core/similar_quest_recommender.dart';
 import '../../core/verification/step_verification_strategy.dart';
 import '../../core/verification/verification_strategies.dart';
@@ -15,6 +17,7 @@ import '../../data/remote/network_guard.dart';
 import '../../data/services/location_check_in_service.dart';
 import '../../data/services/photo_capture_service.dart';
 import '../../data/services/step_counter_service.dart';
+import '../../models/abandonment_reason.dart';
 import '../../models/app_context.dart';
 import '../../models/explore_filters.dart';
 import '../../models/photo_proof.dart';
@@ -29,12 +32,10 @@ import '../../repository/quest_repository.dart';
 
 const List<int> kAvailableMinuteOptions = [10, 20, 30, 45, 60];
 
-/// Statuses that mean "not finished yet" — a quest in one of these can still
-/// be resumed from the Explore "continue" banner or the Misión tab.
-const _unfinishedStatuses = {'accepted', 'in_progress', 'abandoned'};
-
-/// A mission being actively done: walked steps are counted and the GPS
-/// check-in runs (an abandoned quest pauses both until it's resumed).
+/// A mission being actively done: it can be resumed from the Explore "continue"
+/// banner or the Misión tab, walked steps are counted and the GPS check-in
+/// runs. An abandoned attempt is closed, as in Kotlin: starting that quest again
+/// is a new attempt.
 const _activeMissionStatuses = {'accepted', 'in_progress'};
 
 /// Minimum time between two automatic check-in attempts on the same step,
@@ -55,6 +56,30 @@ class CheckInEvent {
   const CheckInEvent({required this.mission, required this.quest, required this.completedQuest});
 }
 
+/// The alternatives offered after abandoning a mission.
+class QuestAlternativesState {
+  final String sourceQuestId;
+  final String sourceAttemptId;
+  final AbandonmentReason reason;
+  final bool isLoading;
+  final List<QuestAlternative> suggestions;
+
+  /// What [suggestions] were computed with; null until the first load ends.
+  final AppContext? context;
+
+  const QuestAlternativesState({
+    required this.sourceQuestId,
+    required this.sourceAttemptId,
+    required this.reason,
+    this.isLoading = true,
+    this.suggestions = const [],
+    this.context,
+  });
+
+  String? get weatherCondition =>
+      context == null ? null : alternativesWeatherCondition(context!);
+}
+
 /// Explore, nearby, quest detail and mission-in-progress state.
 class QuestViewModel extends ChangeNotifier {
   final QuestRepository _questRepository;
@@ -69,6 +94,14 @@ class QuestViewModel extends ChangeNotifier {
   final LocationCheckInService _checkIn;
   StreamSubscription<CheckInFix>? _checkInSubscription;
   final StreamController<CheckInEvent> _checkInEvents = StreamController<CheckInEvent>.broadcast();
+  final StreamController<void> _exploreTabRequests = StreamController<void>.broadcast();
+  final _questAlternativeRecommender = const QuestAlternativeRecommender();
+
+  /// Abandonments on their way, by attempt: a repeated tap gets the same one.
+  final Map<String, Future<bool>> _abandonsInFlight = {};
+
+  /// Bumped on every load and on leaving, so a late result is dropped.
+  int _alternativesGeneration = 0;
 
   /// `"<user_quests.id>:<currentStep>"` of the step whose location is being
   /// watched; null when the GPS is off.
@@ -129,6 +162,12 @@ class QuestViewModel extends ChangeNotifier {
 
   /// The last [submitRating] stayed on the device, pending sync.
   bool ratingQueued = false;
+
+  /// The last [abandonQuest] stayed on the device, pending sync.
+  bool abandonmentQueued = false;
+
+  /// The alternatives on screen after abandoning; null when there are none.
+  QuestAlternativesState? questAlternatives;
 
   /// Why the last [completeCurrentStep] couldn't be saved (e.g. offline);
   /// null when it went through or is still running.
@@ -197,11 +236,11 @@ class QuestViewModel extends ChangeNotifier {
   }
 
   /// The quest to resume from "Continúa donde lo dejaste" / the Misión tab:
-  /// the most recently touched quest that isn't completed. `userQuests` is
+  /// the most recently touched quest still being done. `userQuests` is
   /// already ordered by `updated_at desc` by the repository query.
   UserQuest? get currentMission => userQuests
       .cast<UserQuest?>()
-      .firstWhere((uq) => _unfinishedStatuses.contains(uq!.status), orElse: () => null);
+      .firstWhere((uq) => _activeMissionStatuses.contains(uq!.status), orElse: () => null);
 
   Quest? questById(String id) =>
       catalog.cast<Quest?>().firstWhere((q) => q!.id == id, orElse: () => null);
@@ -695,9 +734,6 @@ class QuestViewModel extends ChangeNotifier {
       _replaceUserQuest(updated);
       if (isLastStep) {
         await _finishStepTracking(updated.id);
-      } else if (userQuest.status == 'abandoned') {
-        // Resuming an abandoned attempt keeps adding to its saved total.
-        unawaited(_startStepTracking(updated));
       }
       return isLastStep;
     } on AppException catch (e) {
@@ -784,29 +820,79 @@ class QuestViewModel extends ChangeNotifier {
     );
   }
 
-  /// Returns false (with [errorMessage] set) when it couldn't be saved —
-  /// e.g. offline — so the mission is still active and nothing is tracked.
-  Future<bool> abandonQuest(UserQuest userQuest, {required String reason}) async {
+  /// Closes the attempt and starts loading its [questAlternatives]; without a
+  /// connection it stays on the device, pending sync ([abandonmentQueued]).
+  /// Repeated taps get the same answer, with one write and one event.
+  /// Returns false (with [errorMessage] set) when it couldn't be saved even
+  /// there, so the mission is still active and nothing is tracked.
+  Future<bool> abandonQuest(
+    UserQuest userQuest, {
+    required AbandonmentReason reason,
+    UserPreferences preferences = const UserPreferences(),
+  }) => _abandonsInFlight[userQuest.id] ??= _abandonQuest(
+    userQuest,
+    reason,
+    preferences,
+  ).whenComplete(() {
+    _abandonsInFlight.remove(userQuest.id);
+  });
+
+  Future<bool> _abandonQuest(
+    UserQuest userQuest,
+    AbandonmentReason reason,
+    UserPreferences preferences,
+  ) async {
+    // The caller's copy can be from before the last step was completed.
+    final attempt = userQuests.cast<UserQuest?>().firstWhere(
+      (uq) => uq!.id == userQuest.id,
+      orElse: () => userQuest,
+    )!;
+    if (attempt.status == 'abandoned') return true;
+
+    final questId = attempt.questId;
+    final quest = questById(questId);
+    final totalSteps = stepsOf(questId).length;
+    final uploadedProofs = _photoProofsAttemptId == attempt.id ? _photoProofs.length : 0;
+    final hadPhotoProof =
+        uploadedProofs > 0 || pendingPhotoProofs.any((proof) => proof.attemptId == attempt.id);
+    final socialLevel = effectiveSocialLevel(preferences);
     try {
-      final updated = await _questRepository.abandonQuest(userQuest, reason: reason);
-      _replaceUserQuest(updated);
-      await _finishStepTracking(updated.id);
-      final quest = questById(updated.questId);
-      _analyticsTracker.track(
+      final result = await _questRepository.abandonQuestOrQueue(attempt, reason: reason.code);
+      abandonmentQueued = result.queued;
+      _replaceUserQuest(result.userQuest);
+      await _finishStepTracking(attempt.id);
+      _analyticsTracker.trackDetailed(
         AnalyticsEventType.questAbandoned,
-        questId: updated.questId,
+        questId: questId,
         category: quest?.category,
+        availableMinutes: selectedMinutes,
+        socialLevel: socialLevel,
+        locationMode: selectedLocationScope,
         questDurationMinutes: quest?.durationMinutes,
         questDifficulty: quest?.difficulty,
         estimatedCost: quest?.estimatedCost,
         questLatitude: quest?.latitude,
         questLongitude: quest?.longitude,
-        metadata: {
-          'reason': reason,
-          'step': userQuest.currentStep,
-          'completed_steps': userQuest.completedSteps.length,
-        },
+        metadataForDistance: (distanceMeters) => questAbandonedMetadata(
+          reason: reason,
+          attemptId: attempt.id,
+          isAnywhere: quest?.locationMode == 'anywhere',
+          distanceMeters: distanceMeters,
+          durationMinutes: quest?.durationMinutes,
+          estimatedCost: quest?.estimatedCost,
+          currentStepIndex: attempt.currentStep,
+          completedSteps: attempt.completedSteps.length,
+          totalSteps: totalSteps,
+          hadPhotoProof: hadPhotoProof,
+          uploadedPhotoProofCount: uploadedProofs,
+        ),
       );
+      questAlternatives = QuestAlternativesState(
+        sourceQuestId: questId,
+        sourceAttemptId: attempt.id,
+        reason: reason,
+      );
+      unawaited(refreshQuestAlternatives(preferences));
       return true;
     } on AppException catch (e) {
       errorMessage = e.message;
@@ -814,6 +900,115 @@ class QuestViewModel extends ChangeNotifier {
       return false;
     }
   }
+
+  /// Computes the alternatives from the catalogue in memory, which is the saved
+  /// one when offline. Each load logs what it showed, as in Kotlin; a load the
+  /// user left behind logs nothing.
+  Future<void> refreshQuestAlternatives(UserPreferences preferences) async {
+    final current = questAlternatives;
+    if (current == null) return;
+    final generation = ++_alternativesGeneration;
+    questAlternatives = QuestAlternativesState(
+      sourceQuestId: current.sourceQuestId,
+      sourceAttemptId: current.sourceAttemptId,
+      reason: current.reason,
+      suggestions: current.suggestions,
+      context: current.context,
+    );
+    notifyListeners();
+
+    AppContext context;
+    try {
+      context = await _contextWithinLimit();
+    } catch (_) {
+      context = _contextManager.localSnapshot(availableMinutes: selectedMinutes);
+    }
+    if (generation != _alternativesGeneration) return;
+
+    final source = questById(current.sourceQuestId);
+    final suggestions = source == null
+        ? const <QuestAlternative>[]
+        : _questAlternativeRecommender.recommend(
+            catalog: catalog,
+            abandonedQuest: source,
+            reason: current.reason,
+            context: context,
+            availableMinutes: selectedMinutes,
+            preferences: preferences.copyWith(
+              locationMode: selectedLocationScope,
+              socialLevel: sessionSocialLevel,
+            ),
+            excludedIds: {
+              ...userQuests.map((uq) => uq.questId),
+              ..._sessionSkippedQuestIds,
+            },
+          );
+    final loaded = QuestAlternativesState(
+      sourceQuestId: current.sourceQuestId,
+      sourceAttemptId: current.sourceAttemptId,
+      reason: current.reason,
+      isLoading: false,
+      suggestions: suggestions,
+      context: context,
+    );
+    questAlternatives = loaded;
+    notifyListeners();
+    for (final (index, alternative) in suggestions.indexed) {
+      _trackQuestAlternative(AnalyticsEventType.questAlternativeShown, loaded, alternative, index + 1);
+    }
+  }
+
+  /// Only records the choice: opening its detail never accepts the mission.
+  void trackQuestAlternativeSelected(QuestAlternative alternative) {
+    final state = questAlternatives;
+    if (state == null) return;
+    final rank = state.suggestions.indexOf(alternative) + 1;
+    _trackQuestAlternative(AnalyticsEventType.questAlternativeSelected, state, alternative, rank);
+  }
+
+  void _trackQuestAlternative(
+    String eventType,
+    QuestAlternativesState state,
+    QuestAlternative alternative,
+    int rank,
+  ) {
+    final quest = alternative.quest;
+    _analyticsTracker.trackDetailed(
+      eventType,
+      questId: quest.id,
+      category: quest.category,
+      availableMinutes: selectedMinutes,
+      locationMode: selectedLocationScope,
+      questDurationMinutes: quest.durationMinutes,
+      questDifficulty: quest.difficulty,
+      estimatedCost: quest.estimatedCost,
+      withCoordinates: false,
+      metadataForDistance: (_) => {
+        'platform': 'flutter',
+        'algorithm_version': questAlternativesAlgorithmVersion,
+        'source_quest_id': state.sourceQuestId,
+        'source_attempt_id': state.sourceAttemptId,
+        'reason_code': state.reason.code,
+        'rank': rank,
+        'score': alternative.score,
+        'applied_rules': alternative.ruleCodes.join(','),
+        'time_of_day': state.context?.timeOfDay,
+        'weather_condition': state.weatherCondition ?? 'unknown',
+        'context_source': 'device',
+      },
+    );
+  }
+
+  void dismissQuestAlternatives() {
+    _alternativesGeneration++;
+    questAlternatives = null;
+    notifyListeners();
+  }
+
+  /// HomeShell listens: it owns the tabs, and whoever asks may be above it.
+  Stream<void> get exploreTabRequests => _exploreTabRequests.stream;
+
+  void requestExploreTab() => _exploreTabRequests.add(null);
 
   /// Candidates for the "shake to decide" gesture: same catalogue filter as
   /// Explore (respects `selectedMinutes`), minus quests already completed.
@@ -1409,6 +1604,7 @@ class QuestViewModel extends ChangeNotifier {
     _stopCheckIn();
     _checkIn.dispose();
     _checkInEvents.close();
+    _exploreTabRequests.close();
     super.dispose();
   }
 

@@ -25,6 +25,7 @@ import 'package:sidequests/data/services/biometric_service.dart';
 import 'package:sidequests/data/services/location_check_in_service.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/data/services/step_counter_service.dart';
+import 'package:sidequests/models/abandonment_reason.dart';
 import 'package:sidequests/models/pending_write.dart';
 import 'package:sidequests/models/photo_proof.dart';
 import 'package:sidequests/models/quest.dart';
@@ -456,11 +457,13 @@ void main() {
         expect(viewModel.currentMission!.questId, 'a');
       });
 
-      testWidgets('escritura de misión sin cola: error de conexión, no spinner', (tester) async {
+      testWidgets('abandono de un intento que no está en el teléfono: error de conexión, no spinner', (
+        tester,
+      ) async {
         final attempt = UserQuest(id: 'uq', userId: _userId, questId: 'a', acceptedAt: DateTime(2026));
 
         final viewModel = _viewModel(repository, tracker);
-        final ok = await _withinLimit(tester, viewModel.abandonQuest(attempt, reason: 'x'));
+        final ok = await _withinLimit(tester, viewModel.abandonQuest(attempt, reason: AbandonmentReason.other));
 
         expect(ok, isFalse);
         expect(viewModel.errorMessage, startsWith('Sin conexión'));

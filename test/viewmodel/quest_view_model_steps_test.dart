@@ -8,6 +8,7 @@ import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/data/services/step_counter_service.dart';
+import 'package:sidequests/models/abandonment_reason.dart';
 import 'package:sidequests/models/photo_proof.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_step.dart';
@@ -110,8 +111,10 @@ class _FakeQuestRepository implements QuestRepository {
       userQuest.copyWithProgress(status: 'completed');
 
   @override
-  Future<UserQuest> abandonQuest(UserQuest userQuest, {required String reason}) async =>
-      userQuest.copyWithProgress(status: 'abandoned');
+  Future<({UserQuest userQuest, bool queued})> abandonQuestOrQueue(
+    UserQuest userQuest, {
+    required String reason,
+  }) async => (userQuest: userQuest.copyWithProgress(status: 'abandoned'), queued: false);
 
   @override
   Map<String, int> getStepTotals() => stepTotals;
@@ -194,7 +197,7 @@ void main() {
     await _flush();
     await walk([100, 145]);
 
-    await viewModel.abandonQuest(viewModel.currentMission!, reason: 'no_time');
+    await viewModel.abandonQuest(viewModel.currentMission!, reason: AbandonmentReason.ranOutOfTime);
 
     expect(repository.stepTotals, {'uq-a': 45});
     expect(repository.activeSession, isNull);
@@ -237,20 +240,16 @@ void main() {
     expect(viewModel.missionSteps, 300);
   });
 
-  test('resuming an abandoned attempt keeps adding to its saved total', () async {
+  test('an abandoned attempt is closed: it is not the current mission and counts nothing', () async {
     repository.userQuests = [_userQuest('abandoned')];
     repository.stepTotals['uq-a'] = 500;
     repository.steps = [_step(1), _step(2)];
     await viewModel.load();
     await viewModel.loadSteps('a');
-    expect(viewModel.stepTrackedUserQuestId, isNull); // abandoned: paused
-
-    await viewModel.completeCurrentStep(viewModel.currentMission!); // step 1 of 2 → in_progress
     await _flush();
-    expect(viewModel.missionSteps, 500);
 
-    await walk([20, 50]);
-    expect(viewModel.missionSteps, 530);
+    expect(viewModel.currentMission, isNull);
+    expect(viewModel.stepTrackedUserQuestId, isNull);
   });
 
   test('the active session is written on start, on the first reading and every 25 steps — not on every reading', () async {
@@ -271,7 +270,7 @@ void main() {
     requestAccess = () => permission.future;
 
     await viewModel.acceptQuest('a');
-    await viewModel.abandonQuest(viewModel.currentMission!, reason: 'no_time');
+    await viewModel.abandonQuest(viewModel.currentMission!, reason: AbandonmentReason.ranOutOfTime);
     permission.complete(StepCounterStatus.counting);
     await _flush();
 

@@ -13,6 +13,7 @@ import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/location_check_in_service.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/data/services/step_counter_service.dart';
+import 'package:sidequests/models/abandonment_reason.dart';
 import 'package:sidequests/models/photo_proof.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_step.dart';
@@ -148,8 +149,10 @@ class _FakeQuestRepository implements QuestRepository {
   }
 
   @override
-  Future<UserQuest> abandonQuest(UserQuest userQuest, {required String reason}) async =>
-      userQuest.copyWithProgress(status: 'abandoned');
+  Future<({UserQuest userQuest, bool queued})> abandonQuestOrQueue(
+    UserQuest userQuest, {
+    required String reason,
+  }) async => (userQuest: userQuest.copyWithProgress(status: 'abandoned'), queued: false);
 
   // Podómetro storage: unused here (the step counter is unavailable).
   @override
@@ -344,7 +347,7 @@ void main() {
   test('abandoning the mission stops the GPS', () async {
     await openMission([_step(0, 'location'), _step(1, 'none')]);
 
-    await viewModel.abandonQuest(viewModel.currentMission!, reason: 'no_time');
+    await viewModel.abandonQuest(viewModel.currentMission!, reason: AbandonmentReason.ranOutOfTime);
 
     expect(checkIn.isWatching, isFalse);
   });
