@@ -45,6 +45,10 @@ class QuestRepository {
   /// connectivity check can't see, like a Wi-Fi network without internet.
   bool catalogFromCache = false;
 
+  /// The last [getUserQuestsWithSource] fell back to the device, like
+  /// [catalogFromCache]. Queued attempts are in that cache too.
+  bool userQuestsFromCache = false;
+
   QuestRepository(this._remoteDataSource, this._localDataSource, {String Function()? newId})
     : _newId = newId ?? (() => const Uuid().v4());
 
@@ -178,8 +182,10 @@ class QuestRepository {
         _withUnsyncedAttempts(await _remoteDataSource.getUserQuests(userId), userId),
       );
       await _localDataSource.cacheUserQuests(rows);
+      userQuestsFromCache = false;
       return (userQuests: rows.map(UserQuest.fromJson).toList(), fromCache: false);
     } catch (_) {
+      userQuestsFromCache = true;
       return (
         userQuests: _localDataSource.getUserQuests().map(UserQuest.fromJson).toList(),
         fromCache: true,

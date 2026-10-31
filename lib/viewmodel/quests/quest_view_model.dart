@@ -673,6 +673,11 @@ class QuestViewModel extends ChangeNotifier {
   Map<String, CompletionLevel> get completionLikelihoodByCategory =>
       _completionLikelihood.byCategory(catalog, userQuests);
 
+  /// The labels above were computed from data saved on the device, because the
+  /// catalog or the attempts couldn't be fetched.
+  bool get completionLabelsFromCache =>
+      _questRepository.catalogFromCache || _questRepository.userQuestsFromCache;
+
   CompletionLevel completionLevelFor(Quest quest, Map<String, CompletionLevel> byCategory) =>
       _completionLikelihood.levelFor(quest, byCategory);
 

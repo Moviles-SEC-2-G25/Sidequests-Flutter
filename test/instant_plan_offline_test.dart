@@ -372,7 +372,13 @@ void main() {
       context: _context,
       preferences: const UserPreferences(),
     );
-    await pumpEventQueue(); // the steps prefetch isn't awaited
+    // The steps prefetch isn't awaited, and on a real box it writes to disk,
+    // which pumpEventQueue doesn't wait for: closing the box first would fail.
+    for (var i = 0; i < 200; i++) {
+      final ids = remote.recommendations.map((row) => row['quest_id'] as String);
+      if (ids.every(questRepository.hasCachedSteps)) break;
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
   }
 
   Future<RecommendationResult> loadOffline() async {
