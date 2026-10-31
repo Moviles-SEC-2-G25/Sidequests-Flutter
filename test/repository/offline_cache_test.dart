@@ -152,6 +152,9 @@ class _FakeLocal implements LocalDataSource {
   Future<void> cacheActiveQuestId(String? questId) async {}
 
   @override
+  List<Map<String, dynamic>> getPendingWrites() => const [];
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 

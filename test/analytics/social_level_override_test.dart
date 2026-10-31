@@ -68,14 +68,17 @@ class _RecordingQuestRepository implements QuestRepository {
   Future<void> saveExploreFilters(ExploreFilters filters) async {}
 
   @override
-  Future<List<QuestRecommendation>> getRecommendations({
+  Future<RecommendationBatch> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,
     List<String> excludedQuestIds = const [],
     int limit = 3,
   }) async {
     sentPreferences.add(preferences);
-    return [QuestRecommendation.fromJson({'quest_id': 'a', 'score': 1.5})];
+    return RecommendationBatch(
+      recommendations: [QuestRecommendation.fromJson({'quest_id': 'a', 'score': 1.5})],
+      batchId: 'batch',
+    );
   }
 
   @override

@@ -8,7 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local cache: profile, preferences, quest catalog and steps, the user's
 /// attempts and their photo proofs, active quest and progress, analytics
-/// events waiting for a connection and resolved quest addresses.
+/// events and quest writes waiting for a connection, resolved quest addresses
+/// and the last recommendations.
 /// Repositories read from here when the network is unavailable and write
 /// through on every successful remote fetch or write. Session persistence
 /// is handled by supabase_flutter itself, not duplicated here.
@@ -30,6 +31,8 @@ class LocalDataSource {
   static const _keyPendingPhotoProofs = 'pending_photo_proofs';
   static const _pendingProofsDir = 'pending_proofs';
   static const _keyPendingAnalyticsEvents = 'pending_analytics_events';
+  static const _keyPendingWrites = 'pending_writes';
+  static const _keySavedRecommendations = 'saved_recommendations';
   static const _keyAddresses = 'addresses';
   static const _keyOnboardingComplete = 'onboarding_complete';
   static const _keyDarkMode = 'dark_mode';
@@ -215,6 +218,34 @@ class LocalDataSource {
 
   Future<void> savePendingAnalyticsEvents(List<Map<String, dynamic>> events) =>
       _box.put(_keyPendingAnalyticsEvents, events);
+
+  /// Quest writes waiting for a connection, oldest first (see PendingWrite).
+  /// Cleared on sign-out with the rest of the box.
+  List<Map<String, dynamic>> getPendingWrites() =>
+      (_box.get(_keyPendingWrites) as List? ?? const [])
+          .cast<Map>()
+          .map((write) => write.cast<String, dynamic>())
+          .toList();
+
+  Future<void> savePendingWrites(List<Map<String, dynamic>> writes) =>
+      _box.put(_keyPendingWrites, writes);
+
+  /// The last recommendations received and their batch id; null until one
+  /// non-empty list arrives online.
+  ({String batchId, List<Map<String, dynamic>> rows})? getSavedRecommendations() {
+    final saved = _box.get(_keySavedRecommendations) as Map?;
+    if (saved == null) return null;
+    return (
+      batchId: saved['batch_id'] as String,
+      rows: (saved['rows'] as List)
+          .cast<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList(),
+    );
+  }
+
+  Future<void> saveRecommendations(String batchId, List<Map<String, dynamic>> rows) =>
+      _box.put(_keySavedRecommendations, {'batch_id': batchId, 'rows': rows});
 
   /// Reverse-geocoded address of [coordinatesKey]; null when it was never
   /// resolved online.

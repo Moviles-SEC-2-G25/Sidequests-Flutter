@@ -409,6 +409,10 @@ class _RecommendedSection extends StatelessWidget {
           'Basado en tu tiempo, intereses y historial',
           style: Theme.of(context).textTheme.bodySmall,
         ),
+        if (questViewModel.recommendationsFromCache) ...[
+          const SizedBox(height: 8),
+          const _Badge(text: 'Recomendaciones guardadas', color: AppColors.primaryContainerLight),
+        ],
         const SizedBox(height: 12),
         ...questViewModel.recommendations.asMap().entries.map((entry) {
           final index = entry.key;
@@ -488,6 +492,11 @@ class _RecommendationCardState extends State<_RecommendationCard> {
         SnackBar(content: Text(questViewModel.errorMessage ?? 'No se pudo iniciar la misión.')),
       );
       return;
+    }
+    if (questViewModel.instantPlanQueued) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Misión iniciada sin conexión: se sincronizará al reconectar')),
+      );
     }
     navigator.push(MaterialPageRoute(builder: (_) => const MissionTabView(isTab: false)));
   }
