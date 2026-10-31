@@ -5,9 +5,15 @@ import '../../core/verification/step_verification_strategy.dart';
 /// Wraps the GPS sensor. Used by the Context Manager and by quest views
 /// that need the device's current position (e.g. nearby/location-mode quests).
 class LocationService {
-  /// Returns the current position, or null if permission is denied or
-  /// location services are disabled. Callers treat a null position the same
-  /// way the backend treats a missing one: features degrade, they don't crash.
+  /// Without a limit a GPS that never answers would hang every caller, and
+  /// ContextManager's callers all share one reading. The permission dialog
+  /// isn't limited: that wait is up to the user.
+  static const fixTimeLimit = Duration(seconds: 10);
+
+  /// Returns the current position, or null if permission is denied, location
+  /// services are disabled or no fix arrives within [fixTimeLimit]. Callers
+  /// treat a null position the same way the backend treats a missing one:
+  /// features degrade, they don't crash.
   Future<Position?> getCurrentPosition({
     LocationAccuracy accuracy = LocationAccuracy.medium,
   }) async {
@@ -25,7 +31,7 @@ class LocationService {
 
     try {
       return await Geolocator.getCurrentPosition(
-        locationSettings: LocationSettings(accuracy: accuracy),
+        locationSettings: LocationSettings(accuracy: accuracy, timeLimit: fixTimeLimit),
       );
     } catch (_) {
       return null;
