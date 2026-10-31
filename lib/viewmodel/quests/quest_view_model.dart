@@ -96,6 +96,10 @@ class QuestViewModel extends ChangeNotifier {
 
   /// [recommendations] is the list saved on the device: the network failed.
   bool recommendationsFromCache = false;
+
+  /// The social level of the last list the server answered, which is also the
+  /// one saved on the device. null until one arrives this session.
+  String? _lastServedSocialLevel;
   List<UserQuest> userQuests = [];
   List<QuestStep> steps = [];
   String? _stepsQuestId;
@@ -285,6 +289,14 @@ class QuestViewModel extends ChangeNotifier {
   String effectiveSocialLevel(UserPreferences profile) =>
       sessionSocialLevel ?? profile.socialLevel;
 
+  /// The chip the saved list on screen doesn't reflect yet: the server applies
+  /// it when [refreshAfterReconnect] reloads. null when there's nothing to wait
+  /// for, like a chip picked online whose own list is the one saved.
+  String? get socialLevelAwaitingReconnect {
+    final level = sessionSocialLevel;
+    return recommendationsFromCache && level != _lastServedSocialLevel ? level : null;
+  }
+
   /// BQ10 (location-independent mode usage) is measured from the 'anywhere'
   /// and 'gps' events; 'all' isn't part of it. Its context metadata comes
   /// from the last snapshot ([currentContext]).
@@ -342,6 +354,7 @@ class QuestViewModel extends ChangeNotifier {
       }
       // A saved list logged its impressions when it was first shown (BQ8).
       if (batch.fromCache) return;
+      _lastServedSocialLevel = effectivePreferences.socialLevel;
       for (final recommendation in recommendations) {
         _analyticsTracker.track(
           AnalyticsEventType.recommendationShown,

@@ -34,6 +34,9 @@ class _OtpLoginViewState extends State<OtpLoginView> {
   String _email = '';
   int _secondsLeft = 0;
   Timer? _resendTimer;
+  StreamSubscription<bool>? _offlineSubscription;
+  bool _isOffline = false;
+  bool _heardConnectivityChange = false;
 
   String get _typedEmail => _emailController.text.trim().toLowerCase();
   bool get _isEmailValid => _emailPattern.hasMatch(_typedEmail);
@@ -42,6 +45,14 @@ class _OtpLoginViewState extends State<OtpLoginView> {
   @override
   void initState() {
     super.initState();
+    final authViewModel = context.read<AuthViewModel>();
+    _offlineSubscription = authViewModel.offlineChanges.listen((isOffline) {
+      _heardConnectivityChange = true;
+      _onOfflineChanged(isOffline);
+    }, onError: (Object _) {});
+    authViewModel.isOffline().then((isOffline) {
+      if (!_heardConnectivityChange) _onOfflineChanged(isOffline);
+    });
     // Don't greet the user with an error from an earlier attempt.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<AuthViewModel>().clearOtpError();
@@ -50,10 +61,18 @@ class _OtpLoginViewState extends State<OtpLoginView> {
 
   @override
   void dispose() {
+    _offlineSubscription?.cancel();
     _resendTimer?.cancel();
     _emailController.dispose();
     _codeController.dispose();
     super.dispose();
+  }
+
+  /// Only turns the buttons back on: nothing is sent by itself on reconnecting.
+  void _onOfflineChanged(bool isOffline) {
+    if (!mounted || isOffline == _isOffline) return;
+    setState(() => _isOffline = isOffline);
+    if (!isOffline) context.read<AuthViewModel>().clearOtpConnectionError();
   }
 
   Future<void> _sendCode() async {
@@ -86,7 +105,8 @@ class _OtpLoginViewState extends State<OtpLoginView> {
       // AuthGate (the first route) already shows the app underneath.
       navigator.popUntil((route) => route.isFirst);
     } else if (mounted) {
-      _codeController.clear();
+      // A wrong code is of no use; one that never reached the server is.
+      if (!authViewModel.otpFailedForConnection) _codeController.clear();
       setState(() {});
     }
   }
@@ -104,9 +124,13 @@ class _OtpLoginViewState extends State<OtpLoginView> {
   @override
   Widget build(BuildContext context) {
     final authViewModel = context.watch<AuthViewModel>();
-    final isVerifying = authViewModel.status == AuthStatus.authenticating;
+    final isVerifying = authViewModel.isVerifyingCode || authViewModel.status == AuthStatus.authenticating;
     final isBusy = authViewModel.isSendingCode || isVerifying;
-    final error = authViewModel.otpErrorMessage;
+    final error = !_isOffline
+        ? authViewModel.otpErrorMessage
+        : _step == _OtpStep.email
+        ? AuthViewModel.offlineSendMessage
+        : AuthViewModel.offlineVerifyMessage;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Entrar con código')),
@@ -157,12 +181,12 @@ class _OtpLoginViewState extends State<OtpLoginView> {
       decoration: const InputDecoration(labelText: 'Correo'),
       onChanged: (_) => setState(() {}),
       onSubmitted: (_) {
-        if (_isEmailValid && !isBusy) _sendCode();
+        if (_isEmailValid && !isBusy && !_isOffline) _sendCode();
       },
     ),
     const SizedBox(height: 20),
     FilledButton(
-      onPressed: _isEmailValid && !isBusy ? _sendCode : null,
+      onPressed: _isEmailValid && !isBusy && !_isOffline ? _sendCode : null,
       child: isBusy ? const _ButtonSpinner() : const Text('Enviar código'),
     ),
   ];
@@ -196,17 +220,17 @@ class _OtpLoginViewState extends State<OtpLoginView> {
         onChanged: (_) {
           setState(() {});
           // Typing (or pasting) the last digit signs in — no extra tap.
-          if (_isCodeComplete && !isBusy) _verify();
+          if (_isCodeComplete && !isBusy && !_isOffline) _verify();
         },
       ),
       const SizedBox(height: 20),
       FilledButton(
-        onPressed: _isCodeComplete && !isBusy ? _verify : null,
+        onPressed: _isCodeComplete && !isBusy && !_isOffline ? _verify : null,
         child: isVerifying ? const _ButtonSpinner() : const Text('Entrar'),
       ),
       const SizedBox(height: 8),
       TextButton(
-        onPressed: _secondsLeft > 0 || isBusy ? null : _sendCode,
+        onPressed: _secondsLeft > 0 || isBusy || _isOffline ? null : _sendCode,
         child: Text(
           _secondsLeft > 0 ? 'Reenviar código ($minutes:$seconds)' : 'Reenviar código',
         ),
