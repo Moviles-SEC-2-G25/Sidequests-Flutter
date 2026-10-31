@@ -447,7 +447,7 @@ class QuestRepository {
       throw const AppException('La foto guardada ya no está en el teléfono. Toma otra.');
     }
 
-    if (await _network.isOffline || !await _attemptReachedServer(pending.attemptId)) {
+    if (!await _attemptReachedServer(pending.attemptId)) {
       throw await _failPending(pending, const AppException(_offlineMessage, isRetryable: true));
     }
 

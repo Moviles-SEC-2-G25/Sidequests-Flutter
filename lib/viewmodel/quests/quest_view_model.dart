@@ -409,7 +409,7 @@ class QuestViewModel extends ChangeNotifier {
   /// Explore wait for another request to show the saved list. Logs nothing: it
   /// logged its impressions when it was first shown (BQ8).
   void showSavedRecommendationsIfOffline() {
-    if (recommendations.isNotEmpty) return;
+    if (recommendations.isNotEmpty || !_questRepository.catalogFromCache) return;
     final saved = _questRepository.savedRecommendations(_sessionSkippedQuestIds.toList());
     if (saved == null || saved.recommendations.isEmpty) return;
     recommendations = saved.recommendations;
