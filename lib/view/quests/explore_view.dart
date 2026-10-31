@@ -229,10 +229,13 @@ class _SocialMoodFilter extends StatelessWidget {
   });
 
   static const _levels = [
-    ('solo', '🙋 Solo yo'),
-    ('social', '👫 Con alguien'),
-    ('group', '👥 En grupo'),
+    ('solo', '🙋', 'Solo yo'),
+    ('social', '👫', 'Con alguien'),
+    ('group', '👥', 'En grupo'),
   ];
+
+  /// A level's chip text without its emoji, for sentences that mention it.
+  static String nameOf(String level) => _levels.firstWhere((entry) => entry.$1 == level).$3;
 
   @override
   Widget build(BuildContext context) {
@@ -252,9 +255,9 @@ class _SocialMoodFilter extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: _levels.map((entry) {
-            final (value, label) = entry;
+            final (value, emoji, name) = entry;
             return ChoiceChip(
-              label: Text(label),
+              label: Text('$emoji $name'),
               selected: current == value,
               selectedColor: AppColors.secondary,
               onSelected: (_) {
@@ -386,6 +389,7 @@ class _RecommendedSection extends StatelessWidget {
     if (questViewModel.recommendations.isEmpty) return const SizedBox.shrink();
 
     final likelihoodByCategory = questViewModel.completionLikelihoodByCategory;
+    final awaitingLevel = questViewModel.socialLevelAwaitingReconnect;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,6 +419,14 @@ class _RecommendedSection extends StatelessWidget {
         if (questViewModel.recommendationsFromCache) ...[
           const SizedBox(height: 8),
           const _Badge(text: 'Recomendaciones guardadas', color: AppColors.primaryContainerLight),
+        ],
+        if (awaitingLevel != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            "Sin conexión: estas son tus últimas recomendaciones. "
+            "Aplicaremos '${_SocialMoodFilter.nameOf(awaitingLevel)}' al reconectar.",
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ],
         const SizedBox(height: 12),
         ...questViewModel.recommendations.asMap().entries.map((entry) {
