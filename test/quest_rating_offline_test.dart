@@ -167,6 +167,9 @@ class _FakeLocal implements LocalDataSource {
   Map<String, dynamic>? getActiveStepSession() => null;
 
   @override
+  Map<String, dynamic>? getVerifiedCheckIn() => null;
+
+  @override
   List<Map<String, dynamic>> getPendingPhotoProofs() => const [];
 
   @override

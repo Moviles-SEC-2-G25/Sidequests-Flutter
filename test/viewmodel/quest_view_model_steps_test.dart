@@ -13,6 +13,7 @@ import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_step.dart';
 import 'package:sidequests/models/step_session.dart';
 import 'package:sidequests/models/user_quest.dart';
+import 'package:sidequests/models/verified_check_in.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 
@@ -120,6 +121,9 @@ class _FakeQuestRepository implements QuestRepository {
 
   @override
   StepSession? getActiveStepSession() => activeSession;
+
+  @override
+  VerifiedCheckIn? getVerifiedCheckIn() => null;
 
   @override
   Future<void> saveActiveStepSession(StepSession? session) async {

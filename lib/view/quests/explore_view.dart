@@ -416,6 +416,7 @@ class _RecommendedSection extends StatelessWidget {
           'Basado en tu tiempo, intereses y historial',
           style: Theme.of(context).textTheme.bodySmall,
         ),
+        if (questViewModel.completionLabelsFromCache) const _SavedDataNote(),
         if (questViewModel.recommendationsFromCache) ...[
           const SizedBox(height: 8),
           const _Badge(text: 'Recomendaciones guardadas', color: AppColors.primaryContainerLight),
@@ -688,6 +689,8 @@ class _AllMissionsSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text('Todas las misiones', style: Theme.of(context).textTheme.titleLarge),
+        if (questViewModel.completionLabelsFromCache && questViewModel.filteredCatalog.isNotEmpty)
+          const _SavedDataNote(),
         const SizedBox(height: 8),
         if (questViewModel.filteredCatalog.isEmpty)
           const Padding(
@@ -708,6 +711,25 @@ class _AllMissionsSection extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Next to the "Probabilidad de que la termines" labels when they were
+/// computed from data saved on the device.
+class _SavedDataNote extends StatelessWidget {
+  const _SavedDataNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        'Según tus datos guardados',
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline),
+      ),
     );
   }
 }
