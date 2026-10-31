@@ -65,8 +65,12 @@ class _QuestDetailViewState extends State<QuestDetailView> {
     final UserQuest? userQuest = questViewModel.userQuests
         .cast<UserQuest?>()
         .firstWhere((uq) => uq?.questId == quest.id, orElse: () => null);
+    // Abandoned is closed too: accepting the quest again is a new attempt.
     final isUnfinished =
-        userQuest != null && userQuest.status != 'completed' && userQuest.status != 'skipped';
+        userQuest != null &&
+        userQuest.status != 'completed' &&
+        userQuest.status != 'skipped' &&
+        userQuest.status != 'abandoned';
     final isCompleted = userQuest?.status == 'completed';
     final stepsForThisQuest = questViewModel.stepsOf(quest.id);
     final stepCount = stepsForThisQuest.isNotEmpty ? stepsForThisQuest.length : null;

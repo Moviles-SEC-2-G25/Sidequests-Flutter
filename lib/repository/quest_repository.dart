@@ -207,7 +207,7 @@ class QuestRepository {
         await syncPendingWrites();
         return _remoteDataSource.getUserQuests(userId);
       });
-      final rows = _withUnsentRatings(_withUnsyncedAttempts(serverRows, userId));
+      final rows = _withUnsentWrites(_withUnsyncedAttempts(serverRows, userId));
       await _localDataSource.cacheUserQuests(rows);
       userQuestsFromCache = false;
       return (userQuests: rows.map(UserQuest.fromJson).toList(), fromCache: false);
@@ -248,19 +248,27 @@ class QuestRepository {
     ];
   }
 
-  /// Same for ratings: the server's row doesn't have them yet.
-  List<Map<String, dynamic>> _withUnsentRatings(List<Map<String, dynamic>> rows) {
-    final ratings = {
-      for (final write in _pendingWrites())
-        if (write.type == PendingWrite.rateQuest) write.payload['id']: write.payload,
-    };
-    if (ratings.isEmpty) return rows;
+  /// Same for ratings and abandonments: the server's row doesn't have them yet.
+  List<Map<String, dynamic>> _withUnsentWrites(List<Map<String, dynamic>> rows) {
+    final unsent = <Object?, Map<String, dynamic>>{};
+    for (final write in _pendingWrites()) {
+      if (write.type == PendingWrite.rateQuest) {
+        (unsent[write.payload['id']] ??= {}).addAll({
+          'rating': write.payload['rating'],
+          'feedback_tags': write.payload['feedback_tags'],
+        });
+      } else if (write.type == PendingWrite.abandonQuest) {
+        (unsent[write.payload['id']] ??= {}).addAll({
+          'status': write.payload['status'],
+          'abandon_reason': write.payload['abandon_reason'],
+          'abandoned_at': write.payload['abandoned_at'],
+        });
+      }
+    }
+    if (unsent.isEmpty) return rows;
     return [
       for (final row in rows)
-        if (ratings[row['id']] case final rating?)
-          {...row, 'rating': rating['rating'], 'feedback_tags': rating['feedback_tags']}
-        else
-          row,
+        if (unsent[row['id']] case final columns?) {...row, ...columns} else row,
     ];
   }
 
@@ -319,6 +327,8 @@ class QuestRepository {
             feedbackTags: (write.payload['feedback_tags'] as List).cast<String>(),
           ),
         );
+      case PendingWrite.abandonQuest:
+        await _network.run(() => _remoteDataSource.upsertUserQuest(write.payload));
       default:
         debugPrint('Unknown pending write ${write.type}, discarding it');
     }
@@ -326,8 +336,9 @@ class QuestRepository {
 
   /// The server said no: the mission that only existed on this device goes,
   /// and so does what's queued behind it — a rating is an upsert, and sending
-  /// it would create the row that was just rejected. A rejected rating just
-  /// leaves: the next read replaces the cached one with the server's.
+  /// it would create the row that was just rejected. A rejected rating or
+  /// abandonment just leaves: the next read replaces the cached one with the
+  /// server's.
   Future<void> _undoPendingWrite(PendingWrite write) async {
     if (write.type != PendingWrite.acceptQuest) return;
     final attemptId = write.payload['id'];
@@ -724,18 +735,30 @@ class QuestRepository {
   }
 
   Future<UserQuest> updateProgress(UserQuest userQuest) async {
-    final json = await _remoteWrite(
-      () => _remoteDataSource.upsertUserQuest({
-        'id': userQuest.id,
-        'user_id': userQuest.userId,
-        'quest_id': userQuest.questId,
-        'status': userQuest.status,
-        'current_step': userQuest.currentStep,
-        'completed_steps': userQuest.completedSteps,
-      }),
-    );
+    final json = await _progressWrite({
+      'id': userQuest.id,
+      'user_id': userQuest.userId,
+      'quest_id': userQuest.questId,
+      'status': userQuest.status,
+      'current_step': userQuest.currentStep,
+      'completed_steps': userQuest.completedSteps,
+    });
     return _cacheUserQuest(json);
   }
+
+  /// A progress write goes after what's queued, within one timeout: otherwise
+  /// the abandonment, older but sent later, would have the last word over
+  /// newer data, and an attempt still queued as abandoned can't move forward.
+  Future<Map<String, dynamic>> _progressWrite(Map<String, dynamic> row) => _remoteWrite(() async {
+    if (_localDataSource.getPendingWrites().isNotEmpty) {
+      await syncPendingWrites();
+      final stillAbandoning = _pendingWrites().any(
+        (write) => write.type == PendingWrite.abandonQuest && write.payload['id'] == row['id'],
+      );
+      if (stillAbandoning) throw const AppException(_offlineWriteMessage, isRetryable: true);
+    }
+    return _remoteDataSource.upsertUserQuest(row);
+  });
 
   Future<UserQuest> abandonQuest(UserQuest userQuest, {required String reason}) async {
     final json = await _remoteWrite(
@@ -751,15 +774,59 @@ class QuestRepository {
     return _cacheUserQuest(json);
   }
 
-  Future<UserQuest> completeQuest(UserQuest userQuest) async {
-    final json = await _remoteWrite(
-      () => _remoteDataSource.upsertUserQuest({
+  /// Like [abandonQuest], but without a connection the mission is closed on
+  /// the device and the abandonment is queued, with the moment it happened. An
+  /// attempt whose acceptance is still queued goes first, so the abandonment
+  /// always reaches the server after it.
+  Future<({UserQuest userQuest, bool queued})> abandonQuestOrQueue(
+    UserQuest userQuest, {
+    required String reason,
+  }) async {
+    if (await _attemptReachedServer(userQuest.id)) {
+      try {
+        return (userQuest: await abandonQuest(userQuest, reason: reason), queued: false);
+      } on AppException catch (error) {
+        if (!error.isRetryable) rethrow;
+      }
+    }
+    return (userQuest: await _queueAbandonment(userQuest, reason), queued: true);
+  }
+
+  /// Fails like [abandonQuest] if it can't be kept, so the mission stays active
+  /// instead of looking abandoned on a device that will never send it.
+  Future<UserQuest> _queueAbandonment(UserQuest userQuest, String reason) async {
+    try {
+      final cached = _localDataSource.getUserQuests().firstWhere(
+        (row) => row['id'] == userQuest.id,
+      );
+      final now = DateTime.now().toUtc();
+      final payload = {
         'id': userQuest.id,
         'user_id': userQuest.userId,
         'quest_id': userQuest.questId,
-        'status': 'completed',
-      }),
-    );
+        'status': 'abandoned',
+        'abandon_reason': reason,
+        'abandoned_at': now.toIso8601String(),
+      };
+      final write = PendingWrite(type: PendingWrite.abandonQuest, payload: payload, createdAt: now);
+      await _localDataSource.savePendingWrites([
+        ..._localDataSource.getPendingWrites(),
+        write.toJson(),
+      ]);
+      await _localDataSource.cacheActiveQuestId(null);
+      return await _cacheUserQuest({...cached, ...payload});
+    } catch (_) {
+      throw const AppException(_offlineWriteMessage, isRetryable: true);
+    }
+  }
+
+  Future<UserQuest> completeQuest(UserQuest userQuest) async {
+    final json = await _progressWrite({
+      'id': userQuest.id,
+      'user_id': userQuest.userId,
+      'quest_id': userQuest.questId,
+      'status': 'completed',
+    });
     await _localDataSource.cacheActiveQuestId(null);
     return _cacheUserQuest(json);
   }

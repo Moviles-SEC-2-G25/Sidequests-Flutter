@@ -11,11 +11,10 @@ import '../../models/quest_step.dart';
 import '../../models/user_quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import 'abandon_mission_view.dart';
-import 'explore_view.dart';
 import 'quest_completed_view.dart';
 
-/// The "Misión" tab: the current in-progress (or paused/abandoned-but-
-/// resumable) quest's step checklist. Also reachable as a pushed full
+/// The "Misión" tab: the current accepted or in-progress quest's step
+/// checklist. Also reachable as a pushed full
 /// screen (`isTab: false`) from the Explore "continue" banner and from
 /// Quest Detail's "Continuar misión".
 class MissionTabView extends StatefulWidget {
@@ -88,9 +87,11 @@ class _NoMissionState extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             FilledButton(
-              onPressed: () => Navigator.of(
-                context,
-              ).pushReplacement(MaterialPageRoute(builder: (_) => const ExploreView())),
+              onPressed: () {
+                // Back to HomeShell, whichever way this screen was reached.
+                context.read<QuestViewModel>().requestExploreTab();
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              },
               child: const Text('Explorar misiones'),
             ),
           ],
@@ -255,9 +256,6 @@ class _WalkedStepsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // An abandoned attempt isn't counted until it's resumed.
-    if (mission.status == 'abandoned') return const SizedBox.shrink();
-
     final textTheme = Theme.of(context).textTheme;
     final isThisMission = questViewModel.stepTrackedUserQuestId == mission.id;
     final steps = questViewModel.missionSteps;

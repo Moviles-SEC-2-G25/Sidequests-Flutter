@@ -8,6 +8,10 @@ class PendingWrite {
   /// `payload` is the rating columns of an existing `user_quests` row.
   static const rateQuest = 'rate_quest';
 
+  /// `payload` is the abandonment columns of an existing `user_quests` row,
+  /// including the moment it really happened.
+  static const abandonQuest = 'abandon_quest';
+
   final String type;
   final Map<String, dynamic> payload;
   final DateTime createdAt;

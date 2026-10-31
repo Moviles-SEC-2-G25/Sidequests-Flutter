@@ -51,6 +51,39 @@ class AnalyticsTracker {
     double? questLatitude,
     double? questLongitude,
     Map<String, dynamic> metadata = const {},
+  }) => trackDetailed(
+    eventType,
+    questId: questId,
+    category: category,
+    availableMinutes: availableMinutes,
+    socialLevel: socialLevel,
+    locationMode: locationMode,
+    questDurationMinutes: questDurationMinutes,
+    questDifficulty: questDifficulty,
+    estimatedCost: estimatedCost,
+    questLatitude: questLatitude,
+    questLongitude: questLongitude,
+    metadataForDistance: (_) => metadata,
+  );
+
+  /// [track], for an event that needs more control. [metadataForDistance] gets
+  /// the same distance as the `distance_meters` column, from this event's
+  /// snapshot, so the caller doesn't wait for the GPS to know it.
+  /// [withCoordinates] false leaves the user's position out of the event.
+  Future<void> trackDetailed(
+    String eventType, {
+    String? questId,
+    String? category,
+    int? availableMinutes,
+    String? socialLevel,
+    String? locationMode,
+    int? questDurationMinutes,
+    String? questDifficulty,
+    double? estimatedCost,
+    double? questLatitude,
+    double? questLongitude,
+    required Map<String, dynamic> Function(int? distanceMeters) metadataForDistance,
+    bool withCoordinates = true,
   }) async {
     // occurred_at defaults to now() in the backend, which is only right for
     // an event sent immediately; a queued one carries this instead.
@@ -82,15 +115,15 @@ class AnalyticsTracker {
         availableMinutes: context.availableMinutes,
         socialLevel: socialLevel,
         locationMode: locationMode,
-        latitude: context.latitude,
-        longitude: context.longitude,
+        latitude: withCoordinates ? context.latitude : null,
+        longitude: withCoordinates ? context.longitude : null,
         weatherCode: context.weatherCode,
         timeOfDay: context.timeOfDay,
         questDurationMinutes: questDurationMinutes,
         questDifficulty: questDifficulty,
         estimatedCost: estimatedCost,
         distanceMeters: distanceMeters,
-        metadata: metadata,
+        metadata: metadataForDistance(distanceMeters),
       ).toJson();
     } catch (_) {
       // Analytics failures must never surface to the user.
