@@ -23,6 +23,7 @@ import 'package:sidequests/data/services/reverse_geocoding_service.dart';
 import 'package:sidequests/data/services/shake_detector.dart';
 import 'package:sidequests/data/services/step_counter_service.dart';
 import 'package:sidequests/data/services/weather_service.dart';
+import 'package:sidequests/models/app_context.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/repository/auth_repository.dart';
 import 'package:sidequests/repository/profile_repository.dart';
@@ -62,6 +63,7 @@ List<Map<String, dynamic>> _stepRows(String questId, int count) => [
 /// Supabase in memory. [offline] fails every call like a dropped connection.
 class _FakeRemote implements SupabaseRemoteDataSource {
   bool offline = false;
+  List<Map<String, dynamic>> recommendations = const [];
   List<Map<String, dynamic>> quests = [_questRow('a'), _questRow('b'), _questRow('c')];
   final Map<String, List<Map<String, dynamic>>> steps = {
     'a': _stepRows('a', 1),
@@ -121,7 +123,7 @@ class _FakeRemote implements SupabaseRemoteDataSource {
     String locationMode = 'all',
     List<String> excludedQuestIds = const [],
     int limit = 3,
-  }) async => []; // never fails: offline it's a raw error, handled in feature/ec-instant-plan
+  }) async => recommendations; // never fails: not what these tests are about
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -165,6 +167,9 @@ class _FakeLocal implements LocalDataSource {
 
   @override
   Map<String, dynamic>? getActiveStepSession() => null;
+
+  @override
+  List<Map<String, dynamic>> getPendingWrites() => const [];
 
   @override
   List<Map<String, dynamic>> getPendingPhotoProofs() => const [];
@@ -238,6 +243,23 @@ ContextManager _contextManager() => ContextManager(
   connectivity: _FakeConnectivity(),
 );
 
+class _CountingContextManager extends ContextManager {
+  int snapshots = 0;
+
+  _CountingContextManager()
+    : super(
+        locationService: _NoLocation(),
+        batteryMonitor: _FullBattery(),
+        connectivity: _FakeConnectivity(),
+      );
+
+  @override
+  Future<AppContext> snapshot({int? availableMinutes}) {
+    snapshots++;
+    return super.snapshot(availableMinutes: availableMinutes);
+  }
+}
+
 class _SpyTracker extends AnalyticsTracker {
   final List<({String type, String? questId})> calls = [];
 
@@ -270,9 +292,9 @@ void main() {
   late QuestRepository repository;
   late _SpyTracker tracker;
 
-  QuestViewModel newViewModel(AnalyticsTracker analyticsTracker) => QuestViewModel(
+  QuestViewModel newViewModel(AnalyticsTracker analyticsTracker, {ContextManager? contextManager}) => QuestViewModel(
     repository,
-    _contextManager(),
+    contextManager ?? _contextManager(),
     analyticsTracker,
     _userId,
     stepCounter: StepCounterService(requestAccess: () async => StepCounterStatus.unavailable),
@@ -517,14 +539,14 @@ void main() {
       });
     }
 
-    Future<void> pumpShell(WidgetTester tester) async {
+    Future<void> pumpShell(WidgetTester tester, {ContextManager? contextManager}) async {
       accelerometer = StreamController<UserAccelerometerEvent>.broadcast();
       now = DateTime(2026, 1, 1, 12);
       final shakeDetector = ShakeDetector(
         accelerometerEvents: accelerometer.stream,
         now: () => now,
       );
-      final viewModel = newViewModel(tracker);
+      final viewModel = newViewModel(tracker, contextManager: contextManager);
       final authRepository = AuthRepository(remote, local);
       await tester.pumpWidget(
         MultiProvider(
@@ -672,6 +694,47 @@ void main() {
       expect(find.text(_noCatalog), findsNothing);
       expect(find.text(_noSavedData), findsNothing);
       expect(tracker.shakes, hasLength(1));
+    });
+
+    testWidgets('reconnecting refreshes the context without logging the live list again', (
+      tester,
+    ) async {
+      remote.recommendations = [
+        {'quest_id': 'a', 'score': 1.5},
+      ];
+      mockPlugins(offline: true);
+      final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      late MockStreamHandlerEventSink connectivityEvents;
+      const status = EventChannel('dev.fluttercommunity.plus/connectivity_status');
+      messenger.setMockStreamHandler(
+        status,
+        MockStreamHandler.inline(
+          onListen: (_, events) {
+            connectivityEvents = events;
+          },
+        ),
+      );
+      addTearDown(() => messenger.setMockStreamHandler(status, null));
+      final contextManager = _CountingContextManager();
+      await pumpShell(tester, contextManager: contextManager);
+      await tester.pump(const Duration(milliseconds: 100));
+      final shownBefore = tracker.calls
+          .where((c) => c.type == AnalyticsEventType.recommendationShown)
+          .length;
+      final snapshotsBefore = contextManager.snapshots;
+      expect(shownBefore, 1);
+
+      connectivityEvents.success(['wifi']);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+      await tester.pump();
+
+      expect(contextManager.snapshots, snapshotsBefore + 1);
+      expect(
+        tracker.calls.where((c) => c.type == AnalyticsEventType.recommendationShown),
+        hasLength(shownBefore),
+      );
     });
 
     testWidgets('with a connection and an empty catalog: the usual message', (tester) async {

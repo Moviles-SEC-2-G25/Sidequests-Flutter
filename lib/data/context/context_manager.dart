@@ -16,10 +16,17 @@ typedef _DeviceReading = ({Position? position, WeatherSnapshot? weather, bool is
 /// Repository/ViewModel layers to attach to recommendation requests and
 /// analytics events.
 class ContextManager {
+  /// Rain is short-lived: past this, a last known reading no longer counts as
+  /// rain. Stricter than WeatherService.fallbackMaxAge on purpose — the code
+  /// itself is still reported (analytics' weather_code), it just stops
+  /// reordering Explore.
+  static const rainFallbackMaxAge = Duration(hours: 3);
+
   final LocationService _locationService;
   final BatteryMonitor _batteryMonitor;
   final Connectivity _connectivity;
   final WeatherService _weatherService;
+  final DateTime Function() _now;
   Future<_DeviceReading>? _readingInFlight;
 
   ContextManager({
@@ -27,10 +34,12 @@ class ContextManager {
     BatteryMonitor? batteryMonitor,
     Connectivity? connectivity,
     WeatherService? weatherService,
+    DateTime Function()? now,
   }) : _locationService = locationService ?? LocationService(),
        _batteryMonitor = batteryMonitor ?? BatteryMonitor(),
        _connectivity = connectivity ?? Connectivity(),
-       _weatherService = weatherService ?? WeatherService();
+       _weatherService = weatherService ?? WeatherService(),
+       _now = now ?? DateTime.now;
 
   /// Single-flight, not a cache: callers arriving during a reading share it
   /// (one recommendation list tracks several events at once), and the next
@@ -40,7 +49,9 @@ class ContextManager {
     final reading = await (_readingInFlight ??= _readDevice().whenComplete(
       () => _readingInFlight = null,
     ));
-    final now = DateTime.now();
+    final now = _now();
+    final weather = reading.weather;
+    final weatherAge = weather != null && weather.isStale ? now.difference(weather.fetchedAt) : null;
 
     return AppContext(
       latitude: reading.position?.latitude,
@@ -49,8 +60,10 @@ class ContextManager {
       dayOfWeek: _dayOfWeek(now),
       isConnected: reading.isConnected,
       availableMinutes: availableMinutes,
-      weatherCode: reading.weather?.weatherCode,
-      isRainy: reading.weather?.isRainy ?? false,
+      weatherCode: weather?.weatherCode,
+      isRainy: (weather?.isRainy ?? false) && (weatherAge == null || weatherAge < rainFallbackMaxAge),
+      weatherIsStale: weather?.isStale ?? false,
+      weatherAge: weatherAge,
     );
   }
 

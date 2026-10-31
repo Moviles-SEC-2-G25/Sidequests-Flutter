@@ -355,6 +355,32 @@ class QuestViewModel extends ChangeNotifier {
     }
   }
 
+  /// Just the context (weather, time of day), so Explore can adapt again
+  /// without asking for recommendations or logging anything. On failure the
+  /// last one stays.
+  Future<void> refreshContext() async {
+    try {
+      currentContext = await _contextManager.snapshot(availableMinutes: selectedMinutes);
+      notifyListeners();
+    } catch (_) {
+      // A missing sensor: nothing new to adapt to.
+    }
+  }
+
+  /// Back online. Recommendations reload only when Explore has nothing to show
+  /// or only the saved list (it failed offline): reloading a live list the user
+  /// already has would log recommendation_shown again for a list they may not
+  /// even be looking at (BQ8 impressions). Either way the context is read again,
+  /// which replaces a last known weather with a real one.
+  Future<void> refreshAfterReconnect(UserPreferences preferences) async {
+    await load();
+    if (recommendations.isEmpty || recommendationsFromCache) {
+      await loadRecommendations(preferences);
+    } else {
+      await refreshContext();
+    }
+  }
+
   /// [wasRecommended] also picks BQ4's start_path: 'standard' from a
   /// recommendation's detail view, 'catalog' from "Todas las misiones".
   /// Returns false (with [errorMessage] set) when it couldn't be saved.
@@ -805,12 +831,16 @@ class QuestViewModel extends ChangeNotifier {
       strategyFor(step.verificationType).allowsManualCompletion(quest, _currentStepEvidence());
 
   /// HomeShell: the GPS only runs while the app is in the foreground.
-  /// Coming back is also a good moment to retry pending photo uploads.
+  /// Coming back is also a good moment to retry pending photo uploads, and to
+  /// re-read a last known weather: hours may have gone by, and it ages out.
   void setForeground(bool isForeground) {
     if (_isForeground == isForeground) return;
     _isForeground = isForeground;
     _syncCheckIn();
-    if (isForeground) unawaited(retryPendingPhotoUploads());
+    if (isForeground) {
+      unawaited(retryPendingPhotoUploads());
+      if (currentContext?.weatherIsStale ?? false) unawaited(refreshContext());
+    }
   }
 
   /// Location evidence from the GPS + the current step's uploaded photo.

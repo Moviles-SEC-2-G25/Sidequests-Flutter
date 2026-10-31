@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local cache: profile, preferences, quest catalog and steps, the user's
 /// attempts and their photo proofs, active quest and progress, analytics
-<<<<<<< HEAD
 /// events and quest writes waiting for a connection, resolved quest addresses,
 /// the last recommendations, and the last weather reading per location.
 /// Repositories read from here when the network is unavailable and write

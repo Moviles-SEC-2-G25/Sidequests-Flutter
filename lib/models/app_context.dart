@@ -15,10 +15,18 @@ class AppContext {
   /// null when there's no location fix or the forecast couldn't be fetched.
   final int? weatherCode;
 
-  /// True when [weatherCode] is a rain/drizzle/thunderstorm code. False
-  /// (not unknown) when there's no weather reading, so callers can use it
-  /// directly without a null check.
+  /// True when [weatherCode] is a rain/drizzle/thunderstorm code recent enough
+  /// to go by (see ContextManager.rainFallbackMaxAge). False (not unknown) when
+  /// there's no weather reading, so callers can use it directly without a null
+  /// check.
   final bool isRainy;
+
+  /// The network failed and the weather is the last known one.
+  final bool weatherIsStale;
+
+  /// How old that last known weather was when this snapshot was taken; null
+  /// when it's current or there is none.
+  final Duration? weatherAge;
 
   const AppContext({
     this.latitude,
@@ -29,6 +37,8 @@ class AppContext {
     this.availableMinutes,
     this.weatherCode,
     this.isRainy = false,
+    this.weatherIsStale = false,
+    this.weatherAge,
   });
 
   bool get hasLocation => latitude != null && longitude != null;

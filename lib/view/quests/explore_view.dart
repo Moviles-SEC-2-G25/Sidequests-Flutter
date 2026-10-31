@@ -342,7 +342,10 @@ class _ContextAdaptationBanner extends StatelessWidget {
     final String message;
     final IconData icon;
     if (appContext.isRainy) {
-      message = 'Está lloviendo: te mostramos primero misiones bajo techo.';
+      final age = appContext.weatherAge;
+      message = age != null
+          ? 'Según el último clima conocido (hace ${age.inMinutes} min): te mostramos primero misiones bajo techo.'
+          : 'Está lloviendo: te mostramos primero misiones bajo techo.';
       icon = Icons.umbrella_outlined;
     } else {
       message = 'Es de noche: priorizamos misiones cerca o en casa.';
