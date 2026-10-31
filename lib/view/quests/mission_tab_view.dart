@@ -401,7 +401,12 @@ class _StepTile extends StatelessWidget {
             for (final (part, result) in verifications)
               part is PhotoVerification
                   ? _PhotoProofRow(questViewModel: questViewModel, result: result)
-                  : _VerificationRow(part: part, result: result),
+                  : _VerificationRow(
+                      part: part,
+                      result: result,
+                      isSavedForLater:
+                          part is LocationVerification && questViewModel.isCheckInSavedForCurrentStep,
+                    ),
           ],
         ],
       ),
@@ -416,7 +421,11 @@ class _VerificationRow extends StatelessWidget {
   final StepVerificationStrategy part;
   final VerificationResult result;
 
-  const _VerificationRow({required this.part, required this.result});
+  /// Verified earlier and waiting for a connection: true even after walking
+  /// away, when [result] no longer says so.
+  final bool isSavedForLater;
+
+  const _VerificationRow({required this.part, required this.result, this.isSavedForLater = false});
 
   @override
   Widget build(BuildContext context) {
@@ -424,6 +433,11 @@ class _VerificationRow extends StatelessWidget {
     final label = isLocation ? 'Ubicación' : 'Foto de verificación';
     final outline = Theme.of(context).colorScheme.outline;
     final (IconData icon, Color iconColor, String detail) = switch (result) {
+      _ when isSavedForLater => (
+        Icons.check_circle,
+        AppColors.secondary,
+        '📍 Llegaste. Se guardará cuando vuelvas a tener conexión.',
+      ),
       Verified() => (Icons.check_circle, AppColors.secondary, 'Verificada automáticamente'),
       Pending(distanceMeters: final distance?) => (
         Icons.near_me_outlined,

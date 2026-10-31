@@ -20,6 +20,7 @@ import '../models/quest_step.dart';
 import '../models/step_session.dart';
 import '../models/user_preferences.dart';
 import '../models/user_quest.dart';
+import '../models/verified_check_in.dart';
 
 
 
@@ -45,6 +46,10 @@ class QuestRepository {
   /// The last [getCatalog] fell back to the cache. Catches what the
   /// connectivity check can't see, like a Wi-Fi network without internet.
   bool catalogFromCache = false;
+
+  /// The last [getUserQuestsWithSource] fell back to the device, like
+  /// [catalogFromCache]. Queued attempts are in that cache too.
+  bool userQuestsFromCache = false;
 
   QuestRepository(
     this._remoteDataSource,
@@ -204,8 +209,10 @@ class QuestRepository {
       });
       final rows = _withUnsentRatings(_withUnsyncedAttempts(serverRows, userId));
       await _localDataSource.cacheUserQuests(rows);
+      userQuestsFromCache = false;
       return (userQuests: rows.map(UserQuest.fromJson).toList(), fromCache: false);
     } catch (_) {
+      userQuestsFromCache = true;
       return (
         userQuests: _localDataSource.getUserQuests().map(UserQuest.fromJson).toList(),
         fromCache: true,
@@ -370,6 +377,16 @@ class QuestRepository {
 
   Future<void> saveActiveStepSession(StepSession? session) =>
       _localDataSource.saveActiveStepSession(session?.toJson());
+
+  /// A location check-in waiting for a connection, local-only: QuestViewModel
+  /// completes the step itself once it can, so nothing is queued here.
+  VerifiedCheckIn? getVerifiedCheckIn() {
+    final json = _localDataSource.getVerifiedCheckIn();
+    return json == null ? null : VerifiedCheckIn.fromJson(json);
+  }
+
+  Future<void> saveVerifiedCheckIn(VerifiedCheckIn? checkIn) =>
+      _localDataSource.saveVerifiedCheckIn(checkIn?.toJson());
 
   // --- Photo proof (feature f): migration 009 / docs/API_CONTRACT.md. A
   // photo counts only once BOTH the private Storage upload and its

@@ -24,6 +24,7 @@ import 'package:sidequests/models/quest_recommendation.dart';
 import 'package:sidequests/models/step_session.dart';
 import 'package:sidequests/models/user_preferences.dart';
 import 'package:sidequests/models/user_quest.dart';
+import 'package:sidequests/models/verified_check_in.dart';
 import 'package:sidequests/repository/auth_repository.dart';
 import 'package:sidequests/repository/profile_repository.dart';
 import 'package:sidequests/repository/quest_repository.dart';
@@ -157,6 +158,15 @@ class _FakeQuestRepository implements QuestRepository {
 
   @override
   StepSession? getActiveStepSession() => null;
+
+  @override
+  bool get catalogFromCache => false;
+
+  @override
+  bool get userQuestsFromCache => false;
+
+  @override
+  VerifiedCheckIn? getVerifiedCheckIn() => null;
 
   @override
   List<PendingPhotoProof> getPendingPhotoProofs() => const [];
