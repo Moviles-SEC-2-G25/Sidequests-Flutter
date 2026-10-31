@@ -20,6 +20,7 @@ class AuthViewModel extends ChangeNotifier {
   final BiometricService _biometricService;
   final AnalyticsTracker _analyticsTracker;
   final Future<bool> Function() _isOffline;
+  final Stream<bool> Function() _offlineChanges;
 
   AuthStatus status = AuthStatus.unknown;
   String? errorMessage;
@@ -36,7 +37,9 @@ class AuthViewModel extends ChangeNotifier {
     this._biometricService,
     this._analyticsTracker, {
     Future<bool> Function()? isOffline,
-  }) : _isOffline = isOffline ?? _connectivityIsOffline {
+    Stream<bool> Function()? offlineChanges,
+  }) : _isOffline = isOffline ?? _connectivityIsOffline,
+       _offlineChanges = offlineChanges ?? _connectivityOfflineChanges {
     status = _authRepository.isAuthenticated
         ? AuthStatus.authenticated
         : AuthStatus.unauthenticated;
@@ -61,6 +64,10 @@ class AuthViewModel extends ChangeNotifier {
   static Future<bool> _connectivityIsOffline() async =>
       (await Connectivity().checkConnectivity()).contains(ConnectivityResult.none);
 
+  static Stream<bool> _connectivityOfflineChanges() => Connectivity().onConnectivityChanged.map(
+    (results) => results.contains(ConnectivityResult.none),
+  );
+
   /// Asked here because ContextStatusViewModel lives inside HomeShell, below
   /// the lock screen. Unknown connectivity counts as online.
   Future<bool> isOffline() async {
@@ -71,10 +78,26 @@ class AuthViewModel extends ChangeNotifier {
     }
   }
 
+  /// True while offline, for a screen open on top of AuthGate to follow.
+  Stream<bool> get offlineChanges => _offlineChanges();
+
   // --- Passwordless sign-in with an emailed code (feature e). Kept apart
-  // from [errorMessage], which LoginView shows. ---
+  // from [errorMessage], which LoginView shows. Nothing is sent without a
+  // connection or left for later: codes expire, and credentials aren't kept. ---
+  static const offlineSendMessage = 'Sin conexión. Conéctate para recibir tu código.';
+  static const offlineVerifyMessage = 'Sin conexión. Conéctate para verificar tu código.';
+
   bool isSendingCode = false;
+
+  /// From the first await of [verifyLoginCode]: [status] only changes once
+  /// the connection was checked, and a code must not be tried twice.
+  bool isVerifyingCode = false;
   String? otpErrorMessage;
+
+  /// [otpErrorMessage] is about the connection, not the code: what was typed
+  /// is still good, and the message goes away once back online.
+  bool otpFailedForConnection = false;
+  bool _lastRunFailedForConnection = false;
 
   String? get userId => _authRepository.currentUser?.id;
 
@@ -82,12 +105,19 @@ class AuthViewModel extends ChangeNotifier {
   Future<bool> sendLoginCode(String email) async {
     isSendingCode = true;
     otpErrorMessage = null;
+    otpFailedForConnection = false;
     notifyListeners();
     try {
+      if (await isOffline()) {
+        otpErrorMessage = offlineSendMessage;
+        otpFailedForConnection = true;
+        return false;
+      }
       await _authRepository.sendLoginCode(email);
       return true;
     } on AppException catch (e) {
       otpErrorMessage = e.message;
+      otpFailedForConnection = e.isRetryable;
       return false;
     } finally {
       isSendingCode = false;
@@ -98,20 +128,40 @@ class AuthViewModel extends ChangeNotifier {
   /// Step 2. On success the session's `signedIn` event moves AuthGate on;
   /// the caller pops the code screen pushed on top of it.
   Future<bool> verifyLoginCode({required String email, required String code}) async {
+    if (isVerifyingCode) return false;
+    isVerifyingCode = true;
     otpErrorMessage = null;
-    final success = await _run(() => _authRepository.verifyLoginCode(email: email, code: code));
-    if (!success) {
-      otpErrorMessage = errorMessage;
-      errorMessage = null; // not LoginView's error
+    otpFailedForConnection = false;
+    notifyListeners();
+    try {
+      if (await isOffline()) {
+        otpErrorMessage = offlineVerifyMessage;
+        otpFailedForConnection = true;
+        return false;
+      }
+      final success = await _run(() => _authRepository.verifyLoginCode(email: email, code: code));
+      if (!success) {
+        otpErrorMessage = errorMessage;
+        otpFailedForConnection = _lastRunFailedForConnection;
+        errorMessage = null; // not LoginView's error
+      }
+      return success;
+    } finally {
+      isVerifyingCode = false;
       notifyListeners();
     }
-    return success;
   }
 
   void clearOtpError() {
     if (otpErrorMessage == null) return;
     otpErrorMessage = null;
+    otpFailedForConnection = false;
     notifyListeners();
+  }
+
+  /// Back online: a wrong or expired code still has something to say.
+  void clearOtpConnectionError() {
+    if (otpFailedForConnection) clearOtpError();
   }
 
   Future<bool> signIn({required String email, required String password}) =>
@@ -185,6 +235,7 @@ class AuthViewModel extends ChangeNotifier {
     } on AppException catch (e) {
       status = AuthStatus.unauthenticated;
       errorMessage = e.message;
+      _lastRunFailedForConnection = e.isRetryable;
       notifyListeners();
       return false;
     }
