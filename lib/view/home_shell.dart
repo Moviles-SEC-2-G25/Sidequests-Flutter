@@ -26,7 +26,10 @@ import 'social/social_view.dart';
 /// here, so screens pushed on top of a tab (e.g. quest detail) can still
 /// read them.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+  /// Null: the device's accelerometer.
+  final ShakeDetector? shakeDetector;
+
+  const HomeShell({super.key, this.shakeDetector});
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -36,8 +39,12 @@ class _HomeShellState extends State<HomeShell> {
   static const _exploreTabIndex = 0;
 
   int _index = 0;
-  final ShakeDetector _shakeDetector = ShakeDetector();
+  late final ShakeDetector _shakeDetector = widget.shakeDetector ?? ShakeDetector();
   StreamSubscription<void>? _shakeSubscription;
+
+  /// Kept here because this State's context is above its provider (see
+  /// build), so it can't read it from there; the provider still disposes it.
+  ContextStatusViewModel? _contextStatus;
   late final StreamSubscription<CheckInEvent> _checkInSubscription;
   late final AppLifecycleListener _lifecycleListener;
 
@@ -133,10 +140,17 @@ class _HomeShellState extends State<HomeShell> {
 
   void _onShake() {
     final questViewModel = context.read<QuestViewModel>();
-    final candidates = questViewModel.shakeCandidates;
+    final isOffline = _contextStatus?.isOffline ?? false;
+    final candidates = questViewModel.shakeCandidates(isOffline: isOffline);
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay misiones disponibles para sorprenderte ahora.')),
+        SnackBar(
+          content: Text(
+            questViewModel.shakeHasNoSavedCatalog(isOffline: isOffline)
+                ? 'Sin conexión y sin misiones guardadas: conéctate una vez para usar la misión sorpresa'
+                : 'No hay misiones disponibles para sorprenderte ahora.',
+          ),
+        ),
       );
       return;
     }
@@ -159,7 +173,7 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => ContextStatusViewModel(onReconnected: _refreshAfterReconnect),
+      create: (_) => _contextStatus = ContextStatusViewModel(onReconnected: _refreshAfterReconnect),
       child: Scaffold(
       body: Column(
         children: [

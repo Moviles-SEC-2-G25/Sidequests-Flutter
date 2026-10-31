@@ -40,6 +40,10 @@ class QuestRepository {
   final String Function() _newId;
   Future<void>? _syncInFlight;
 
+  /// The last [getCatalog] fell back to the cache. Catches what the
+  /// connectivity check can't see, like a Wi-Fi network without internet.
+  bool catalogFromCache = false;
+
   QuestRepository(this._remoteDataSource, this._localDataSource, {String Function()? newId})
     : _newId = newId ?? (() => const Uuid().v4());
 
@@ -47,11 +51,16 @@ class QuestRepository {
     try {
       final rows = await _remoteDataSource.getActiveQuests();
       await _localDataSource.cacheQuestCatalog(rows);
+      catalogFromCache = false;
       return rows.map(Quest.fromJson).toList();
     } catch (_) {
+      catalogFromCache = true;
       return _localDataSource.getQuestCatalog().map(Quest.fromJson).toList();
     }
   }
+
+  /// Whether [getSteps] can answer for [questId] without a connection.
+  bool hasCachedSteps(String questId) => _localDataSource.getQuestSteps(questId) != null;
 
   /// Falls back to the cache, so a mission opened once online can still be
   /// followed offline.
