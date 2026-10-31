@@ -6,12 +6,43 @@ class WeatherSnapshot {
   final List<int> precipitationProbabilityNext3h; // percent, one per hour
   final DateTime fetchedAt;
 
+  /// True when the network failed and this is the last known value instead
+  /// of a current reading. Says how it was obtained, so it's never persisted.
+  final bool isStale;
+
   const WeatherSnapshot({
     required this.weatherCode,
     required this.temperatureC,
     required this.precipitationProbabilityNext3h,
     required this.fetchedAt,
+    this.isStale = false,
   });
+
+  WeatherSnapshot asStale() => WeatherSnapshot(
+    weatherCode: weatherCode,
+    temperatureC: temperatureC,
+    precipitationProbabilityNext3h: precipitationProbabilityNext3h,
+    fetchedAt: fetchedAt,
+    isStale: true,
+  );
+
+  factory WeatherSnapshot.fromJson(Map<String, dynamic> json) => WeatherSnapshot(
+    weatherCode: (json['weather_code'] as num).toInt(),
+    temperatureC: (json['temperature_c'] as num).toDouble(),
+    precipitationProbabilityNext3h: (json['precipitation_probability_next_3h'] as List)
+        .cast<num>()
+        .map((p) => p.toInt())
+        .toList(),
+    fetchedAt: DateTime.parse(json['fetched_at'] as String),
+  );
+
+  /// In UTC: the snapshot's age must survive a time zone change.
+  Map<String, dynamic> toJson() => {
+    'weather_code': weatherCode,
+    'temperature_c': temperatureC,
+    'precipitation_probability_next_3h': precipitationProbabilityNext3h,
+    'fetched_at': fetchedAt.toUtc().toIso8601String(),
+  };
 
   /// WMO drizzle/rain (51-67), rain showers (80-82), thunderstorm (95-99).
   bool get isRainy =>
