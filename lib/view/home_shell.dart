@@ -84,14 +84,7 @@ class _HomeShellState extends State<HomeShell> {
     final profileViewModel = context.read<ProfileViewModel>();
     unawaited(context.read<AnalyticsTracker>().flushPending());
     try {
-      await questViewModel.load();
-      // Only when Explore has nothing to show or only the saved list (it
-      // failed offline): reloading a live list the user already has would log
-      // recommendation_shown again for a list they may not even be looking at
-      // (BQ8 impressions).
-      if (questViewModel.recommendations.isEmpty || questViewModel.recommendationsFromCache) {
-        await questViewModel.loadRecommendations(profileViewModel.preferences);
-      }
+      await questViewModel.refreshAfterReconnect(profileViewModel.preferences);
     } catch (_) {
       // Dropped again mid-reload: the cached data stays and the next
       // reconnection tries again.
