@@ -37,7 +37,7 @@ class SidequestsApp extends StatelessWidget {
     // Shared with ContextManager below so the "Clima en el lugar" card and
     // every context snapshot (recommendations, analytics) hit the same
     // cache instead of each keeping a separate one.
-    final weatherService = WeatherService();
+    final weatherService = WeatherService(localDataSource: localDataSource);
     final contextManager = ContextManager(weatherService: weatherService);
     final analyticsTracker = AnalyticsTracker(
       eventSink: remoteDataSource,

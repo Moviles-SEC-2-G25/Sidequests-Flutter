@@ -8,8 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local cache: profile, preferences, quest catalog and steps, the user's
 /// attempts and their photo proofs, active quest and progress, analytics
-/// events and quest writes waiting for a connection, resolved quest addresses
-/// and the last recommendations.
+<<<<<<< HEAD
+/// events and quest writes waiting for a connection, resolved quest addresses,
+/// the last recommendations, and the last weather reading per location.
 /// Repositories read from here when the network is unavailable and write
 /// through on every successful remote fetch or write. Session persistence
 /// is handled by supabase_flutter itself, not duplicated here.
@@ -34,6 +35,7 @@ class LocalDataSource {
   static const _keyPendingWrites = 'pending_writes';
   static const _keySavedRecommendations = 'saved_recommendations';
   static const _keyAddresses = 'addresses';
+  static const _keyWeatherSnapshots = 'weather_snapshots';
   static const _keyOnboardingComplete = 'onboarding_complete';
   static const _keyDarkMode = 'dark_mode';
   static const _keyExploreFilters = 'explore_filters';
@@ -256,6 +258,16 @@ class LocalDataSource {
   Future<void> cacheAddress(String coordinatesKey, String address) => _box.put(
     _keyAddresses,
     {...(_box.get(_keyAddresses) as Map? ?? const {}), coordinatesKey: address},
+  );
+
+  /// Last weather reading of [coordinatesKey]; null when none was ever
+  /// fetched online.
+  Map<String, dynamic>? getWeatherSnapshot(String coordinatesKey) =>
+      ((_box.get(_keyWeatherSnapshots) as Map?)?[coordinatesKey] as Map?)?.cast<String, dynamic>();
+
+  Future<void> cacheWeatherSnapshot(String coordinatesKey, Map<String, dynamic> snapshot) => _box.put(
+    _keyWeatherSnapshots,
+    {...(_box.get(_keyWeatherSnapshots) as Map? ?? const {}), coordinatesKey: snapshot},
   );
 
   Future<Directory> _pendingProofsDirectory() async {

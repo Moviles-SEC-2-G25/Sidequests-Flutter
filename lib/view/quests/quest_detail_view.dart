@@ -234,7 +234,8 @@ class _QuestDetailViewState extends State<QuestDetailView> {
 
 /// "Clima en el lugar": weather at the quest's coordinates, or at the user's
 /// position for 'anywhere' quests / quests without coordinates. Renders
-/// nothing while loading or when no weather could be obtained.
+/// nothing while loading or without a position to ask about; says so when no
+/// weather could be obtained, and how old it is when it's a last known value.
 class _WeatherCard extends StatefulWidget {
   final Quest quest;
 
@@ -245,7 +246,11 @@ class _WeatherCard extends StatefulWidget {
 }
 
 class _WeatherCardState extends State<_WeatherCard> {
+  /// The rain probability is a forecast of the 3 h after it was fetched.
+  static const _rainForecastMaxAge = Duration(hours: 3);
+
   WeatherSnapshot? _weather;
+  bool _isUnavailable = false;
 
   @override
   void initState() {
@@ -269,16 +274,30 @@ class _WeatherCardState extends State<_WeatherCard> {
 
     final weather = await weatherService.fetch(latitude, longitude);
     if (!mounted) return;
-    setState(() => _weather = weather);
+    setState(() {
+      _weather = weather;
+      _isUnavailable = weather == null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final weather = _weather;
-    if (weather == null) return const SizedBox.shrink();
+    if (weather == null) {
+      if (!_isUnavailable) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 16),
+        child: Text(
+          'Clima no disponible sin conexión',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      );
+    }
 
     final outline = Theme.of(context).colorScheme.outline;
     final rainChance = weather.maxPrecipitationProbability;
+    final age = DateTime.now().difference(weather.fetchedAt);
+    final showRainChance = !weather.isStale || age <= _rainForecastMaxAge;
     return Padding(
       padding: const EdgeInsets.only(top: 16),
       child: Container(
@@ -309,10 +328,16 @@ class _WeatherCardState extends State<_WeatherCard> {
                     '${weather.temperatureC.round()}°C · ${weather.description}',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
-                  Text(
-                    'Lluvia próximas 3 h: $rainChance%',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
+                  if (showRainChance)
+                    Text(
+                      'Lluvia próximas 3 h: $rainChance%',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  if (weather.isStale)
+                    Text(
+                      'Último dato: hace ${age.inMinutes} min · sin conexión',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                 ],
               ),
             ),
