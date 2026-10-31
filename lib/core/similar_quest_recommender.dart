@@ -8,7 +8,9 @@ const _activeOrCompletedStatuses = {'accepted', 'in_progress', 'completed'};
 /// Scores and ranks "you might like" suggestions for QuestCompletedView's
 /// "Te podría gustar" section. Pure Dart — no Flutter dependency — so
 /// QuestViewModel's UI-facing wrapper is the only thing that needs a
-/// BuildContext; this class is trivial to unit test on its own.
+/// BuildContext; this class is trivial to unit test on its own. Local-first:
+/// it only ranks the lists it's given, with no network call, so it works the
+/// same over the cached catalog and attempts.
 class SimilarQuestRecommender {
   const SimilarQuestRecommender();
 

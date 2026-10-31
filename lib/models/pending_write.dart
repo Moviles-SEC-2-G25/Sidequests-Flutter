@@ -5,6 +5,9 @@ class PendingWrite {
   /// `payload` is a new `user_quests` row with a client-generated id.
   static const acceptQuest = 'accept_quest';
 
+  /// `payload` is the rating columns of an existing `user_quests` row.
+  static const rateQuest = 'rate_quest';
+
   final String type;
   final Map<String, dynamic> payload;
   final DateTime createdAt;

@@ -108,6 +108,9 @@ class QuestViewModel extends ChangeNotifier {
   bool isSubmittingRating = false;
   String? ratingErrorMessage;
 
+  /// The last [submitRating] stayed on the device, pending sync.
+  bool ratingQueued = false;
+
   /// Why the last [completeCurrentStep] couldn't be saved (e.g. offline);
   /// null when it went through or is still running.
   String? stepErrorMessage;
@@ -541,7 +544,8 @@ class QuestViewModel extends ChangeNotifier {
   }
 
   /// Saves the post-mission rating/feedback and emits 'quest_rated'.
-  /// Returns true on success; on failure `ratingErrorMessage` is set.
+  /// Returns true on success — also when it was left on the device for later,
+  /// see [ratingQueued]; on failure `ratingErrorMessage` is set.
   Future<bool> submitRating(
     UserQuest userQuest, {
     required int rating,
@@ -549,9 +553,12 @@ class QuestViewModel extends ChangeNotifier {
   }) async {
     isSubmittingRating = true;
     ratingErrorMessage = null;
+    ratingQueued = false;
     notifyListeners();
     try {
-      final updated = await _questRepository.rateQuest(userQuest, rating, tags);
+      final result = await _questRepository.rateQuestOrQueue(userQuest, rating, tags);
+      final updated = result.userQuest;
+      ratingQueued = result.queued;
       _replaceUserQuest(updated);
       final quest = questById(updated.questId);
       _analyticsTracker.track(
