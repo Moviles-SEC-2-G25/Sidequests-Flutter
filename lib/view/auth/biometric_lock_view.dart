@@ -39,6 +39,36 @@ class _BiometricLockViewState extends State<BiometricLockView> {
     });
   }
 
+  /// Signing out is the way to the password, and offline that way back in is
+  /// closed: only then does it ask first.
+  Future<void> _usePassword() async {
+    final authViewModel = context.read<AuthViewModel>();
+    if (await authViewModel.isOffline()) {
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          content: const Text(
+            'Sin conexión no podrás iniciar sesión con tu contraseña hasta reconectar. '
+            '¿Salir de todos modos?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Salir'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    await authViewModel.signOut();
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -76,7 +106,7 @@ class _BiometricLockViewState extends State<BiometricLockView> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
-                    onPressed: _isPrompting ? null : () => context.read<AuthViewModel>().signOut(),
+                    onPressed: _isPrompting ? null : _usePassword,
                     child: const Text('Usar contraseña'),
                   ),
                 ),

@@ -2,7 +2,8 @@ import 'package:local_auth/local_auth.dart';
 
 /// Wraps the device's biometric sensor (fingerprint / Face ID). Never throws:
 /// unsupported devices and platform errors degrade to "not available" /
-/// "not authenticated".
+/// "not authenticated". The OS checks the biometric on the device: no network
+/// call is involved, so it behaves the same offline.
 class BiometricService {
   final LocalAuthentication _auth;
 

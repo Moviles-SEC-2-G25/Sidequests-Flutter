@@ -84,7 +84,8 @@ class LocalDataSource {
       _prefs.setBool(_keyDailyReminders, value);
 
   /// Account-bound: cleared on sign-out so the next account starts without
-  /// a biometric lock it never enabled.
+  /// a biometric lock it never enabled. Lives only in SharedPreferences, never
+  /// on the backend, so it reads and writes the same offline.
   bool isBiometricEnabled() => _prefs.getBool(_keyBiometricEnabled) ?? false;
 
   Future<void> setBiometricEnabled(bool value) =>

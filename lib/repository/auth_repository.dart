@@ -15,6 +15,8 @@ class AuthRepository {
 
   String? get currentUserEmail => _remoteDataSource.currentUserEmail;
 
+  /// Local: the session supabase_flutter restored from disk at startup, even
+  /// if its token expired. Refreshing it happens apart and can fail offline.
   bool get isAuthenticated => currentUser != null;
 
   Stream<AuthState> get authStateChanges => _remoteDataSource.authStateChanges;
@@ -82,8 +84,15 @@ class AuthRepository {
     }
   }
 
+  /// gotrue drops the local session first and only then tells the server, so
+  /// a failure there (no connection) means the user is already out: the cache
+  /// must still go, or the next account would inherit it.
   Future<void> signOut() async {
-    await _remoteDataSource.signOut();
+    try {
+      await _remoteDataSource.signOut();
+    } on AuthException {
+      // The token isn't revoked on the server; it just expires on its own.
+    }
     await _localDataSource.clear();
   }
 }
