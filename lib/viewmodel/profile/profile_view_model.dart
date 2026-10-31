@@ -26,8 +26,12 @@ class ProfileViewModel extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
     try {
-      profile = await _profileRepository.getProfile(_userId);
-      preferences = await _profileRepository.getPreferences(_userId);
+      // At once, so a stalled network costs one timeout and not one per read.
+      // Each result is kept as it arrives, so one failing doesn't lose the other.
+      await Future.wait([
+        _profileRepository.getProfile(_userId).then((loaded) => profile = loaded),
+        _profileRepository.getPreferences(_userId).then((loaded) => preferences = loaded),
+      ]);
     } on AppException catch (e) {
       errorMessage = e.message;
     } finally {

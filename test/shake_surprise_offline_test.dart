@@ -175,6 +175,9 @@ class _FakeLocal implements LocalDataSource {
   List<Map<String, dynamic>> getPendingWrites() => const [];
 
   @override
+  ({String batchId, List<Map<String, dynamic>> rows})? getSavedRecommendations() => null;
+
+  @override
   List<Map<String, dynamic>> getPendingPhotoProofs() => const [];
 
   @override
@@ -594,6 +597,84 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
     }
 
+    Future<void> goBack(WidgetTester tester) async {
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    group('only listens on a visible Explorar, in the foreground', () {
+      setUp(() => remote.recommendations = const []);
+
+      testWidgets('12 shakes open 1 detail, and 1 shake_surprise', (tester) async {
+        mockPlugins(offline: false);
+        await pumpShell(tester);
+
+        for (var i = 0; i < 12; i++) {
+          await shake(tester);
+        }
+
+        expect(find.byType(QuestDetailView), findsOneWidget);
+        expect(tracker.shakes, hasLength(1));
+      });
+
+      testWidgets('the sensor stops under another screen and resumes on coming back', (
+        tester,
+      ) async {
+        mockPlugins(offline: false);
+        await pumpShell(tester);
+        expect(accelerometer.hasListener, isTrue);
+
+        await shake(tester);
+        expect(accelerometer.hasListener, isFalse);
+
+        await goBack(tester);
+        expect(accelerometer.hasListener, isTrue);
+
+        await shake(tester);
+        expect(find.byType(QuestDetailView), findsOneWidget);
+        expect(tracker.shakes, hasLength(2));
+      });
+
+      testWidgets('the sensor stops on other tabs', (tester) async {
+        mockPlugins(offline: false);
+        await pumpShell(tester);
+
+        await tester.tap(find.text('Social'));
+        await tester.pump();
+        expect(accelerometer.hasListener, isFalse);
+
+        await tester.tap(find.text('Explorar'));
+        await tester.pump();
+        expect(accelerometer.hasListener, isTrue);
+      });
+
+      testWidgets('the sensor stops in the background', (tester) async {
+        mockPlugins(offline: false);
+        await pumpShell(tester);
+
+        for (final state in const [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+        }
+        await tester.pump();
+        expect(accelerometer.hasListener, isFalse);
+
+        for (final state in const [
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+        }
+        await tester.pump();
+        expect(accelerometer.hasListener, isTrue);
+      });
+    });
+
     testWidgets('offline with no catalog ever saved: says so, opens nothing, tracks nothing', (
       tester,
     ) async {
@@ -653,6 +734,7 @@ void main() {
       // The pick is random: several shakes, so 'b' can't come up by chance.
       for (var i = 0; i < 12; i++) {
         await shake(tester);
+        await goBack(tester);
       }
 
       expect(repository.catalogFromCache, isFalse);

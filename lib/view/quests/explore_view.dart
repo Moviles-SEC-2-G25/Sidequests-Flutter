@@ -35,6 +35,7 @@ class _ExploreViewState extends State<ExploreView> {
     final profileViewModel = context.read<ProfileViewModel>();
     await Future.wait([questViewModel.load(), profileViewModel.load()]);
     if (!mounted) return;
+    questViewModel.showSavedRecommendationsIfOffline();
     await questViewModel.loadRecommendations(profileViewModel.preferences);
   }
 

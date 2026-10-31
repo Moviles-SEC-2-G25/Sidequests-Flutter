@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/app_exception.dart';
 import '../data/local/local_data_source.dart';
+import '../data/remote/network_guard.dart';
 import '../data/remote/supabase_remote_data_source.dart';
 import '../models/profile.dart';
 import '../models/user_preferences.dart';
@@ -10,16 +11,21 @@ import '../models/user_preferences.dart';
 class ProfileRepository {
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
+  final NetworkGuard _network;
 
   static const _offlineMessage =
       'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
 
-  ProfileRepository(this._remoteDataSource, this._localDataSource);
+  ProfileRepository(
+    this._remoteDataSource,
+    this._localDataSource, {
+    NetworkGuard network = const NetworkGuard(),
+  }) : _network = network;
 
   /// Falls back to the cache when the network is unavailable.
   Future<Profile> getProfile(String userId) async {
     try {
-      final json = await _remoteDataSource.getProfile(userId);
+      final json = await _network.run(() => _remoteDataSource.getProfile(userId));
       await _localDataSource.cacheProfile(json);
       return Profile.fromJson(json);
     } catch (error) {
@@ -47,7 +53,7 @@ class ProfileRepository {
   /// Falls back to the cache when the network is unavailable.
   Future<UserPreferences> getPreferences(String userId) async {
     try {
-      final json = await _remoteDataSource.getPreferences(userId);
+      final json = await _network.run(() => _remoteDataSource.getPreferences(userId));
       await _localDataSource.cachePreferences(json);
       return UserPreferences.fromJson(json);
     } catch (_) {

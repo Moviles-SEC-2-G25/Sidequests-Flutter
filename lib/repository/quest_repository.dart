@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../core/app_exception.dart';
 import '../core/photo_proof_rules.dart';
 import '../data/local/local_data_source.dart';
+import '../data/remote/network_guard.dart';
 import '../data/remote/supabase_remote_data_source.dart';
 import '../models/app_context.dart';
 import '../models/explore_filters.dart';
@@ -39,6 +40,7 @@ class QuestRepository {
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
   final String Function() _newId;
+  final NetworkGuard _network;
   Future<void>? _syncInFlight;
 
   /// The last [getCatalog] fell back to the cache. Catches what the
@@ -49,12 +51,17 @@ class QuestRepository {
   /// [catalogFromCache]. Queued attempts are in that cache too.
   bool userQuestsFromCache = false;
 
-  QuestRepository(this._remoteDataSource, this._localDataSource, {String Function()? newId})
-    : _newId = newId ?? (() => const Uuid().v4());
+  QuestRepository(
+    this._remoteDataSource,
+    this._localDataSource, {
+    String Function()? newId,
+    NetworkGuard network = const NetworkGuard(),
+  }) : _newId = newId ?? (() => const Uuid().v4()),
+       _network = network;
 
   Future<List<Quest>> getCatalog() async {
     try {
-      final rows = await _remoteDataSource.getActiveQuests();
+      final rows = await _network.run(_remoteDataSource.getActiveQuests);
       await _localDataSource.cacheQuestCatalog(rows);
       catalogFromCache = false;
       return rows.map(Quest.fromJson).toList();
@@ -73,21 +80,29 @@ class QuestRepository {
   /// in this list, so the order must be the same everywhere (and match
   /// Kotlin) — whatever order the server or an older cache returned.
   Future<List<QuestStep>> getSteps(String questId) async {
-    List<QuestStep> sorted(List<Map<String, dynamic>> rows) =>
-        rows.map(QuestStep.fromJson).toList()..sort((a, b) => a.stepOrder.compareTo(b.stepOrder));
-
     try {
-      final rows = await _remoteDataSource.getQuestSteps(questId);
+      final rows = await _network.run(() => _remoteDataSource.getQuestSteps(questId));
       await _localDataSource.cacheQuestSteps(questId, rows);
-      return sorted(rows);
+      return _sortedSteps(rows);
     } catch (error) {
       final cached = _localDataSource.getQuestSteps(questId);
-      if (cached != null) return sorted(cached);
+      if (cached != null) return _sortedSteps(cached);
       throw error is PostgrestException
           ? AppException(error.message)
           : const AppException(_noCacheMessage, isRetryable: true);
     }
   }
+
+  /// The saved steps, without asking the network: a mission just started
+  /// offline has already spent its wait on the acceptance.
+  Future<List<QuestStep>> getCachedSteps(String questId) async {
+    final cached = _localDataSource.getQuestSteps(questId);
+    if (cached == null) throw const AppException(_noCacheMessage, isRetryable: true);
+    return _sortedSteps(cached);
+  }
+
+  List<QuestStep> _sortedSteps(List<Map<String, dynamic>> rows) =>
+      rows.map(QuestStep.fromJson).toList()..sort((a, b) => a.stepOrder.compareTo(b.stepOrder));
 
   /// Delegates ranking to the shared `recommend_quests` RPC (BQ5) so Kotlin
   /// and Flutter never duplicate the recommendation logic. Every non-empty
@@ -102,13 +117,15 @@ class QuestRepository {
   }) async {
     final List<Map<String, dynamic>> rows;
     try {
-      rows = await _remoteDataSource.recommendQuests(
-        availableMinutes: context.availableMinutes ?? preferences.typicalTimeMinutes,
-        socialLevel: preferences.socialLevel,
-        interests: preferences.interests,
-        locationMode: preferences.locationMode,
-        excludedQuestIds: excludedQuestIds,
-        limit: limit,
+      rows = await _network.run(
+        () => _remoteDataSource.recommendQuests(
+          availableMinutes: context.availableMinutes ?? preferences.typicalTimeMinutes,
+          socialLevel: preferences.socialLevel,
+          interests: preferences.interests,
+          locationMode: preferences.locationMode,
+          excludedQuestIds: excludedQuestIds,
+          limit: limit,
+        ),
       );
     } on PostgrestException catch (e) {
       throw AppException(e.message);
@@ -128,6 +145,13 @@ class QuestRepository {
       unawaited(_prefetchSteps(recommendations));
     }
     return RecommendationBatch(recommendations: recommendations, batchId: batchId);
+  }
+
+  /// For Explore to show right away when the catalog already fell back to the
+  /// cache, instead of waiting out another request first. Null if none is saved.
+  RecommendationBatch? savedRecommendations(List<String> excludedQuestIds) {
+    if (_localDataSource.getSavedRecommendations() == null) return null;
+    return _savedRecommendations(excludedQuestIds);
   }
 
   /// The saved list, minus what stopped making sense since it was saved:
@@ -173,14 +197,17 @@ class QuestRepository {
   /// fresh data, and "offline with nothing cached" apart from "empty".
   /// Pending writes go first, so app start and every reconnection sync them
   /// (and before anything that needs their rows, like retried photo uploads).
+  /// The sync and the read share one timeout: past it the sync goes on in the
+  /// background, and the cache answers.
   Future<({List<UserQuest> userQuests, bool fromCache})> getUserQuestsWithSource(
     String userId,
   ) async {
-    await syncPendingWrites();
     try {
-      final rows = _withUnsentRatings(
-        _withUnsyncedAttempts(await _remoteDataSource.getUserQuests(userId), userId),
-      );
+      final serverRows = await _network.run(() async {
+        await syncPendingWrites();
+        return _remoteDataSource.getUserQuests(userId);
+      });
+      final rows = _withUnsentRatings(_withUnsyncedAttempts(serverRows, userId));
       await _localDataSource.cacheUserQuests(rows);
       userQuestsFromCache = false;
       return (userQuests: rows.map(UserQuest.fromJson).toList(), fromCache: false);
@@ -256,6 +283,7 @@ class QuestRepository {
 
   Future<void> _flushPendingWrites() async {
     try {
+      if (await _network.isOffline) return;
       while (true) {
         final pending = _pendingWrites();
         if (pending.isEmpty) return;
@@ -280,14 +308,16 @@ class QuestRepository {
   Future<void> _sendPendingWrite(PendingWrite write) async {
     switch (write.type) {
       case PendingWrite.acceptQuest:
-        await _remoteDataSource.insertUserQuestIfAbsent(write.payload);
+        await _network.run(() => _remoteDataSource.insertUserQuestIfAbsent(write.payload));
       case PendingWrite.rateQuest:
-        await _remoteDataSource.rateUserQuest(
-          id: write.payload['id'] as String,
-          userId: write.payload['user_id'] as String,
-          questId: write.payload['quest_id'] as String,
-          rating: write.payload['rating'] as int,
-          feedbackTags: (write.payload['feedback_tags'] as List).cast<String>(),
+        await _network.run(
+          () => _remoteDataSource.rateUserQuest(
+            id: write.payload['id'] as String,
+            userId: write.payload['user_id'] as String,
+            questId: write.payload['quest_id'] as String,
+            rating: write.payload['rating'] as int,
+            feedbackTags: (write.payload['feedback_tags'] as List).cast<String>(),
+          ),
         );
       default:
         debugPrint('Unknown pending write ${write.type}, discarding it');
@@ -367,7 +397,7 @@ class QuestRepository {
   /// cache, so the photo evidence survives an app restart offline.
   Future<List<QuestPhotoProof>> getPhotoProofs(String attemptId) async {
     try {
-      final rows = await _remoteDataSource.getQuestPhotoProofs(attemptId);
+      final rows = await _network.run(() => _remoteDataSource.getQuestPhotoProofs(attemptId));
       await _localDataSource.cachePhotoProofs(attemptId, rows);
       return rows.map(QuestPhotoProof.fromJson).toList();
     } catch (error) {
@@ -434,7 +464,7 @@ class QuestRepository {
       throw const AppException('La foto guardada ya no está en el teléfono. Toma otra.');
     }
 
-    if (!await _attemptReachedServer(pending.attemptId)) {
+    if (await _network.isOffline || !await _attemptReachedServer(pending.attemptId)) {
       throw await _failPending(pending, const AppException(_offlineMessage, isRetryable: true));
     }
 
@@ -484,7 +514,7 @@ class QuestRepository {
     required Uint8List jpeg,
   }) async {
     _checkPhoto(jpeg);
-    if (!await _attemptReachedServer(attempt.id)) {
+    if (await _network.isOffline || !await _attemptReachedServer(attempt.id)) {
       throw const AppException(_offlineNoCopyMessage, isRetryable: true);
     }
     final storagePath = questProofStoragePath(
@@ -636,10 +666,23 @@ class QuestRepository {
   /// queued copy finds its row instead of creating a second attempt.
   /// Needs the mission's steps cached (see [getRecommendations]), or there
   /// would be nothing to follow: then it fails like [acceptQuest].
-  Future<({UserQuest userQuest, bool queued})> acceptQuestOrQueue({
+  /// [alreadyStarted]: the card was tapped again, so it's the same mission and
+  /// not a new start — nothing is written.
+  Future<({UserQuest userQuest, bool queued, bool alreadyStarted})> acceptQuestOrQueue({
     required String userId,
     required String questId,
   }) async {
+    for (final row in _localDataSource.getUserQuests()) {
+      final isActive = row['status'] == 'accepted' || row['status'] == 'in_progress';
+      if (row['user_id'] == userId && row['quest_id'] == questId && isActive) {
+        return (
+          userQuest: UserQuest.fromJson(row),
+          queued: _unsyncedAttemptIds().contains(row['id']),
+          alreadyStarted: true,
+        );
+      }
+    }
+
     final id = _newId();
     try {
       final json = await _remoteWrite(
@@ -651,21 +694,14 @@ class QuestRepository {
         }),
       );
       await _localDataSource.cacheActiveQuestId(questId);
-      return (userQuest: await _cacheUserQuest(json), queued: false);
+      return (userQuest: await _cacheUserQuest(json), queued: false, alreadyStarted: false);
     } on AppException catch (error) {
       if (!error.isRetryable || _localDataSource.getQuestSteps(questId) == null) rethrow;
-
-      // Tapped again on the same card: there's already a mission to open.
-      for (final row in _localDataSource.getUserQuests()) {
-        final isActive = row['status'] == 'accepted' || row['status'] == 'in_progress';
-        if (row['user_id'] == userId && row['quest_id'] == questId && isActive) {
-          return (
-            userQuest: UserQuest.fromJson(row),
-            queued: _unsyncedAttemptIds().contains(row['id']),
-          );
-        }
-      }
-      return (userQuest: await _queueAcceptedQuest(id, userId, questId), queued: true);
+      return (
+        userQuest: await _queueAcceptedQuest(id, userId, questId),
+        queued: true,
+        alreadyStarted: false,
+      );
     }
   }
 
@@ -796,10 +832,11 @@ class QuestRepository {
   /// The backend half of a mission write. A PostgREST rejection keeps its
   /// message; anything else means no answer came back — postgrest rethrows
   /// SocketException/ClientException/TimeoutException unwrapped — so it's
-  /// reported as offline and retryable instead of escaping the ViewModel.
+  /// reported as offline and retryable instead of escaping the ViewModel. So is
+  /// [NetworkGuard]'s no-network and timeout.
   Future<T> _remoteWrite<T>(Future<T> Function() write) async {
     try {
-      return await write();
+      return await _network.run(write);
     } on PostgrestException catch (e) {
       throw AppException(e.message);
     } catch (_) {

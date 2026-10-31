@@ -7,6 +7,7 @@ import 'analytics/analytics_tracker.dart';
 import 'core/app_theme.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
+import 'data/remote/network_guard.dart';
 import 'data/remote/supabase_remote_data_source.dart';
 import 'data/services/biometric_service.dart';
 import 'data/services/location_service.dart';
@@ -34,6 +35,7 @@ class SidequestsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final remoteDataSource = SupabaseRemoteDataSource(Supabase.instance.client);
+    final network = NetworkGuard.connectivity();
     // Shared with ContextManager below so the "Clima en el lugar" card and
     // every context snapshot (recommendations, analytics) hit the same
     // cache instead of each keeping a separate one.
@@ -66,10 +68,10 @@ class SidequestsApp extends StatelessWidget {
           create: (_) => AuthRepository(remoteDataSource, localDataSource),
         ),
         Provider(
-          create: (_) => ProfileRepository(remoteDataSource, localDataSource),
+          create: (_) => ProfileRepository(remoteDataSource, localDataSource, network: network),
         ),
         Provider(
-          create: (_) => QuestRepository(remoteDataSource, localDataSource),
+          create: (_) => QuestRepository(remoteDataSource, localDataSource, network: network),
         ),
         Provider(create: (_) => SocialRepository()),
         ChangeNotifierProvider(

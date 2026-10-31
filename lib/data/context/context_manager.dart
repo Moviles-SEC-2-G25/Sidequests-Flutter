@@ -68,6 +68,18 @@ class ContextManager {
     );
   }
 
+  /// What needs no sensor or network: the clock. For callers that can't wait
+  /// for [snapshot]; no location or weather, and assumed connected.
+  AppContext localSnapshot({int? availableMinutes}) {
+    final now = _now();
+    return AppContext(
+      timeOfDay: timeOfDayFor(now),
+      dayOfWeek: _dayOfWeek(now),
+      isConnected: true,
+      availableMinutes: availableMinutes,
+    );
+  }
+
   /// Connectivity depends on nothing else, so it runs alongside the
   /// battery -> GPS -> weather chain, whose order each link needs. It never
   /// throws, so awaiting it last can't leave an error unhandled.

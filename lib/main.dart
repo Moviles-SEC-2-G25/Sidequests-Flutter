@@ -21,6 +21,9 @@ Future<void> main() async {
   await Supabase.initialize(
     url: Env.supabaseUrl,
     publishableKey: Env.supabasePublishableKey,
+    // postgrest's default retries every GET 3 times over 7 s before failing;
+    // a read that fails has the cache to fall back on right away.
+    postgrestOptions: const PostgrestClientOptions(retryEnabled: false),
   );
 
   runApp(SidequestsApp(localDataSource: localDataSource));

@@ -85,6 +85,32 @@ void main() {
     },
   );
 
+  test('sin estrellas (0): la misma categoría ni suma ni penaliza', () {
+    final catalog = [sameCategoryOnly, strongMatch, weakMatch];
+
+    final result = recommender.recommend(completed, catalog, [], 0, 100);
+
+    // strongMatch: 5; weakMatch: 2; sameCategoryOnly: 0 (ni +3 ni -3)
+    expect(result.map((q) => q.id), ['strong-match', 'weak-match', 'same-category']);
+  });
+
+  test('sin estrellas (0): empata con otra categoría igual de parecida, sin castigo', () {
+    final sameCategory = _quest('a-same', category: 'food', durationMinutes: 90, difficulty: 'hard');
+    final otherCategory = _quest('b-other', category: 'art', durationMinutes: 90, difficulty: 'hard');
+
+    // Ties go to the shorter duration; both last the same, so a penalty is the
+    // only thing that could separate them from the catalog's order.
+    final unrated = recommender.recommend(completed, [otherCategory, sameCategory], [], 0, 100);
+    final lowRated = recommender.recommend(completed, [sameCategory, otherCategory], [], 1, 100);
+
+    expect(unrated.map((q) => q.id), ['b-other', 'a-same']);
+    expect(lowRated.map((q) => q.id), ['b-other', 'a-same']);
+    expect(
+      recommender.recommend(completed, [sameCategory, otherCategory], [], 0, 100).map((q) => q.id),
+      ['a-same', 'b-other'],
+    );
+  });
+
   test('catálogo vacío: returns an empty list without throwing', () {
     expect(recommender.recommend(completed, [], [], 5, 60), isEmpty);
   });

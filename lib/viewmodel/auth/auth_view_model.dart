@@ -7,6 +7,7 @@ import '../../analytics/onboarding_step.dart';
 import '../../core/app_exception.dart';
 import '../../data/services/biometric_service.dart';
 import '../../repository/auth_repository.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthChangeEvent, AuthState, SignOutReason;
 
 enum AuthStatus { unknown, unauthenticated, authenticating, authenticated }
 
@@ -46,12 +47,13 @@ class AuthViewModel extends ChangeNotifier {
     biometricEnabled = _authRepository.isBiometricEnabled;
     isLocked = status == AuthStatus.authenticated && biometricEnabled;
     _authRepository.authStateChanges.listen(
-      (_) {
+      (state) {
         status = _authRepository.isAuthenticated
             ? AuthStatus.authenticated
             : AuthStatus.unauthenticated;
         if (status == AuthStatus.unauthenticated) isLocked = false;
         notifyListeners();
+        if (_isForcedSignOut(state)) _clearAfterForcedSignOut();
       },
       // A token refresh that fails without a connection arrives here, not as
       // `signedOut`: gotrue keeps the session and refreshes it once back
@@ -59,6 +61,27 @@ class AuthViewModel extends ChangeNotifier {
       // need the server to reject the token, and the session is gone by then.)
       onError: (Object _) {},
     );
+  }
+
+  /// Explicit sign-outs clean up in [signOut]. A null reason is a sign-out
+  /// relayed from another tab (web), which cleans up on its own.
+  static bool _isForcedSignOut(AuthState state) =>
+      state.event == AuthChangeEvent.signedOut &&
+      state.signOutReason != null &&
+      state.signOutReason != SignOutReason.userInitiated;
+
+  /// Clears the cache and the pending queues, so analytics waiting to be sent
+  /// don't go out under the next account (the user id is stamped at insert).
+  /// Not when the device is offline: that isn't a verdict on the account.
+  Future<void> _clearAfterForcedSignOut() async {
+    try {
+      if (await isOffline()) return;
+      await _authRepository.clearLocalData();
+      biometricEnabled = false;
+      notifyListeners();
+    } catch (_) {
+      // Storage failed too: nothing else to do from a listener.
+    }
   }
 
   static Future<bool> _connectivityIsOffline() async =>
