@@ -203,6 +203,9 @@ class _FakeLocal implements LocalDataSource {
   Future<void> cachePreferences(Map<String, dynamic> json) async => preferences = json;
 
   @override
+  Map<String, dynamic>? getVerifiedCheckIn() => null;
+
+  @override
   Map<String, dynamic>? getActiveStepSession() => null;
 
   @override

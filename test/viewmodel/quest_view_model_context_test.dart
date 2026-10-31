@@ -160,9 +160,6 @@ class _FakeQuestRepository implements QuestRepository {
   StepSession? getActiveStepSession() => null;
 
   @override
-  bool get catalogFromCache => false;
-
-  @override
   bool get userQuestsFromCache => false;
 
   @override

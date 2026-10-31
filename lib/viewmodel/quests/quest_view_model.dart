@@ -77,7 +77,6 @@ class QuestViewModel extends ChangeNotifier {
   bool _isForeground = true;
   bool _isCompletingStep = false;
   DateTime? _lastAutoCheckInAt;
-  final DateTime Function() _now;
 
   /// In memory what the repository has, so the view can read it on every build.
   VerifiedCheckIn? _savedCheckIn;
