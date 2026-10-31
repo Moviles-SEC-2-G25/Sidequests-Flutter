@@ -96,6 +96,7 @@ class QuestViewModel extends ChangeNotifier {
   List<UserQuest> userQuests = [];
   List<QuestStep> steps = [];
   String? _stepsQuestId;
+  ({String questId, String message})? _stepsUnavailable;
   bool isLoading = false;
   bool isLoadingRecommendations = false;
   bool isLoadingSteps = false;
@@ -445,14 +446,29 @@ class QuestViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [questId]'s steps, once loaded; [steps] alone may belong to another quest.
+  List<QuestStep> stepsOf(String questId) =>
+      _stepsQuestId == questId && !isLoadingSteps ? steps : const [];
+
+  /// Why [questId]'s steps couldn't load: no connection and none cached.
+  String? stepsUnavailableMessage(String questId) =>
+      _stepsUnavailable?.questId == questId ? _stepsUnavailable?.message : null;
+
+  /// A failure leaves [steps] and [_stepsQuestId] as they were: they may be
+  /// the active mission's, and opening another quest's detail offline must
+  /// not take them away from it.
   Future<void> loadSteps(String questId) async {
+    final previousQuestId = _stepsQuestId;
     isLoadingSteps = true;
     _stepsQuestId = questId;
+    _stepsUnavailable = null;
     notifyListeners();
     try {
       steps = await _questRepository.getSteps(questId);
     } on AppException catch (e) {
       errorMessage = e.message;
+      if (e.isRetryable) _stepsUnavailable = (questId: questId, message: e.message);
+      if (_stepsQuestId == questId) _stepsQuestId = previousQuestId;
     } finally {
       isLoadingSteps = false;
       _syncCheckIn();
@@ -613,10 +629,20 @@ class QuestViewModel extends ChangeNotifier {
 
   /// Candidates for the "shake to decide" gesture: same catalogue filter as
   /// Explore (respects `selectedMinutes`), minus quests already completed.
-  List<Quest> get shakeCandidates {
+  /// Without a connection, only those with cached steps — their detail and
+  /// mission open fully offline — unless none has them.
+  List<Quest> shakeCandidates({bool isOffline = false}) {
     final completedIds = completedQuests.map((uq) => uq.questId).toSet();
-    return filteredCatalog.where((quest) => !completedIds.contains(quest.id)).toList();
+    final candidates = filteredCatalog.where((quest) => !completedIds.contains(quest.id)).toList();
+    if (!isOffline && !_questRepository.catalogFromCache) return candidates;
+    final withSteps = candidates.where((quest) => _questRepository.hasCachedSteps(quest.id)).toList();
+    return withSteps.isEmpty ? candidates : withSteps;
   }
+
+  /// No candidates because no catalog was ever saved, as opposed to filters
+  /// that exclude everything or a first load still running.
+  bool shakeHasNoSavedCatalog({bool isOffline = false}) =>
+      catalog.isEmpty && !isLoading && (isOffline || _questRepository.catalogFromCache);
 
   void trackShakeSurprise(String questId) {
     _analyticsTracker.track(

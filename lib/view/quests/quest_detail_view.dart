@@ -68,8 +68,9 @@ class _QuestDetailViewState extends State<QuestDetailView> {
     final isUnfinished =
         userQuest != null && userQuest.status != 'completed' && userQuest.status != 'skipped';
     final isCompleted = userQuest?.status == 'completed';
-    final stepsForThisQuest = questViewModel.steps;
+    final stepsForThisQuest = questViewModel.stepsOf(quest.id);
     final stepCount = stepsForThisQuest.isNotEmpty ? stepsForThisQuest.length : null;
+    final stepsUnavailable = questViewModel.stepsUnavailableMessage(quest.id);
 
     return Scaffold(
       body: SafeArea(
@@ -181,6 +182,10 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                 stepCount != null ? 'Qué harás ($stepCount pasos)' : 'Qué harás',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
+              if (stepsUnavailable != null) ...[
+                const SizedBox(height: 4),
+                Text(stepsUnavailable, style: Theme.of(context).textTheme.bodySmall),
+              ],
               const SizedBox(height: 24),
               if (isCompleted)
                 Container(
