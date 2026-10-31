@@ -92,6 +92,7 @@ class SidequestsApp extends StatelessWidget {
             contextManager,
             analyticsTracker,
             context.read<AuthViewModel>().userId!,
+            initialFilters: context.read<QuestRepository>().getExploreFilters(),
           ),
         ),
         ChangeNotifierProvider(

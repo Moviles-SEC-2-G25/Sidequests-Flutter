@@ -649,6 +649,7 @@ class _SettingsSectionState extends State<_SettingsSection> {
     );
   }
 
+  /// Sensor and local flag only: works the same without a connection.
   Future<void> _toggleBiometric(bool value) async {
     final authViewModel = context.read<AuthViewModel>();
     if (!value) return authViewModel.disableBiometric();

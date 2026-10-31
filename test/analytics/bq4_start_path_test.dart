@@ -7,6 +7,7 @@ import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/models/app_context.dart';
+import 'package:sidequests/models/explore_filters.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_recommendation.dart';
 import 'package:sidequests/models/quest_step.dart';
@@ -64,20 +65,33 @@ ContextManager _contextManager() =>
 /// else would throw.
 class _FakeQuestRepository implements QuestRepository {
   final List<Map<String, dynamic>> recommendationRows;
+  int _batches = 0;
 
   _FakeQuestRepository({this.recommendationRows = const []});
 
   @override
-  Future<List<QuestRecommendation>> getRecommendations({
+  Future<void> saveExploreFilters(ExploreFilters filters) async {}
+
+  @override
+  Future<RecommendationBatch> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,
     List<String> excludedQuestIds = const [],
     int limit = 3,
-  }) async => recommendationRows.map(QuestRecommendation.fromJson).toList();
+  }) async => RecommendationBatch(
+    recommendations: recommendationRows.map(QuestRecommendation.fromJson).toList(),
+    batchId: 'batch-${++_batches}',
+  );
 
   @override
   Future<UserQuest> acceptQuest({required String userId, required String questId}) async =>
       UserQuest(id: 'uq-$questId', userId: userId, questId: questId, acceptedAt: DateTime(2026, 1, 1));
+
+  @override
+  Future<({UserQuest userQuest, bool queued})> acceptQuestOrQueue({
+    required String userId,
+    required String questId,
+  }) async => (userQuest: await acceptQuest(userId: userId, questId: questId), queued: false);
 
   @override
   Future<List<QuestStep>> getSteps(String questId) async => const [];

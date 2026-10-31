@@ -9,7 +9,8 @@ import 'login_view.dart';
 import 'onboarding_view.dart';
 
 /// Decides between the auth flow, one-time onboarding and the app shell
-/// based on [AuthViewModel]'s session state.
+/// based on [AuthViewModel]'s session state. The decision is local — restored
+/// session, biometric flag, onboarding flag — so it works without a network.
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 

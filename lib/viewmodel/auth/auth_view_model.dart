@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../analytics/analytics_event_type.dart';
@@ -10,10 +11,15 @@ import '../../repository/auth_repository.dart';
 enum AuthStatus { unknown, unauthenticated, authenticating, authenticated }
 
 /// Session state and login/sign-up intents for the auth & onboarding views.
+///
+/// Biometric lock is local-only: [isLocked], [unlock], [enableBiometric] and
+/// [disableBiometric] read the persisted session and flag and the device's
+/// sensor, and never touch the network.
 class AuthViewModel extends ChangeNotifier {
   final AuthRepository _authRepository;
   final BiometricService _biometricService;
   final AnalyticsTracker _analyticsTracker;
+  final Future<bool> Function() _isOffline;
 
   AuthStatus status = AuthStatus.unknown;
   String? errorMessage;
@@ -25,19 +31,44 @@ class AuthViewModel extends ChangeNotifier {
   bool biometricEnabled = false;
   bool isBiometricAvailable = false;
 
-  AuthViewModel(this._authRepository, this._biometricService, this._analyticsTracker) {
+  AuthViewModel(
+    this._authRepository,
+    this._biometricService,
+    this._analyticsTracker, {
+    Future<bool> Function()? isOffline,
+  }) : _isOffline = isOffline ?? _connectivityIsOffline {
     status = _authRepository.isAuthenticated
         ? AuthStatus.authenticated
         : AuthStatus.unauthenticated;
     biometricEnabled = _authRepository.isBiometricEnabled;
     isLocked = status == AuthStatus.authenticated && biometricEnabled;
-    _authRepository.authStateChanges.listen((_) {
-      status = _authRepository.isAuthenticated
-          ? AuthStatus.authenticated
-          : AuthStatus.unauthenticated;
-      if (status == AuthStatus.unauthenticated) isLocked = false;
-      notifyListeners();
-    });
+    _authRepository.authStateChanges.listen(
+      (_) {
+        status = _authRepository.isAuthenticated
+            ? AuthStatus.authenticated
+            : AuthStatus.unauthenticated;
+        if (status == AuthStatus.unauthenticated) isLocked = false;
+        notifyListeners();
+      },
+      // A token refresh that fails without a connection arrives here, not as
+      // `signedOut`: gotrue keeps the session and refreshes it once back
+      // online, so it changes nothing. (`signedOut` with sessionExpired does
+      // need the server to reject the token, and the session is gone by then.)
+      onError: (Object _) {},
+    );
+  }
+
+  static Future<bool> _connectivityIsOffline() async =>
+      (await Connectivity().checkConnectivity()).contains(ConnectivityResult.none);
+
+  /// Asked here because ContextStatusViewModel lives inside HomeShell, below
+  /// the lock screen. Unknown connectivity counts as online.
+  Future<bool> isOffline() async {
+    try {
+      return await _isOffline();
+    } catch (_) {
+      return false;
+    }
   }
 
   // --- Passwordless sign-in with an emailed code (feature e). Kept apart

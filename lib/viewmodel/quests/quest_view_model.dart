@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../analytics/analytics_event_type.dart';
 import '../../analytics/analytics_tracker.dart';
@@ -15,6 +14,7 @@ import '../../data/services/location_check_in_service.dart';
 import '../../data/services/photo_capture_service.dart';
 import '../../data/services/step_counter_service.dart';
 import '../../models/app_context.dart';
+import '../../models/explore_filters.dart';
 import '../../models/photo_proof.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
@@ -92,22 +92,33 @@ class QuestViewModel extends ChangeNotifier {
 
   List<Quest> catalog = [];
   List<QuestRecommendation> recommendations = [];
+
+  /// [recommendations] is the list saved on the device: the network failed.
+  bool recommendationsFromCache = false;
   List<UserQuest> userQuests = [];
   List<QuestStep> steps = [];
   String? _stepsQuestId;
+  ({String questId, String message})? _stepsUnavailable;
   bool isLoading = false;
   bool isLoadingRecommendations = false;
   bool isLoadingSteps = false;
   String? errorMessage;
+
+  /// The last [startInstantPlan] started on the device, pending sync.
+  bool instantPlanQueued = false;
   bool isSubmittingRating = false;
   String? ratingErrorMessage;
+
+  /// The last [submitRating] stayed on the device, pending sync.
+  bool ratingQueued = false;
 
   /// Why the last [completeCurrentStep] couldn't be saved (e.g. offline);
   /// null when it went through or is still running.
   String? stepErrorMessage;
 
-  int selectedMinutes = 30;
-  String selectedLocationScope = 'all'; // all | gps | anywhere
+  // Explore's filters: start as the user left them and are saved on change.
+  int selectedMinutes;
+  String selectedLocationScope; // all | gps | anywhere
   String? selectedCategory; // null = "Todo", 'sponsored', or a real category
 
   /// "¿Cómo te sientes hoy?" (BQ5): overrides the profile's social level
@@ -138,12 +149,16 @@ class QuestViewModel extends ChangeNotifier {
     this._contextManager,
     this._analyticsTracker,
     this._userId, {
+    ExploreFilters initialFilters = const ExploreFilters(),
     SimilarQuestRecommender similarQuestRecommender = const SimilarQuestRecommender(),
     CompletionLikelihood completionLikelihood = const CompletionLikelihood(),
     StepCounterService? stepCounter,
     LocationCheckInService? locationCheckIn,
     PhotoCaptureService? photoCapture,
-  }) : _similarQuestRecommender = similarQuestRecommender,
+  }) : selectedMinutes = initialFilters.minutes,
+       selectedLocationScope = initialFilters.locationScope,
+       selectedCategory = initialFilters.category,
+       _similarQuestRecommender = similarQuestRecommender,
        _completionLikelihood = completionLikelihood,
        _stepCounter = stepCounter ?? StepCounterService(),
        _checkIn = locationCheckIn ?? LocationCheckInService(),
@@ -198,8 +213,18 @@ class QuestViewModel extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
     try {
-      catalog = await _questRepository.getCatalog();
-      userQuests = await _questRepository.getUserQuests(_userId);
+      // Both requests at once. Each result is kept as it arrives, so one
+      // failing doesn't lose the other; the first error is rethrown once
+      // both have finished.
+      await Future.wait([
+        _questRepository.getCatalog().then((quests) {
+          catalog = quests;
+          _dropMissingCategory();
+        }),
+        _questRepository.getUserQuests(_userId).then((attempts) {
+          userQuests = attempts;
+        }),
+      ]);
       unawaited(_resumeStepTracking());
       unawaited(retryPendingPhotoUploads());
     } on AppException catch (e) {
@@ -211,14 +236,37 @@ class QuestViewModel extends ChangeNotifier {
     }
   }
 
+  /// A saved category can leave the catalog between launches; keeping it
+  /// would show an empty list with no chip selected to explain why. An empty
+  /// catalog (offline, nothing cached) says nothing about the category.
+  void _dropMissingCategory() {
+    final category = selectedCategory;
+    if (category == null || category == 'sponsored' || catalog.isEmpty) return;
+    if (categories.contains(category)) return;
+    selectedCategory = null;
+    _saveFilters();
+  }
+
+  void _saveFilters() => unawaited(
+    _questRepository.saveExploreFilters(
+      ExploreFilters(
+        minutes: selectedMinutes,
+        locationScope: selectedLocationScope,
+        category: selectedCategory,
+      ),
+    ),
+  );
+
   void setMinutes(int minutes) {
     selectedMinutes = minutes;
+    _saveFilters();
     registerInteraction();
     notifyListeners();
   }
 
   void setCategory(String? category) {
     selectedCategory = category;
+    _saveFilters();
     registerInteraction();
     notifyListeners();
   }
@@ -239,6 +287,7 @@ class QuestViewModel extends ChangeNotifier {
   /// BQ10 (location-independent mode usage) is measured from this event.
   void setLocationScope(String scope) {
     selectedLocationScope = scope;
+    _saveFilters();
     registerInteraction();
     notifyListeners();
     _analyticsTracker.track(
@@ -264,13 +313,15 @@ class QuestViewModel extends ChangeNotifier {
         locationMode: selectedLocationScope,
         socialLevel: sessionSocialLevel,
       );
-      recommendations = await _questRepository.getRecommendations(
+      final batch = await _questRepository.getRecommendations(
         context: context,
         preferences: effectivePreferences,
         excludedQuestIds: _sessionSkippedQuestIds.toList(),
       );
+      recommendations = batch.recommendations;
+      recommendationsFromCache = batch.fromCache;
       // One batch_id per RPC call so BQ8 can group the events of one list.
-      final batchId = const Uuid().v4();
+      final batchId = batch.batchId;
       // BQ4: starts the decision clock on the first non-empty list shown
       // since the app opened (or since the last quest was started) — later
       // reloads (filter changes, "Ahora no") don't restart it.
@@ -278,6 +329,8 @@ class QuestViewModel extends ChangeNotifier {
         _decisionStartedAt ??= DateTime.now();
         _decisionBatchId ??= batchId;
       }
+      // A saved list logged its impressions when it was first shown (BQ8).
+      if (batch.fromCache) return;
       for (final recommendation in recommendations) {
         _analyticsTracker.track(
           AnalyticsEventType.recommendationShown,
@@ -316,9 +369,16 @@ class QuestViewModel extends ChangeNotifier {
   /// "Empezar ya" on a recommendation card (BQ4's 'instant_plan' start
   /// path): accepts the quest and preloads its steps, skipping
   /// QuestDetailView entirely. The caller navigates to MissionTabView once
-  /// this returns true.
+  /// this returns true. Without a connection the mission starts anyway, on
+  /// the device: see [instantPlanQueued].
   Future<bool> startInstantPlan(Quest quest) async {
-    final started = await _acceptQuest(quest.id, startPath: 'instant_plan', wasRecommended: true);
+    instantPlanQueued = false;
+    final started = await _acceptQuest(
+      quest.id,
+      startPath: 'instant_plan',
+      wasRecommended: true,
+      canQueue: true,
+    );
     if (!started) return false;
     await loadSteps(quest.id);
     return true;
@@ -328,12 +388,17 @@ class QuestViewModel extends ChangeNotifier {
     String questId, {
     required String startPath,
     required bool wasRecommended,
+    bool canQueue = false,
   }) async {
     try {
-      final userQuest = await _questRepository.acceptQuest(
-        userId: _userId,
-        questId: questId,
-      );
+      final UserQuest userQuest;
+      if (canQueue) {
+        final result = await _questRepository.acceptQuestOrQueue(userId: _userId, questId: questId);
+        userQuest = result.userQuest;
+        instantPlanQueued = result.queued;
+      } else {
+        userQuest = await _questRepository.acceptQuest(userId: _userId, questId: questId);
+      }
       _replaceUserQuest(userQuest);
       // Not awaited: the permission dialog shows over the Misión screen
       // instead of holding up the navigation to it.
@@ -405,14 +470,29 @@ class QuestViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [questId]'s steps, once loaded; [steps] alone may belong to another quest.
+  List<QuestStep> stepsOf(String questId) =>
+      _stepsQuestId == questId && !isLoadingSteps ? steps : const [];
+
+  /// Why [questId]'s steps couldn't load: no connection and none cached.
+  String? stepsUnavailableMessage(String questId) =>
+      _stepsUnavailable?.questId == questId ? _stepsUnavailable?.message : null;
+
+  /// A failure leaves [steps] and [_stepsQuestId] as they were: they may be
+  /// the active mission's, and opening another quest's detail offline must
+  /// not take them away from it.
   Future<void> loadSteps(String questId) async {
+    final previousQuestId = _stepsQuestId;
     isLoadingSteps = true;
     _stepsQuestId = questId;
+    _stepsUnavailable = null;
     notifyListeners();
     try {
       steps = await _questRepository.getSteps(questId);
     } on AppException catch (e) {
       errorMessage = e.message;
+      if (e.isRetryable) _stepsUnavailable = (questId: questId, message: e.message);
+      if (_stepsQuestId == questId) _stepsQuestId = previousQuestId;
     } finally {
       isLoadingSteps = false;
       _syncCheckIn();
@@ -480,7 +560,8 @@ class QuestViewModel extends ChangeNotifier {
   }
 
   /// Saves the post-mission rating/feedback and emits 'quest_rated'.
-  /// Returns true on success; on failure `ratingErrorMessage` is set.
+  /// Returns true on success — also when it was left on the device for later,
+  /// see [ratingQueued]; on failure `ratingErrorMessage` is set.
   Future<bool> submitRating(
     UserQuest userQuest, {
     required int rating,
@@ -488,9 +569,12 @@ class QuestViewModel extends ChangeNotifier {
   }) async {
     isSubmittingRating = true;
     ratingErrorMessage = null;
+    ratingQueued = false;
     notifyListeners();
     try {
-      final updated = await _questRepository.rateQuest(userQuest, rating, tags);
+      final result = await _questRepository.rateQuestOrQueue(userQuest, rating, tags);
+      final updated = result.userQuest;
+      ratingQueued = result.queued;
       _replaceUserQuest(updated);
       final quest = questById(updated.questId);
       _analyticsTracker.track(
@@ -573,10 +657,20 @@ class QuestViewModel extends ChangeNotifier {
 
   /// Candidates for the "shake to decide" gesture: same catalogue filter as
   /// Explore (respects `selectedMinutes`), minus quests already completed.
-  List<Quest> get shakeCandidates {
+  /// Without a connection, only those with cached steps — their detail and
+  /// mission open fully offline — unless none has them.
+  List<Quest> shakeCandidates({bool isOffline = false}) {
     final completedIds = completedQuests.map((uq) => uq.questId).toSet();
-    return filteredCatalog.where((quest) => !completedIds.contains(quest.id)).toList();
+    final candidates = filteredCatalog.where((quest) => !completedIds.contains(quest.id)).toList();
+    if (!isOffline && !_questRepository.catalogFromCache) return candidates;
+    final withSteps = candidates.where((quest) => _questRepository.hasCachedSteps(quest.id)).toList();
+    return withSteps.isEmpty ? candidates : withSteps;
   }
+
+  /// No candidates because no catalog was ever saved, as opposed to filters
+  /// that exclude everything or a first load still running.
+  bool shakeHasNoSavedCatalog({bool isOffline = false}) =>
+      catalog.isEmpty && !isLoading && (isOffline || _questRepository.catalogFromCache);
 
   void trackShakeSurprise(String questId) {
     _analyticsTracker.track(

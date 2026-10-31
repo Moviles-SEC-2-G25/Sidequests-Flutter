@@ -74,12 +74,15 @@ class _FakeQuestRepository implements QuestRepository {
   _FakeQuestRepository(this.responses);
 
   @override
-  Future<List<QuestRecommendation>> getRecommendations({
+  Future<RecommendationBatch> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,
     List<String> excludedQuestIds = const [],
     int limit = 3,
-  }) async => responses[_call++].map(QuestRecommendation.fromJson).toList();
+  }) async => RecommendationBatch(
+    recommendations: responses[_call++].map(QuestRecommendation.fromJson).toList(),
+    batchId: 'batch-$_call',
+  );
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

@@ -7,6 +7,7 @@ import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/models/app_context.dart';
+import 'package:sidequests/models/explore_filters.dart';
 import 'package:sidequests/models/quest_recommendation.dart';
 import 'package:sidequests/models/user_preferences.dart';
 import 'package:sidequests/models/user_quest.dart';
@@ -64,14 +65,20 @@ class _RecordingQuestRepository implements QuestRepository {
   final List<UserPreferences> sentPreferences = [];
 
   @override
-  Future<List<QuestRecommendation>> getRecommendations({
+  Future<void> saveExploreFilters(ExploreFilters filters) async {}
+
+  @override
+  Future<RecommendationBatch> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,
     List<String> excludedQuestIds = const [],
     int limit = 3,
   }) async {
     sentPreferences.add(preferences);
-    return [QuestRecommendation.fromJson({'quest_id': 'a', 'score': 1.5})];
+    return RecommendationBatch(
+      recommendations: [QuestRecommendation.fromJson({'quest_id': 'a', 'score': 1.5})],
+      batchId: 'batch',
+    );
   }
 
   @override
