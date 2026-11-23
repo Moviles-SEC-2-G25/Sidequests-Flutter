@@ -15,7 +15,7 @@ class ContextBanner extends StatelessWidget {
     final Color color;
     if (status.isOffline) {
       icon = Icons.wifi_off;
-      text = 'Sin conexión: las misiones nuevas no cargarán hasta reconectar';
+      text = 'Sin conexión: ves tus datos guardados. Iniciar o completar misiones requiere internet.';
       color = Colors.red.shade700;
     } else if (status.justReconnected) {
       icon = Icons.wifi;

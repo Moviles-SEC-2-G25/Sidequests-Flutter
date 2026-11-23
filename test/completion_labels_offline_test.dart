@@ -16,6 +16,7 @@ import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/location_check_in_service.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/data/services/step_counter_service.dart';
+import 'package:sidequests/models/pending_write.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/user_preferences.dart';
 import 'package:sidequests/repository/auth_repository.dart';
@@ -326,7 +327,7 @@ void main() {
       expect(viewModel.completionLabelsFromCache, isTrue);
     });
 
-    test('an attempt accepted offline counts, as the repository mixes it in', () async {
+    test('starting a mission offline is refused and leaves the labels as they were', () async {
       await openOfflineAfter([
         _attemptRow('1', 'a', 'completed'),
         _attemptRow('2', 'b', 'completed'),
@@ -335,14 +336,28 @@ void main() {
 
       final started = await viewModel.startInstantPlan(Quest.fromJson(_questRow('c')));
 
-      expect(started, isTrue);
-      expect(viewModel.instantPlanQueued, isTrue);
-      expect(foodLevel(), CompletionLevel.medium); // 2 of 3
+      expect(started, isFalse);
+      expect(viewModel.errorMessage, QuestViewModel.startNeedsConnectionMessage);
+      expect(local.pendingWrites, isEmpty);
+      expect(foodLevel(), CompletionLevel.newForYou);
+    });
 
-      // Still counted after a restart, read back from the cache.
+    test('an attempt an earlier version queued offline counts, as the repository mixes it in', () async {
+      await openOfflineAfter([
+        _attemptRow('1', 'a', 'completed'),
+        _attemptRow('2', 'b', 'completed'),
+      ]);
+      // What "Empezar ya" used to leave on the device when tapped offline.
+      final queued = _attemptRow('queued', 'c', 'accepted');
+      local.userQuests = [queued, ...local.userQuests];
+      local.pendingWrites = [
+        PendingWrite(type: PendingWrite.acceptQuest, payload: queued, createdAt: DateTime(2026)).toJson(),
+      ];
+
+      // Counted after a restart, read back from the cache.
       viewModel = launch();
       await viewModel.load();
-      expect(foodLevel(), CompletionLevel.medium);
+      expect(foodLevel(), CompletionLevel.medium); // 2 of 3
       expect(viewModel.completionLabelsFromCache, isTrue);
     });
   });

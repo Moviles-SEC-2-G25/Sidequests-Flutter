@@ -446,15 +446,18 @@ void main() {
         expect(local.attempts.single['rating'], 4);
       });
 
-      testWidgets('"Empezar ya": aceptar y cargar pasos dentro de un solo límite', (tester) async {
+      testWidgets('"Empezar ya": dentro del límite dice que necesita conexión y no inicia nada', (
+        tester,
+      ) async {
         final viewModel = _viewModel(repository, tracker)..catalog = [_quest('a')];
 
         final started = await _withinLimit(tester, viewModel.startInstantPlan(_quest('a')));
 
-        expect(started, isTrue);
-        expect(viewModel.instantPlanQueued, isTrue);
-        expect(viewModel.steps.single.title, 'Paso guardado');
-        expect(viewModel.currentMission!.questId, 'a');
+        expect(started, isFalse);
+        expect(viewModel.errorMessage, QuestViewModel.startNeedsConnectionMessage);
+        expect(viewModel.currentMission, isNull);
+        expect(local.writes, isEmpty);
+        expect(tracker.of(AnalyticsEventType.recommendationAccepted), isEmpty);
       });
 
       testWidgets('abandono de un intento que no está en el teléfono: error de conexión, no spinner', (
@@ -581,11 +584,12 @@ void main() {
         expect(remote.calls, 0);
       });
 
-      test('"Empezar ya" y calificar: a la cola, con cero llamadas', () async {
+      test('"Empezar ya": rechazado al instante, con cero llamadas; calificar: a la cola', () async {
         local.attempts = [_attemptRow('uq', 'b', 'completed')];
         final viewModel = _viewModel(repository, tracker)..catalog = [_quest('a')];
 
-        expect(await viewModel.startInstantPlan(_quest('a')), isTrue);
+        expect(await viewModel.startInstantPlan(_quest('a')), isFalse);
+        expect(viewModel.errorMessage, QuestViewModel.startNeedsConnectionMessage);
         expect(
           await viewModel.submitRating(
             UserQuest(id: 'uq', userId: _userId, questId: 'b', acceptedAt: DateTime(2026)),
@@ -595,7 +599,7 @@ void main() {
           isTrue,
         );
 
-        expect(local.writes, hasLength(2));
+        expect(local.writes, hasLength(1)); // only the rating
         expect(remote.calls, 0);
       });
 
@@ -786,14 +790,15 @@ void main() {
       )..catalog = [_quest('a')];
     });
 
-    test('sin red, tocar dos veces: 1 en la cola, 1 evento, y la misión abre', () async {
-      expect(await viewModel.startInstantPlan(_quest('a')), isTrue);
-      expect(await viewModel.startInstantPlan(_quest('a')), isTrue);
+    test('sin red, tocar dos veces: nada se inicia, ni cola ni evento', () async {
+      expect(await viewModel.startInstantPlan(_quest('a')), isFalse);
+      expect(await viewModel.startInstantPlan(_quest('a')), isFalse);
 
-      expect(local.writes, hasLength(1));
-      expect(local.attempts, hasLength(1));
-      expect(tracker.of(AnalyticsEventType.recommendationAccepted), hasLength(1));
-      expect(viewModel.currentMission!.questId, 'a');
+      expect(local.writes, isEmpty);
+      expect(local.attempts, isEmpty);
+      expect(tracker.of(AnalyticsEventType.recommendationAccepted), isEmpty);
+      expect(viewModel.currentMission, isNull);
+      expect(remote.calls, 0);
     });
 
     test('una misión ya en caché: sin evento y sin escribir, también con red', () async {
@@ -804,17 +809,27 @@ void main() {
       expect(await online.startInstantPlan(_quest('a')), isTrue);
 
       expect(tracker.of(AnalyticsEventType.recommendationAccepted), isEmpty);
-      expect(online.instantPlanQueued, isFalse);
       expect(online.currentMission!.id, 'uq');
     });
 
-    test('una abandonada o completada sí es un inicio nuevo', () async {
+    test('una misión ya en caché se abre también sin red: ya estaba iniciada', () async {
+      local.attempts = [_attemptRow('uq', 'a', 'in_progress')];
+
+      expect(await viewModel.startInstantPlan(_quest('a')), isTrue);
+
+      expect(viewModel.currentMission!.id, 'uq');
+      expect(tracker.of(AnalyticsEventType.recommendationAccepted), isEmpty);
+      expect(local.writes, isEmpty);
+    });
+
+    test('una abandonada o completada sí es un inicio nuevo: sin red se rechaza', () async {
       local.attempts = [_attemptRow('uq', 'a', 'completed')];
 
-      await viewModel.startInstantPlan(_quest('a'));
+      expect(await viewModel.startInstantPlan(_quest('a')), isFalse);
 
-      expect(tracker.of(AnalyticsEventType.recommendationAccepted), hasLength(1));
-      expect(local.writes, hasLength(1));
+      expect(viewModel.errorMessage, QuestViewModel.startNeedsConnectionMessage);
+      expect(tracker.of(AnalyticsEventType.recommendationAccepted), isEmpty);
+      expect(local.writes, isEmpty);
     });
   });
 
@@ -1196,14 +1211,7 @@ class _ListRepository implements QuestRepository {
   );
 
   @override
-  Future<({UserQuest userQuest, bool queued, bool alreadyStarted})> acceptQuestOrQueue({
-    required String userId,
-    required String questId,
-  }) async => (
-    userQuest: await acceptQuest(userId: userId, questId: questId),
-    queued: false,
-    alreadyStarted: false,
-  );
+  UserQuest? activeAttempt({required String userId, required String questId}) => null;
 
   @override
   Future<UserQuest> acceptQuest({required String userId, required String questId}) async =>

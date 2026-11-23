@@ -10,6 +10,7 @@ import '../../models/quest_recommendation.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import '../widgets/completion_likelihood_label.dart';
+import '../widgets/offline_notice.dart';
 import 'mission_tab_view.dart';
 import 'quest_detail_view.dart';
 
@@ -193,21 +194,22 @@ class _TimeAndScopeFilters extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Row(
+        // Wrap, not Row: the three chips (plus the selected one's checkmark)
+        // are wider than a 360 dp phone and overflowed it.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: _scopes.map((entry) {
             final (value, label) = entry;
             final selected = questViewModel.selectedLocationScope == value;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(label),
-                selected: selected,
-                selectedColor: AppColors.amber,
-                onSelected: (_) {
-                  questViewModel.setLocationScope(value);
-                  _reload();
-                },
-              ),
+            return ChoiceChip(
+              label: Text(label),
+              selected: selected,
+              selectedColor: AppColors.amber,
+              onSelected: (_) {
+                questViewModel.setLocationScope(value);
+                _reload();
+              },
             );
           }).toList(),
         ),
@@ -391,13 +393,16 @@ class _RecommendedSection extends StatelessWidget {
 
     final likelihoodByCategory = questViewModel.completionLikelihoodByCategory;
     final awaitingLevel = questViewModel.socialLevelAwaitingReconnect;
+    final isOffline = watchIsOffline(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Text('Recomendados para ti', style: Theme.of(context).textTheme.titleLarge),
+            Flexible(
+              child: Text('Recomendados para ti', style: Theme.of(context).textTheme.titleLarge),
+            ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -430,6 +435,10 @@ class _RecommendedSection extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
+        if (isOffline) ...[
+          const SizedBox(height: 8),
+          const OfflineNotice(message: OfflineMessages.browseMissions),
+        ],
         const SizedBox(height: 12),
         ...questViewModel.recommendations.asMap().entries.map((entry) {
           final index = entry.key;
@@ -441,6 +450,7 @@ class _RecommendedSection extends StatelessWidget {
             child: _RecommendationCard(
               rank: index + 1,
               quest: quest,
+              isOffline: isOffline,
               recommendation: recommendation,
               completionLevel: questViewModel.completionLevelFor(quest, likelihoodByCategory),
               onDismiss: () =>
@@ -464,6 +474,9 @@ class _RecommendedSection extends StatelessWidget {
 class _RecommendationCard extends StatefulWidget {
   final int rank;
   final Quest quest;
+
+  /// "Empezar ya" needs the internet: offline it's shown disabled, saying so.
+  final bool isOffline;
   final QuestRecommendation recommendation;
   final CompletionLevel completionLevel;
   final VoidCallback onDismiss;
@@ -472,6 +485,7 @@ class _RecommendationCard extends StatefulWidget {
   const _RecommendationCard({
     required this.rank,
     required this.quest,
+    this.isOffline = false,
     required this.recommendation,
     required this.completionLevel,
     required this.onDismiss,
@@ -505,15 +519,11 @@ class _RecommendationCardState extends State<_RecommendationCard> {
     final started = await questViewModel.startInstantPlan(widget.quest);
     if (mounted) setState(() => _isStartingInstantPlan = false);
     if (!started) {
+      // Not started (no connection, or it didn't answer): stay on Explore.
       messenger.showSnackBar(
         SnackBar(content: Text(questViewModel.errorMessage ?? 'No se pudo iniciar la misión.')),
       );
       return;
-    }
-    if (questViewModel.instantPlanQueued) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Misión iniciada sin conexión: se sincronizará al reconectar')),
-      );
     }
     navigator.push(MaterialPageRoute(builder: (_) => const MissionTabView(isTab: false)));
   }
@@ -611,26 +621,38 @@ class _RecommendationCardState extends State<_RecommendationCard> {
               ),
             ],
             const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            // A row when both buttons fit, stacked when they don't (320 dp
+            // phone, larger system text) instead of overflowing.
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 8,
+              overflowSpacing: 8,
+              overflowAlignment: OverflowBarAlignment.end,
               children: [
                 OutlinedButton(
                   onPressed: _isStartingInstantPlan ? null : onDismiss,
                   style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
                   child: const Text('Ahora no →'),
                 ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _isStartingInstantPlan ? null : _startInstantPlan,
-                  style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
-                  child: _isStartingInstantPlan
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Empezar ya →'),
-                ),
+                if (widget.isOffline)
+                  FilledButton.icon(
+                    onPressed: null,
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
+                    icon: const Icon(Icons.wifi_off, size: 16),
+                    label: const Text('Sin conexión'),
+                  )
+                else
+                  FilledButton(
+                    onPressed: _isStartingInstantPlan ? null : _startInstantPlan,
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
+                    child: _isStartingInstantPlan
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Empezar ya →'),
+                  ),
               ],
             ),
           ],
@@ -693,7 +715,15 @@ class _AllMissionsSection extends StatelessWidget {
         if (questViewModel.completionLabelsFromCache && questViewModel.filteredCatalog.isNotEmpty)
           const _SavedDataNote(),
         const SizedBox(height: 8),
-        if (questViewModel.filteredCatalog.isEmpty)
+        if (questViewModel.catalogUnavailable)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'Sin conexión y sin misiones guardadas en el teléfono. '
+              'Conéctate y desliza hacia abajo para cargarlas.',
+            ),
+          )
+        else if (questViewModel.filteredCatalog.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Text('No hay misiones que coincidan con estos filtros.'),

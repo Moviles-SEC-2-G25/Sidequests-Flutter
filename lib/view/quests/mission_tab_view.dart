@@ -10,6 +10,7 @@ import '../../data/services/step_counter_service.dart';
 import '../../models/quest_step.dart';
 import '../../models/user_quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../widgets/offline_notice.dart';
 import 'abandon_mission_view.dart';
 import 'quest_completed_view.dart';
 
@@ -120,6 +121,10 @@ class _MissionChecklist extends StatelessWidget {
     final steps = questViewModel.steps;
     final completed = mission.completedSteps.toSet();
     final currentIndex = mission.currentStep;
+    // Progress is saved on the server: offline the mission can be reviewed,
+    // and the location check-in and photo still wait on the device, but
+    // "Completar" is blocked instead of failing after the tap.
+    final isOffline = watchIsOffline(context);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -160,6 +165,10 @@ class _MissionChecklist extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+          if (isOffline) ...[
+            const OfflineNotice(message: OfflineMessages.missionProgress),
+            const SizedBox(height: 16),
+          ],
           if (steps.isNotEmpty) ...[
             Row(
               children: List.generate(steps.length, (index) {
@@ -206,34 +215,41 @@ class _MissionChecklist extends StatelessWidget {
                     : const [],
               ),
             const SizedBox(height: 12),
-            FilledButton(
-              // The step's strategy decides: a photo step stays blocked until
-              // its proof is uploaded; location never blocks.
-              onPressed:
-                  currentIndex < steps.length &&
-                      questViewModel.canCompleteCurrentStep(steps[currentIndex], quest)
-                  ? () async {
-                      final navigator = Navigator.of(context);
-                      final messenger = ScaffoldMessenger.of(context);
-                      final completedMission = await questViewModel.completeCurrentStep(mission);
-                      final error = questViewModel.stepErrorMessage;
-                      if (error != null) {
-                        // Not saved (e.g. offline): the step stays where it was.
-                        messenger.showSnackBar(SnackBar(content: Text(error)));
-                        return;
+            if (isOffline)
+              FilledButton.icon(
+                onPressed: null,
+                icon: const Icon(Icons.wifi_off, size: 18),
+                label: const Text('Conéctate para completar'),
+              )
+            else
+              FilledButton(
+                // The step's strategy decides: a photo step stays blocked until
+                // its proof is uploaded; location never blocks.
+                onPressed:
+                    currentIndex < steps.length &&
+                        questViewModel.canCompleteCurrentStep(steps[currentIndex], quest)
+                    ? () async {
+                        final navigator = Navigator.of(context);
+                        final messenger = ScaffoldMessenger.of(context);
+                        final completedMission = await questViewModel.completeCurrentStep(mission);
+                        final error = questViewModel.stepErrorMessage;
+                        if (error != null) {
+                          // Not saved (the connection dropped): the step stays where it was.
+                          messenger.showSnackBar(SnackBar(content: Text(error)));
+                          return;
+                        }
+                        if (!completedMission || !navigator.mounted) return;
+                        navigator.push(
+                          MaterialPageRoute(
+                            builder: (_) => QuestCompletedView(mission: mission, quest: quest),
+                          ),
+                        );
                       }
-                      if (!completedMission || !navigator.mounted) return;
-                      navigator.push(
-                        MaterialPageRoute(
-                          builder: (_) => QuestCompletedView(mission: mission, quest: quest),
-                        ),
-                      );
-                    }
-                  : null,
-              child: Text(
-                currentIndex >= steps.length - 1 ? 'Completar misión →' : 'Completar este paso →',
+                    : null,
+                child: Text(
+                  currentIndex >= steps.length - 1 ? 'Completar misión →' : 'Completar este paso →',
+                ),
               ),
-            ),
           ] else
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
@@ -496,6 +512,9 @@ class _PhotoProofRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final outline = Theme.of(context).colorScheme.outline;
     final pending = questViewModel.currentPendingPhotoProof;
+    // The camera and the copy on the device work offline; only the upload
+    // waits, and it starts by itself when the connection is back.
+    final isOffline = watchIsOffline(context);
 
     final (IconData icon, Color iconColor, String detail, Widget? action) =
         result is Verified
@@ -513,6 +532,8 @@ class _PhotoProofRow extends StatelessWidget {
           )
         : questViewModel.isCapturingPhoto
         ? (Icons.camera_alt_outlined, AppColors.primary, 'Abriendo la cámara…', null)
+        : pending != null && isOffline
+        ? (Icons.cloud_off, AppColors.amber, OfflineMessages.photoUpload, null)
         : pending != null
         ? (
             Icons.cloud_off,
@@ -526,7 +547,10 @@ class _PhotoProofRow extends StatelessWidget {
         : (
             Icons.camera_alt_outlined,
             outline,
-            questViewModel.photoErrorMessage ?? 'Toma una foto para completar este paso.',
+            questViewModel.photoErrorMessage ??
+                (isOffline
+                    ? 'Sin conexión: puedes tomar la foto; se guardará en el teléfono y se subirá al reconectar.'
+                    : 'Toma una foto para completar este paso.'),
             TextButton(
               onPressed: questViewModel.capturePhotoProof,
               child: const Text('Tomar foto'),

@@ -6,6 +6,7 @@ import '../../data/local/local_data_source.dart';
 import '../../models/user_preferences.dart';
 import '../../viewmodel/auth/auth_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
+import '../widgets/offline_notice.dart';
 
 /// One-time onboarding shown right after sign-up: a welcome screen, then
 /// preference setup. Each screen is a step in the BQ3 funnel — the
@@ -36,16 +37,21 @@ class _OnboardingViewState extends State<OnboardingView> {
 
   Future<void> _advancePastPreferences() async {
     setState(() => _isSaving = true);
-    final saved = await context
-        .read<ProfileViewModel>()
-        .updatePreferences(_preferences);
+    final profileViewModel = context.read<ProfileViewModel>();
+    final saved = await profileViewModel.updatePreferences(_preferences);
     if (!mounted) return;
     if (saved) {
       context.read<AuthViewModel>().trackOnboardingStep(OnboardingStep.preferences);
       await context.read<LocalDataSource>().setCompletedOnboarding(true);
       widget.onFinished();
     } else {
+      // Not saved: stay on this step, saying why, so it can be tried again.
       setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(profileViewModel.errorMessage ?? 'No se pudieron guardar tus preferencias.'),
+        ),
+      );
     }
   }
 
@@ -79,6 +85,7 @@ class _OnboardingViewState extends State<OnboardingView> {
   }
 
   Widget _buildPreferencesStep(BuildContext context) {
+    final isOffline = watchIsOffline(context);
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -146,8 +153,12 @@ class _OnboardingViewState extends State<OnboardingView> {
           ),
         ),
         const SizedBox(height: 24),
+        if (isOffline) ...[
+          const OfflineNotice(message: OfflineMessages.savePreferences),
+          const SizedBox(height: 12),
+        ],
         FilledButton(
-          onPressed: _isSaving ? null : _advancePastPreferences,
+          onPressed: _isSaving || isOffline ? null : _advancePastPreferences,
           child: _isSaving
               ? const SizedBox(
                   width: 20,

@@ -128,6 +128,26 @@ void main() {
     fail('Expected an AppException');
   }
 
+  /// What "Empezar ya" left on the device when tapped offline, before starting
+  /// a mission needed a connection: a phone that ran that version may still
+  /// hold one, so the queue must keep handling it.
+  Future<UserQuest> queueLegacyStart(String questId) async {
+    final now = DateTime.now().toUtc();
+    final row = {
+      'id': 'uq-new',
+      'user_id': _userId,
+      'quest_id': questId,
+      'status': 'accepted',
+      'accepted_at': now.toIso8601String(),
+    };
+    await local.savePendingWrites([
+      ...local.getPendingWrites(),
+      PendingWrite(type: PendingWrite.acceptQuest, payload: row, createdAt: now).toJson(),
+    ]);
+    await local.cacheUserQuests([row, ...local.getUserQuests()]);
+    return UserQuest.fromJson(row);
+  }
+
   setUp(() {
     remote = _FakeRemote();
     local = _FakeLocal()..userQuests = [_row('uq-1')];
@@ -264,11 +284,11 @@ void main() {
       expect(attempts.single.status, 'in_progress');
     });
 
-    test('a mission started and abandoned offline reaches the server in that order', () async {
+    test('a start queued by an earlier version, abandoned offline, reaches the server in that order', () async {
       remote.offline = true;
       local.userQuests = [];
-      final started = await repository.acceptQuestOrQueue(userId: _userId, questId: 'a');
-      await repository.abandonQuestOrQueue(started.userQuest, reason: 'other');
+      final started = await queueLegacyStart('a');
+      await repository.abandonQuestOrQueue(started, reason: 'other');
       remote.offline = false;
 
       await repository.syncPendingWrites();
@@ -281,8 +301,8 @@ void main() {
     test('a rejected acceptance takes the abandonment with it, without recreating the row', () async {
       remote.offline = true;
       local.userQuests = [];
-      final started = await repository.acceptQuestOrQueue(userId: _userId, questId: 'a');
-      await repository.abandonQuestOrQueue(started.userQuest, reason: 'other');
+      final started = await queueLegacyStart('a');
+      await repository.abandonQuestOrQueue(started, reason: 'other');
       remote.offline = false;
       remote.insertError = _rejected;
 
@@ -297,10 +317,10 @@ void main() {
     test('abandoning a mission whose acceptance is queued, back online: accept goes first', () async {
       remote.offline = true;
       local.userQuests = [];
-      final started = await repository.acceptQuestOrQueue(userId: _userId, questId: 'a');
+      final started = await queueLegacyStart('a');
       remote.offline = false;
 
-      final result = await repository.abandonQuestOrQueue(started.userQuest, reason: 'other');
+      final result = await repository.abandonQuestOrQueue(started, reason: 'other');
 
       expect(result.queued, isFalse);
       expect(remote.writes.map((w) => w.kind), ['insert', 'upsert']);
