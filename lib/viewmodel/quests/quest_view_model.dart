@@ -80,6 +80,19 @@ class QuestAlternativesState {
       context == null ? null : alternativesWeatherCondition(context!);
 }
 
+/// How [computeQuestAlternatives] gets run. Injectable because a real isolate
+/// never finishes inside testWidgets' fake async zone (same as StatsRunner).
+typedef QuestAlternativesRunner =
+    Future<List<QuestAlternative>> Function(QuestAlternativesInput input);
+
+/// Multithreading strategy: scoring every catalogue quest against the
+/// abandonment reason, weather, time of day, GPS distance and budget is pure
+/// CPU work, and it runs right while the alternatives screen is being pushed.
+/// compute() moves it to a background isolate, so the UI thread keeps animating
+/// that transition and the spinner; on the web build it runs inline.
+Future<List<QuestAlternative>> _computeAlternativesInBackground(QuestAlternativesInput input) =>
+    compute(computeQuestAlternatives, input);
+
 /// Explore, nearby, quest detail and mission-in-progress state.
 class QuestViewModel extends ChangeNotifier {
   final QuestRepository _questRepository;
@@ -95,7 +108,7 @@ class QuestViewModel extends ChangeNotifier {
   StreamSubscription<CheckInFix>? _checkInSubscription;
   final StreamController<CheckInEvent> _checkInEvents = StreamController<CheckInEvent>.broadcast();
   final StreamController<void> _exploreTabRequests = StreamController<void>.broadcast();
-  final _questAlternativeRecommender = const QuestAlternativeRecommender();
+  final QuestAlternativesRunner _runQuestAlternatives;
 
   /// Abandonments on their way, by attempt: a repeated tap gets the same one.
   final Map<String, Future<bool>> _abandonsInFlight = {};
@@ -222,7 +235,9 @@ class QuestViewModel extends ChangeNotifier {
     LocationCheckInService? locationCheckIn,
     PhotoCaptureService? photoCapture,
     DateTime Function()? now,
+    QuestAlternativesRunner questAlternativesRunner = _computeAlternativesInBackground,
   }) : _now = now ?? DateTime.now,
+       _runQuestAlternatives = questAlternativesRunner,
        _lastJourneyEndedAt = (now ?? DateTime.now)(),
        selectedMinutes = initialFilters.minutes,
        selectedLocationScope = initialFilters.locationScope,
@@ -928,21 +943,25 @@ class QuestViewModel extends ChangeNotifier {
     final source = questById(current.sourceQuestId);
     final suggestions = source == null
         ? const <QuestAlternative>[]
-        : _questAlternativeRecommender.recommend(
-            catalog: catalog,
-            abandonedQuest: source,
-            reason: current.reason,
-            context: context,
-            availableMinutes: selectedMinutes,
-            preferences: preferences.copyWith(
-              locationMode: selectedLocationScope,
-              socialLevel: sessionSocialLevel,
+        : await _runQuestAlternatives(
+            QuestAlternativesInput(
+              catalog: catalog,
+              abandonedQuest: source,
+              reason: current.reason,
+              context: context,
+              availableMinutes: selectedMinutes,
+              preferences: preferences.copyWith(
+                locationMode: selectedLocationScope,
+                socialLevel: sessionSocialLevel,
+              ),
+              excludedIds: {
+                ...userQuests.map((uq) => uq.questId),
+                ..._sessionSkippedQuestIds,
+              },
             ),
-            excludedIds: {
-              ...userQuests.map((uq) => uq.questId),
-              ..._sessionSkippedQuestIds,
-            },
           );
+    // Dismissed or overtaken by a newer refresh while the isolate worked.
+    if (generation != _alternativesGeneration) return;
     final loaded = QuestAlternativesState(
       sourceQuestId: current.sourceQuestId,
       sourceAttemptId: current.sourceAttemptId,

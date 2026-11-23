@@ -8,6 +8,7 @@ import 'package:sidequests/analytics/analytics_event_type.dart';
 import 'package:sidequests/analytics/analytics_tracker.dart';
 import 'package:sidequests/core/app_exception.dart';
 import 'package:sidequests/core/bq6_evidence.dart';
+import 'package:sidequests/core/quest_alternative_recommender.dart';
 import 'package:sidequests/core/verification/step_verification_strategy.dart';
 import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
@@ -260,6 +261,9 @@ void main() {
         offlineChanges: () => const Stream.empty(),
         positions: (_, _) => const Stream.empty(),
       ),
+      // Same logic, on this isolate: settle() pumps the event queue, which
+      // doesn't wait for a real background isolate.
+      questAlternativesRunner: (input) async => computeQuestAlternatives(input),
     );
   });
 

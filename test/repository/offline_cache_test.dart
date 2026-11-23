@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidequests/core/app_exception.dart';
+import 'package:sidequests/data/cache/memory_cache.dart';
 import 'package:sidequests/data/local/local_data_source.dart';
 import 'package:sidequests/data/remote/supabase_remote_data_source.dart';
 import 'package:sidequests/models/user_quest.dart';
@@ -60,8 +61,12 @@ class _FakeRemote implements SupabaseRemoteDataSource {
     this.profile = {...this.profile, ...profile};
   }
 
+  /// Every getQuestSteps request that reached this fake, even a failed one.
+  int stepRequests = 0;
+
   @override
   Future<List<Map<String, dynamic>>> getQuestSteps(String questId) async {
+    stepRequests++;
     _failIfDown();
     return steps[questId] ?? [];
   }
@@ -294,6 +299,89 @@ void main() {
       final error = await _expectAppException(repository.getPhotoProofs('attempt-1'));
 
       expect(error.isRetryable, isTrue);
+    });
+  });
+
+  group('QuestRepository.getSteps in-memory cache (caching strategy: TTL + LRU)', () {
+    late DateTime now;
+    late QuestRepository repository;
+
+    setUp(() {
+      now = DateTime(2026, 11, 23, 12);
+      repository = QuestRepository(
+        remote,
+        local,
+        stepsCache: MemoryCache(
+          ttl: QuestRepository.stepsCacheTtl,
+          maxEntries: 2,
+          now: () => now,
+        ),
+      );
+    });
+
+    test('opening the same quest again within the TTL makes no request', () async {
+      final first = await repository.getSteps('ramen-spot');
+      final second = await repository.getSteps('ramen-spot');
+
+      expect(remote.stepRequests, 1);
+      expect(second.map((s) => s.title), first.map((s) => s.title));
+      expect(local.steps['ramen-spot'], isNotNull, reason: 'Hive is still written for offline use');
+    });
+
+    test('after the TTL the steps are asked to the server again', () async {
+      await repository.getSteps('ramen-spot');
+      remote.steps['ramen-spot'] = [
+        {'id': 9, 'quest_id': 'ramen-spot', 'step_order': 0, 'title': 'Editado'},
+      ];
+
+      now = now.add(QuestRepository.stepsCacheTtl);
+      final steps = await repository.getSteps('ramen-spot');
+
+      expect(remote.stepRequests, 2);
+      expect(steps.single.title, 'Editado');
+    });
+
+    test('a failure is never cached: the next call tries the server again', () async {
+      remote.offline = true;
+      await _expectAppException(repository.getSteps('ramen-spot'));
+
+      remote.offline = false;
+      final steps = await repository.getSteps('ramen-spot');
+
+      expect(remote.stepRequests, 2);
+      expect(steps, hasLength(2));
+    });
+
+    test('a Hive fallback is not put in memory: once online it refreshes', () async {
+      local.steps['ramen-spot'] = [
+        {'id': 1, 'quest_id': 'ramen-spot', 'step_order': 0, 'title': 'Viejo'},
+      ];
+      remote.offline = true;
+      expect((await repository.getSteps('ramen-spot')).single.title, 'Viejo');
+
+      remote.offline = false;
+      final steps = await repository.getSteps('ramen-spot');
+
+      expect(steps.map((s) => s.title), ['Llega', 'Pide']);
+    });
+
+    test('LRU: past the limit the least recently opened quest is asked again', () async {
+      await repository.getSteps('ramen-spot');
+      await repository.getSteps('mural-walk');
+      await repository.getSteps('ramen-spot'); // hit; mural-walk is now the oldest
+      await repository.getSteps('third-quest'); // evicts mural-walk
+
+      await repository.getSteps('ramen-spot');
+      expect(remote.stepRequests, 3);
+
+      await repository.getSteps('mural-walk');
+      expect(remote.stepRequests, 4);
+    });
+
+    test('the cached list cannot be changed by a caller', () async {
+      final steps = await repository.getSteps('ramen-spot');
+
+      expect(() => steps.removeLast(), throwsUnsupportedError);
     });
   });
 

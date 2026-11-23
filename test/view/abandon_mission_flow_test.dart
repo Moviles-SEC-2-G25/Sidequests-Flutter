@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:sidequests/analytics/analytics_event_sink.dart';
 import 'package:sidequests/analytics/analytics_tracker.dart';
+import 'package:sidequests/core/quest_alternative_recommender.dart';
 import 'package:sidequests/core/verification/step_verification_strategy.dart';
 import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/local/local_data_source.dart';
@@ -325,6 +326,8 @@ void main() {
         offlineChanges: () => const Stream.empty(),
         positions: (_, _) => const Stream.empty(),
       ),
+      // A real isolate never finishes inside testWidgets' fake async zone.
+      questAlternativesRunner: (input) async => computeQuestAlternatives(input),
     );
   });
 
