@@ -40,6 +40,42 @@ class QuestAlternative {
   });
 }
 
+/// Everything [computeQuestAlternatives] needs, already read: it runs on a
+/// background isolate, where the ViewModel and the repositories aren't
+/// available. Plain data only, so it can be sent to that isolate.
+class QuestAlternativesInput {
+  final List<Quest> catalog;
+  final Quest abandonedQuest;
+  final AbandonmentReason reason;
+  final AppContext context;
+  final int availableMinutes;
+  final UserPreferences preferences;
+  final Set<String> excludedIds;
+
+  const QuestAlternativesInput({
+    required this.catalog,
+    required this.abandonedQuest,
+    required this.reason,
+    required this.context,
+    required this.availableMinutes,
+    required this.preferences,
+    this.excludedIds = const {},
+  });
+}
+
+/// Pure and top-level so compute() can run it on another isolate: it must not
+/// capture a ViewModel (listeners, streams, sensors can't cross isolates).
+List<QuestAlternative> computeQuestAlternatives(QuestAlternativesInput input) =>
+    const QuestAlternativeRecommender().recommend(
+      catalog: input.catalog,
+      abandonedQuest: input.abandonedQuest,
+      reason: input.reason,
+      context: input.context,
+      availableMinutes: input.availableMinutes,
+      preferences: input.preferences,
+      excludedIds: input.excludedIds,
+    );
+
 /// Kotlin's QuestAlternativeRecommender, independent of the shared BQ5 ranking:
 /// same filters and points. The one difference is "too far": Flutter's quests
 /// have no catalogue distance label, so "closer" means closer to the user by

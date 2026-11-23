@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/app_exception.dart';
 import '../core/photo_proof_rules.dart';
+import '../data/cache/memory_cache.dart';
 import '../data/local/local_data_source.dart';
 import '../data/remote/network_guard.dart';
 import '../data/remote/supabase_remote_data_source.dart';
@@ -37,10 +38,15 @@ class QuestRepository {
   static const _offlineWriteMessage =
       'Sin conexión: no se pudo guardar el cambio. Inténtalo de nuevo cuando tengas internet.';
 
+  /// Steps are catalogue content: they only change when someone edits a quest.
+  static const stepsCacheTtl = Duration(minutes: 10);
+  static const stepsCacheMaxQuests = 20;
+
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
   final String Function() _newId;
   final NetworkGuard _network;
+  final MemoryCache<String, List<QuestStep>> _stepsCache;
   Future<void>? _syncInFlight;
 
   /// The last [getCatalog] fell back to the cache. Catches what the
@@ -56,8 +62,11 @@ class QuestRepository {
     this._localDataSource, {
     String Function()? newId,
     NetworkGuard network = const NetworkGuard(),
+    MemoryCache<String, List<QuestStep>>? stepsCache,
   }) : _newId = newId ?? (() => const Uuid().v4()),
-       _network = network;
+       _network = network,
+       _stepsCache =
+           stepsCache ?? MemoryCache(ttl: stepsCacheTtl, maxEntries: stepsCacheMaxQuests);
 
   Future<List<Quest>> getCatalog() async {
     try {
@@ -74,16 +83,25 @@ class QuestRepository {
   /// Whether [getSteps] can answer for [questId] without a connection.
   bool hasCachedSteps(String questId) => _localDataSource.getQuestSteps(questId) != null;
 
-  /// Falls back to the cache, so a mission opened once online can still be
-  /// followed offline.
+  /// Caching strategy: the detail view, the Misión tab and the prefetch of
+  /// recommended missions all ask for the same steps again and again, so a
+  /// server answer is kept in memory for [stepsCacheTtl] and repeat reads skip
+  /// the network (no request, no spinner). Only server answers are kept there;
+  /// a failure is never cached.
+  /// Falls back to the Hive cache, so a mission opened once online can still
+  /// be followed offline.
   /// Always in step_order, ascending: user_quests.current_step is a position
   /// in this list, so the order must be the same everywhere (and match
   /// Kotlin) — whatever order the server or an older cache returned.
   Future<List<QuestStep>> getSteps(String questId) async {
+    final inMemory = _stepsCache.get(questId);
+    if (inMemory != null) return inMemory;
     try {
       final rows = await _network.run(() => _remoteDataSource.getQuestSteps(questId));
       await _localDataSource.cacheQuestSteps(questId, rows);
-      return _sortedSteps(rows);
+      final steps = List<QuestStep>.unmodifiable(_sortedSteps(rows));
+      _stepsCache.put(questId, steps);
+      return steps;
     } catch (error) {
       final cached = _localDataSource.getQuestSteps(questId);
       if (cached != null) return _sortedSteps(cached);
