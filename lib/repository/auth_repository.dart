@@ -1,11 +1,22 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/app_exception.dart';
 import '../data/local/local_data_source.dart';
+import '../data/remote/network_guard.dart';
 import '../data/remote/supabase_remote_data_source.dart';
 
 /// Single source of truth for the current session.
 class AuthRepository {
+  /// gotrue has no timeout of its own: on a network that doesn't answer, a
+  /// sign-in would spin forever. Longer than NetworkGuard.timeout, since a
+  /// sign-in on a slow connection is worth waiting a little more for.
+  static const requestTimeout = Duration(seconds: 15);
+
+  static const _connectionMessage =
+      'No se pudo conectar. Revisa tu conexión a internet e inténtalo de nuevo.';
+
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
 
@@ -26,37 +37,31 @@ class AuthRepository {
   Future<void> setBiometricEnabled(bool value) =>
       _localDataSource.setBiometricEnabled(value);
 
-  Future<void> signUp({required String email, required String password}) async {
-    try {
-      await _remoteDataSource.signUp(email: email, password: password);
-    } on AuthException catch (e) {
-      throw AppException(e.message);
-    }
-  }
+  Future<void> signUp({required String email, required String password}) =>
+      _authCall(() => _remoteDataSource.signUp(email: email, password: password));
 
-  Future<void> signIn({required String email, required String password}) async {
-    try {
-      await _remoteDataSource.signIn(email: email, password: password);
-    } on AuthException catch (e) {
-      throw AppException(e.message);
-    }
-  }
+  Future<void> signIn({required String email, required String password}) =>
+      _authCall(() => _remoteDataSource.signIn(email: email, password: password));
 
   /// Passwordless sign-in, step 1: email a 6-digit code.
   Future<void> sendLoginCode(String email) async {
     try {
-      await _remoteDataSource.sendEmailOtp(email);
+      await _remoteDataSource.sendEmailOtp(email).timeout(requestTimeout);
     } on AuthException catch (e) {
       throw AppException(_loginCodeMessage(e), isRetryable: e is AuthRetryableFetchException);
+    } on TimeoutException {
+      throw const AppException('Sin conexión. Inténtalo de nuevo.', isRetryable: true);
     }
   }
 
   /// Step 2: exchange the code for a session.
   Future<void> verifyLoginCode({required String email, required String code}) async {
     try {
-      await _remoteDataSource.verifyEmailOtp(email: email, token: code);
+      await _remoteDataSource.verifyEmailOtp(email: email, token: code).timeout(requestTimeout);
     } on AuthException catch (e) {
       throw AppException(_loginCodeMessage(e), isRetryable: e is AuthRetryableFetchException);
+    } on TimeoutException {
+      throw const AppException('Sin conexión. Inténtalo de nuevo.', isRetryable: true);
     }
   }
 
@@ -76,11 +81,21 @@ class AuthRepository {
     };
   }
 
-  Future<void> changePassword(String newPassword) async {
+  Future<void> changePassword(String newPassword) =>
+      _authCall(() => _remoteDataSource.updatePassword(newPassword));
+
+  /// A gotrue call with a time limit. No answer (offline, timeout) becomes a
+  /// retryable AppException with a message the user can act on, instead of
+  /// gotrue's raw "ClientException with SocketException…".
+  Future<void> _authCall(Future<Object?> Function() call) async {
     try {
-      await _remoteDataSource.updatePassword(newPassword);
+      await call().timeout(requestTimeout);
+    } on AuthRetryableFetchException {
+      throw const AppException(_connectionMessage, isRetryable: true);
     } on AuthException catch (e) {
       throw AppException(e.message);
+    } on TimeoutException {
+      throw const AppException(_connectionMessage, isRetryable: true);
     }
   }
 
@@ -90,11 +105,12 @@ class AuthRepository {
 
   /// gotrue drops the local session first and only then tells the server, so
   /// a failure there (no connection) means the user is already out: the cache
-  /// must still go, or the next account would inherit it.
+  /// must still go, or the next account would inherit it. The server call is
+  /// time-limited so signing out never hangs on a network that doesn't answer.
   Future<void> signOut() async {
     try {
-      await _remoteDataSource.signOut();
-    } on AuthException {
+      await _remoteDataSource.signOut().timeout(NetworkGuard.timeout);
+    } catch (_) {
       // The token isn't revoked on the server; it just expires on its own.
     }
     await _localDataSource.clear();

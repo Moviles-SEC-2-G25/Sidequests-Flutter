@@ -15,6 +15,8 @@ class ProfileRepository {
 
   static const _offlineMessage =
       'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
+  static const _offlineWriteMessage =
+      'Sin conexión: no se pudieron guardar los cambios. Inténtalo de nuevo cuando tengas internet.';
 
   ProfileRepository(
     this._remoteDataSource,
@@ -38,16 +40,12 @@ class ProfileRepository {
   }
 
   Future<void> updateProfile(Profile profile) async {
-    try {
-      await _remoteDataSource.upsertProfile(profile.toJson());
-      // toJson() leaves out created_at: keep the cached one.
-      await _localDataSource.cacheProfile({
-        ...?_localDataSource.getProfile(),
-        ...profile.toJson(),
-      });
-    } on PostgrestException catch (e) {
-      throw AppException(e.message);
-    }
+    await _remoteWrite(() => _remoteDataSource.upsertProfile(profile.toJson()));
+    // toJson() leaves out created_at: keep the cached one.
+    await _localDataSource.cacheProfile({
+      ...?_localDataSource.getProfile(),
+      ...profile.toJson(),
+    });
   }
 
   /// Falls back to the cache when the network is unavailable.
@@ -65,11 +63,21 @@ class ProfileRepository {
 
   Future<void> updatePreferences(String userId, UserPreferences preferences) async {
     final json = {'user_id': userId, ...preferences.toJson()};
+    await _remoteWrite(() => _remoteDataSource.upsertPreferences(json));
+    await _localDataSource.cachePreferences(json);
+  }
+
+  /// Both writes are upserts, safe to repeat after a timeout. A PostgREST
+  /// rejection keeps its message; no network, a timeout or a dropped
+  /// connection become a retryable AppException — before, they escaped as
+  /// raw SocketExceptions and left the "Guardar" button spinning.
+  Future<void> _remoteWrite(Future<void> Function() write) async {
     try {
-      await _remoteDataSource.upsertPreferences(json);
-      await _localDataSource.cachePreferences(json);
+      await _network.run(write);
     } on PostgrestException catch (e) {
       throw AppException(e.message);
+    } catch (_) {
+      throw const AppException(_offlineWriteMessage, isRetryable: true);
     }
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../viewmodel/auth/auth_view_model.dart';
+import '../widgets/offline_notice.dart';
 import 'otp_login_view.dart';
 import 'signup_view.dart';
 
@@ -27,13 +28,15 @@ class _LoginViewState extends State<LoginView> {
   Widget build(BuildContext context) {
     final authViewModel = context.watch<AuthViewModel>();
     final isBusy = authViewModel.status == AuthStatus.authenticating;
+    final isOffline = watchIsOffline(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Sidequests')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 360),
-          child: Padding(
+          // Scrolls: with the keyboard open on a small phone it overflowed.
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -49,7 +52,10 @@ class _LoginViewState extends State<LoginView> {
                   obscureText: true,
                   decoration: const InputDecoration(labelText: 'Password'),
                 ),
-                if (authViewModel.errorMessage != null) ...[
+                if (isOffline) ...[
+                  const SizedBox(height: 12),
+                  const OfflineNotice(message: AuthViewModel.offlineSignInMessage),
+                ] else if (authViewModel.errorMessage != null) ...[
                   const SizedBox(height: 12),
                   Text(
                     authViewModel.errorMessage!,
@@ -58,7 +64,7 @@ class _LoginViewState extends State<LoginView> {
                 ],
                 const SizedBox(height: 20),
                 FilledButton(
-                  onPressed: isBusy
+                  onPressed: isBusy || isOffline
                       ? null
                       : () => authViewModel.signIn(
                           email: _emailController.text.trim(),

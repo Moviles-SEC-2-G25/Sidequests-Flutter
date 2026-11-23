@@ -9,6 +9,7 @@ import '../../viewmodel/auth/auth_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import '../../viewmodel/theme_view_model.dart';
+import '../widgets/offline_notice.dart';
 import 'change_password_dialog.dart';
 import 'edit_preferences_view.dart';
 import 'stats_view.dart';
@@ -124,15 +125,59 @@ class _ProfileHeader extends StatelessWidget {
         IconButton(
           icon: const Icon(Icons.lock_reset),
           tooltip: 'Cambiar contraseña',
-          onPressed: () => showChangePasswordDialog(context),
+          onPressed: () => _changePassword(context),
         ),
         IconButton(
           icon: const Icon(Icons.logout),
           tooltip: 'Cerrar sesión',
-          onPressed: () => context.read<AuthViewModel>().signOut(),
+          onPressed: () => _signOut(context),
         ),
       ],
     );
+  }
+
+  /// Needs the server: offline it says so instead of opening a form that
+  /// can only fail.
+  void _changePassword(BuildContext context) {
+    if (readIsOffline(context)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(AuthViewModel.offlinePasswordMessage)),
+      );
+      return;
+    }
+    showChangePasswordDialog(context);
+  }
+
+  /// Signing out works offline, but the way back in doesn't, and what's still
+  /// waiting to sync is cleared with the rest of the account's data: offline,
+  /// it asks first.
+  Future<void> _signOut(BuildContext context) async {
+    final authViewModel = context.read<AuthViewModel>();
+    if (readIsOffline(context)) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Estás sin conexión'),
+          content: const Text(
+            'Si cierras sesión ahora no podrás volver a entrar hasta reconectar, '
+            'y se perderán los cambios que aún no se han sincronizado. '
+            '¿Cerrar sesión de todos modos?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Cerrar sesión'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    await authViewModel.signOut();
   }
 }
 
@@ -399,7 +444,8 @@ class _MilestoneCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(title, style: Theme.of(context).textTheme.titleSmall),
+                    // Flexible: a long title next to "GANADO" overflowed a small phone.
+                    Flexible(child: Text(title, style: Theme.of(context).textTheme.titleSmall)),
                     if (earned) ...[
                       const SizedBox(width: 8),
                       _Badge(text: 'GANADO', color: AppColors.amber, textColor: Colors.white),
@@ -444,7 +490,7 @@ class _PreferencesSection extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Mis preferencias', style: Theme.of(context).textTheme.titleLarge),
+            Flexible(child: Text('Mis preferencias', style: Theme.of(context).textTheme.titleLarge)),
             TextButton(
               onPressed: () => Navigator.of(
                 context,
@@ -499,16 +545,13 @@ class _BadgesGrid extends StatelessWidget {
       children: [
         Text('Insignias', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 10),
-        GridView.count(
-          crossAxisCount: 3,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 0.95,
+        // Rows as tall as their tallest badge, not a fixed aspect ratio: a
+        // two-line label ("Ratón de biblioteca") overflowed it on a 360 dp phone.
+        _BadgeRows(
           children: badges.map((badge) {
             final (emoji, label, earned) = badge;
             return Container(
+              constraints: const BoxConstraints(minHeight: 104),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: earned
@@ -542,6 +585,38 @@ class _BadgesGrid extends StatelessWidget {
             );
           }).toList(),
         ),
+      ],
+    );
+  }
+}
+
+/// Three badges per row, each row as tall as its tallest badge.
+class _BadgeRows extends StatelessWidget {
+  static const _perRow = 3;
+  static const _gap = 10.0;
+
+  final List<Widget> children;
+
+  const _BadgeRows({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var start = 0; start < children.length; start += _perRow) ...[
+          if (start > 0) const SizedBox(height: _gap),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = start; i < start + _perRow; i++) ...[
+                  if (i > start) const SizedBox(width: _gap),
+                  Expanded(child: i < children.length ? children[i] : const SizedBox()),
+                ],
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -708,7 +783,15 @@ class _SettingsSectionState extends State<_SettingsSection> {
         ListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Correo'),
-          trailing: Text(widget.profileViewModel.email ?? '—'),
+          // Bounded: a long address used up the whole tile (a layout error).
+          trailing: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.55),
+            child: Text(
+              widget.profileViewModel.email ?? '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ),
         ListTile(
           contentPadding: EdgeInsets.zero,
