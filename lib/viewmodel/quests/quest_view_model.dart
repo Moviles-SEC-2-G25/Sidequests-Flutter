@@ -168,8 +168,6 @@ class QuestViewModel extends ChangeNotifier {
   bool isLoadingSteps = false;
   String? errorMessage;
 
-  /// The last [startInstantPlan] started on the device, pending sync.
-  bool instantPlanQueued = false;
   bool isSubmittingRating = false;
   String? ratingErrorMessage;
 
@@ -201,6 +199,11 @@ class QuestViewModel extends ChangeNotifier {
   double? userLatitude;
   double? userLongitude;
   bool isLocatingUser = false;
+
+  /// The last [requestUserLocation] got no position (GPS off, permission
+  /// denied, no fix in time), so the view can say so instead of just showing
+  /// the button again.
+  bool userLocationUnavailable = false;
 
   /// Last Context Manager snapshot (location, time of day, weather...),
   /// refreshed whenever recommendations load. Drives Explore's automatic
@@ -544,42 +547,44 @@ class QuestViewModel extends ChangeNotifier {
   /// "Empezar ya" on a recommendation card (BQ4's 'instant_plan' start
   /// path): accepts the quest and preloads its steps, skipping
   /// QuestDetailView entirely. The caller navigates to MissionTabView once
-  /// this returns true. Without a connection the mission starts anyway, on
-  /// the device: see [instantPlanQueued].
+  /// this returns true. Like every start it needs a connection: without one
+  /// it returns false with [startNeedsConnectionMessage].
   Future<bool> startInstantPlan(Quest quest) async {
-    instantPlanQueued = false;
     final started = await _acceptQuest(
       quest.id,
       startPath: 'instant_plan',
       wasRecommended: true,
-      canQueue: true,
+      reuseActiveAttempt: true,
     );
     if (!started) return false;
-    // Queued: the network already failed, and the steps are known to be saved.
-    await loadSteps(quest.id, cacheOnly: instantPlanQueued);
+    await loadSteps(quest.id);
     return true;
   }
 
+  /// Why a mission didn't start: no connection, or one that didn't answer.
+  /// Its progress can only be saved on the server, so it never starts on the
+  /// device alone.
+  static const startNeedsConnectionMessage =
+      'Sin conexión: necesitas internet para iniciar una misión. Conéctate e inténtalo de nuevo.';
+
+  /// [reuseActiveAttempt]: the card of a mission already being done opens it
+  /// (even offline) instead of starting a second attempt.
   Future<bool> _acceptQuest(
     String questId, {
     required String startPath,
     required bool wasRecommended,
-    bool canQueue = false,
+    bool reuseActiveAttempt = false,
   }) async {
-    try {
-      final UserQuest userQuest;
-      if (canQueue) {
-        final result = await _questRepository.acceptQuestOrQueue(userId: _userId, questId: questId);
-        userQuest = result.userQuest;
-        instantPlanQueued = result.queued;
-        if (result.alreadyStarted) {
-          // Same mission, not a new start (BQ4: exactly one event per start).
-          _replaceUserQuest(userQuest);
-          return true;
-        }
-      } else {
-        userQuest = await _questRepository.acceptQuest(userId: _userId, questId: questId);
+    if (reuseActiveAttempt) {
+      final active = _questRepository.activeAttempt(userId: _userId, questId: questId);
+      if (active != null) {
+        // Same mission, not a new start (BQ4: exactly one event per start).
+        _replaceUserQuest(active);
+        return true;
       }
+    }
+    try {
+      final userQuest = await _questRepository.acceptQuest(userId: _userId, questId: questId);
       _replaceUserQuest(userQuest);
       // Not awaited: the permission dialog shows over the Misión screen
       // instead of holding up the navigation to it.
@@ -607,7 +612,7 @@ class QuestViewModel extends ChangeNotifier {
       _resetDecisionJourney();
       return true;
     } on AppException catch (e) {
-      errorMessage = e.message;
+      errorMessage = e.isRetryable ? startNeedsConnectionMessage : e.message;
       notifyListeners();
       return false;
     }
@@ -641,14 +646,24 @@ class QuestViewModel extends ChangeNotifier {
   /// Real GPS capture (via the Context Manager's location snapshot) for the
   /// Cerca tab's distance sort. Not persisted — purely for this session's
   /// display, matching the Figma "Activar ubicación" affordance.
+  /// Never leaves the button spinning: a sensor that fails ends the wait
+  /// with no position, like a denied permission.
   Future<void> requestUserLocation() async {
+    if (isLocatingUser) return;
     isLocatingUser = true;
+    userLocationUnavailable = false;
     notifyListeners();
-    final context = await _contextManager.snapshot();
-    userLatitude = context.latitude;
-    userLongitude = context.longitude;
-    isLocatingUser = false;
-    notifyListeners();
+    try {
+      final context = await _contextManager.snapshot();
+      userLatitude = context.latitude;
+      userLongitude = context.longitude;
+    } catch (_) {
+      // No fix: the distances stay unavailable.
+    } finally {
+      userLocationUnavailable = userLatitude == null || userLongitude == null;
+      isLocatingUser = false;
+      notifyListeners();
+    }
   }
 
   /// [questId]'s steps, once loaded; [steps] alone may belong to another quest.
@@ -665,8 +680,7 @@ class QuestViewModel extends ChangeNotifier {
   /// the Misión tab shows, the GPS check-in watches and [completeCurrentStep]
   /// counts, so opening another quest's detail must not replace it.
   /// A failure leaves [steps] and [_stepsQuestId] as they were.
-  /// [cacheOnly] skips the network, for when it's already known to be down.
-  Future<void> loadSteps(String questId, {bool cacheOnly = false}) async {
+  Future<void> loadSteps(String questId) async {
     final mission = currentMission;
     if (mission != null && mission.questId != questId) return _loadOtherQuestSteps(questId);
 
@@ -676,9 +690,7 @@ class QuestViewModel extends ChangeNotifier {
     _stepsUnavailable = null;
     notifyListeners();
     try {
-      steps = cacheOnly
-          ? await _questRepository.getCachedSteps(questId)
-          : await _questRepository.getSteps(questId);
+      steps = await _questRepository.getSteps(questId);
     } on AppException catch (e) {
       errorMessage = e.message;
       if (e.isRetryable) _stepsUnavailable = (questId: questId, message: e.message);
@@ -814,6 +826,11 @@ class QuestViewModel extends ChangeNotifier {
   /// abandoning a quest updates the labels on the next notifyListeners().
   Map<String, CompletionLevel> get completionLikelihoodByCategory =>
       _completionLikelihood.byCategory(catalog, userQuests);
+
+  /// No catalog to show because none could be fetched and none was ever saved
+  /// (as opposed to filters that exclude every quest).
+  bool get catalogUnavailable =>
+      catalog.isEmpty && !isLoading && _questRepository.catalogFromCache;
 
   /// The labels above were computed from data saved on the device, because the
   /// catalog or the attempts couldn't be fetched.

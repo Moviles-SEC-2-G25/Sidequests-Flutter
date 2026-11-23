@@ -9,6 +9,7 @@ import '../../models/quest.dart';
 import '../../models/user_quest.dart';
 import '../../models/weather_snapshot.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../widgets/offline_notice.dart';
 import '../widgets/quest_address.dart';
 import '../widgets/quest_compass.dart';
 import 'mission_tab_view.dart';
@@ -75,6 +76,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
     final stepsForThisQuest = questViewModel.stepsOf(quest.id);
     final stepCount = stepsForThisQuest.isNotEmpty ? stepsForThisQuest.length : null;
     final stepsUnavailable = questViewModel.stepsUnavailableMessage(quest.id);
+    final isOffline = watchIsOffline(context);
 
     return Scaffold(
       body: SafeArea(
@@ -112,13 +114,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
               const SizedBox(height: 12),
               QuestAddress(quest: quest),
               const SizedBox(height: 20),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 2.2,
+              _StatGrid(
                 children: [
                   _StatCard(
                     icon: Icons.access_time,
@@ -211,7 +207,16 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                   ),
                   child: const Text('Continuar misión →'),
                 )
-              else
+              else if (isOffline) ...[
+                // Starting needs the server: blocked up front, saying why.
+                const OfflineNotice(message: OfflineMessages.startMission),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: null,
+                  icon: const Icon(Icons.wifi_off, size: 18),
+                  label: const Text('Sin conexión'),
+                ),
+              ] else
                 FilledButton(
                   onPressed: _isAccepting ? null : _accept,
                   child: _isAccepting
@@ -269,14 +274,18 @@ class _WeatherCardState extends State<_WeatherCard> {
 
     double? latitude = quest.latitude;
     double? longitude = quest.longitude;
-    if (quest.locationMode == 'anywhere' || latitude == null || longitude == null) {
-      final position = await locationService.getCurrentPosition();
-      latitude = position?.latitude;
-      longitude = position?.longitude;
+    WeatherSnapshot? weather;
+    try {
+      if (quest.locationMode == 'anywhere' || latitude == null || longitude == null) {
+        final position = await locationService.getCurrentPosition();
+        latitude = position?.latitude;
+        longitude = position?.longitude;
+      }
+      if (latitude == null || longitude == null) return;
+      weather = await weatherService.fetch(latitude, longitude);
+    } catch (_) {
+      // A location sensor that failed: same as no weather.
     }
-    if (latitude == null || longitude == null) return;
-
-    final weather = await weatherService.fetch(latitude, longitude);
     if (!mounted) return;
     setState(() {
       _weather = weather;
@@ -352,6 +361,36 @@ class _WeatherCardState extends State<_WeatherCard> {
   }
 }
 
+/// The 2x2 stat cards. Each row is as tall as its tallest card, instead of the
+/// fixed aspect ratio a GridView imposes: "Individual — solo tú" wraps to two
+/// lines on a 360 dp phone (or with a larger system font) and overflowed it.
+class _StatGrid extends StatelessWidget {
+  final List<Widget> children;
+
+  const _StatGrid({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var i = 0; i < children.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 12),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: children[i]),
+                const SizedBox(width: 12),
+                Expanded(child: i + 1 < children.length ? children[i + 1] : const SizedBox()),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _StatCard extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -362,6 +401,7 @@ class _StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: const BoxConstraints(minHeight: 64),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -376,9 +416,13 @@ class _StatCard extends StatelessWidget {
             children: [
               Icon(icon, size: 14, color: Theme.of(context).colorScheme.outline),
               const SizedBox(width: 4),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 0.5),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 0.5),
+                ),
               ),
             ],
           ),

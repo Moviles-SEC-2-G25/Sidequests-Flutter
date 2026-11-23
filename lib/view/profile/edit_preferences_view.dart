@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/category_labels.dart';
 import '../../models/user_preferences.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
+import '../widgets/offline_notice.dart';
 
 /// "Editar" on the profile's "Mis preferencias" section. Adds the interests
 /// picker the Figma reference shows but the original onboarding flow never
@@ -31,12 +32,19 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
 
   Future<void> _save() async {
     setState(() => _isSaving = true);
-    final saved = await context.read<ProfileViewModel>().updatePreferences(_preferences);
+    final profileViewModel = context.read<ProfileViewModel>();
+    final saved = await profileViewModel.updatePreferences(_preferences);
     if (!mounted) return;
     if (saved) {
       Navigator.of(context).pop();
     } else {
+      // Not saved: the choices stay on screen to try again.
       setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(profileViewModel.errorMessage ?? 'No se pudieron guardar tus preferencias.'),
+        ),
+      );
     }
   }
 
@@ -50,6 +58,7 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
 
   @override
   Widget build(BuildContext context) {
+    final isOffline = watchIsOffline(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Mis preferencias')),
       body: ListView(
@@ -134,8 +143,12 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
             ),
           ),
           const SizedBox(height: 24),
+          if (isOffline) ...[
+            const OfflineNotice(message: OfflineMessages.savePreferences),
+            const SizedBox(height: 12),
+          ],
           FilledButton(
-            onPressed: _isSaving ? null : _save,
+            onPressed: _isSaving || isOffline ? null : _save,
             child: _isSaving
                 ? const SizedBox(
                     width: 20,

@@ -79,6 +79,15 @@ class _NearbyViewState extends State<NearbyView> {
                         )
                       : const Text('Activar ubicación para ver distancias'),
                 ),
+              if (questViewModel.userLatitude == null && questViewModel.userLocationUnavailable) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'No pudimos obtener tu ubicación. Revisa que el GPS esté activado '
+                  'y que Sidequests tenga permiso de ubicación.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
               const SizedBox(height: 20),
               Text(
                 'DISPONIBLES · ${gpsQuests.length}',

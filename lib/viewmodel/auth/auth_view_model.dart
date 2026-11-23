@@ -187,11 +187,21 @@ class AuthViewModel extends ChangeNotifier {
     if (otpFailedForConnection) clearOtpError();
   }
 
-  Future<bool> signIn({required String email, required String password}) =>
-      _run(() => _authRepository.signIn(email: email, password: password));
+  // Signing in, signing up and changing the password all need the server:
+  // without a connection they're stopped before the request, with these.
+  static const offlineSignInMessage = 'Sin conexión: necesitas internet para iniciar sesión.';
+  static const offlineSignUpMessage = 'Sin conexión: necesitas internet para crear tu cuenta.';
+  static const offlinePasswordMessage = 'Sin conexión: necesitas internet para cambiar tu contraseña.';
 
-  Future<bool> signUp({required String email, required String password}) =>
-      _run(() => _authRepository.signUp(email: email, password: password));
+  Future<bool> signIn({required String email, required String password}) => _run(
+    () => _authRepository.signIn(email: email, password: password),
+    offlineMessage: offlineSignInMessage,
+  );
+
+  Future<bool> signUp({required String email, required String password}) => _run(
+    () => _authRepository.signUp(email: email, password: password),
+    offlineMessage: offlineSignUpMessage,
+  );
 
   /// Repository sign-out also clears the biometric flag.
   Future<void> signOut() async {
@@ -234,6 +244,7 @@ class AuthViewModel extends ChangeNotifier {
   }
   /// Returns null on success, or the error message to show.
   Future<String?> changePassword(String newPassword) async {
+    if (await isOffline()) return offlinePasswordMessage;
     try {
       await _authRepository.changePassword(newPassword);
       return null;
@@ -242,10 +253,18 @@ class AuthViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> _run(Future<void> Function() action) async {
+  /// [offlineMessage]: with no connection [action] isn't even tried.
+  Future<bool> _run(Future<void> Function() action, {String? offlineMessage}) async {
     status = AuthStatus.authenticating;
     errorMessage = null;
     notifyListeners();
+    if (offlineMessage != null && await isOffline()) {
+      status = AuthStatus.unauthenticated;
+      errorMessage = offlineMessage;
+      _lastRunFailedForConnection = true;
+      notifyListeners();
+      return false;
+    }
     try {
       await action();
       // signUp doesn't create a session when email confirmation is

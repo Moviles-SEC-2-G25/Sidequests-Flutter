@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../viewmodel/auth/auth_view_model.dart';
+import '../widgets/offline_notice.dart';
 
 class SignUpView extends StatefulWidget {
   const SignUpView({super.key});
@@ -25,13 +26,15 @@ class _SignUpViewState extends State<SignUpView> {
   Widget build(BuildContext context) {
     final authViewModel = context.watch<AuthViewModel>();
     final isBusy = authViewModel.status == AuthStatus.authenticating;
+    final isOffline = watchIsOffline(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Create account')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 360),
-          child: Padding(
+          // Scrolls: with the keyboard open on a small phone it overflowed.
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -47,7 +50,10 @@ class _SignUpViewState extends State<SignUpView> {
                   obscureText: true,
                   decoration: const InputDecoration(labelText: 'Password'),
                 ),
-                if (authViewModel.errorMessage != null) ...[
+                if (isOffline) ...[
+                  const SizedBox(height: 12),
+                  const OfflineNotice(message: AuthViewModel.offlineSignUpMessage),
+                ] else if (authViewModel.errorMessage != null) ...[
                   const SizedBox(height: 12),
                   Text(
                     authViewModel.errorMessage!,
@@ -56,7 +62,7 @@ class _SignUpViewState extends State<SignUpView> {
                 ],
                 const SizedBox(height: 20),
                 FilledButton(
-                  onPressed: isBusy
+                  onPressed: isBusy || isOffline
                       ? null
                       : () async {
                           final success = await authViewModel.signUp(

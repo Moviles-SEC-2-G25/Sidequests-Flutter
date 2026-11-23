@@ -111,22 +111,15 @@ class QuestRepository {
     }
   }
 
-  /// The saved steps, without asking the network: a mission just started
-  /// offline has already spent its wait on the acceptance.
-  Future<List<QuestStep>> getCachedSteps(String questId) async {
-    final cached = _localDataSource.getQuestSteps(questId);
-    if (cached == null) throw const AppException(_noCacheMessage, isRetryable: true);
-    return _sortedSteps(cached);
-  }
-
   List<QuestStep> _sortedSteps(List<Map<String, dynamic>> rows) =>
       rows.map(QuestStep.fromJson).toList()..sort((a, b) => a.stepOrder.compareTo(b.stepOrder));
 
   /// Delegates ranking to the shared `recommend_quests` RPC (BQ5) so Kotlin
   /// and Flutter never duplicate the recommendation logic. Every non-empty
   /// list is saved with its batch id and its missions' steps are prefetched,
-  /// so "Empezar ya" keeps working offline; when the network fails, the saved
-  /// list comes back marked [RecommendationBatch.fromCache].
+  /// so the list and each mission's detail can still be browsed offline; when
+  /// the network fails, the saved list comes back marked
+  /// [RecommendationBatch.fromCache].
   Future<RecommendationBatch> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,
@@ -689,67 +682,22 @@ class QuestRepository {
     return _cacheUserQuest(json);
   }
 
-  /// "Empezar ya": like [acceptQuest], but without a connection the mission
-  /// starts on the device and its row is queued. The id is generated before
-  /// the first try: if the server saved it and only the answer was lost, the
-  /// queued copy finds its row instead of creating a second attempt.
-  /// Needs the mission's steps cached (see [getRecommendations]), or there
-  /// would be nothing to follow: then it fails like [acceptQuest].
-  /// [alreadyStarted]: the card was tapped again, so it's the same mission and
-  /// not a new start — nothing is written.
-  Future<({UserQuest userQuest, bool queued, bool alreadyStarted})> acceptQuestOrQueue({
-    required String userId,
-    required String questId,
-  }) async {
+  /// The user's attempt at [questId] that is still being done, from the
+  /// device; null if there is none. "Empezar ya" tapped again on a mission
+  /// already started opens that one instead of starting a second attempt.
+  ///
+  /// A new mission is never started on the device: its progress can only be
+  /// saved on the server, so starting one needs a connection ([acceptQuest]
+  /// fails right away without one). Acceptances queued by earlier versions
+  /// are still synced by [syncPendingWrites].
+  UserQuest? activeAttempt({required String userId, required String questId}) {
     for (final row in _localDataSource.getUserQuests()) {
       final isActive = row['status'] == 'accepted' || row['status'] == 'in_progress';
       if (row['user_id'] == userId && row['quest_id'] == questId && isActive) {
-        return (
-          userQuest: UserQuest.fromJson(row),
-          queued: _unsyncedAttemptIds().contains(row['id']),
-          alreadyStarted: true,
-        );
+        return UserQuest.fromJson(row);
       }
     }
-
-    final id = _newId();
-    try {
-      final json = await _remoteWrite(
-        () => _remoteDataSource.upsertUserQuest({
-          'id': id,
-          'user_id': userId,
-          'quest_id': questId,
-          'status': 'accepted',
-        }),
-      );
-      await _localDataSource.cacheActiveQuestId(questId);
-      return (userQuest: await _cacheUserQuest(json), queued: false, alreadyStarted: false);
-    } on AppException catch (error) {
-      if (!error.isRetryable || _localDataSource.getQuestSteps(questId) == null) rethrow;
-      return (
-        userQuest: await _queueAcceptedQuest(id, userId, questId),
-        queued: true,
-        alreadyStarted: false,
-      );
-    }
-  }
-
-  Future<UserQuest> _queueAcceptedQuest(String id, String userId, String questId) async {
-    final now = DateTime.now().toUtc();
-    final row = {
-      'id': id,
-      'user_id': userId,
-      'quest_id': questId,
-      'status': 'accepted',
-      'accepted_at': now.toIso8601String(),
-    };
-    final write = PendingWrite(type: PendingWrite.acceptQuest, payload: row, createdAt: now);
-    await _localDataSource.savePendingWrites([
-      ..._localDataSource.getPendingWrites(),
-      write.toJson(),
-    ]);
-    await _localDataSource.cacheActiveQuestId(questId);
-    return _cacheUserQuest(row);
+    return null;
   }
 
   Future<UserQuest> updateProgress(UserQuest userQuest) async {
