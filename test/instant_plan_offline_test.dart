@@ -34,6 +34,8 @@ import 'package:sidequests/repository/profile_repository.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/view/quests/explore_view.dart';
 import 'package:sidequests/view/quests/mission_tab_view.dart';
+import 'package:sidequests/view/widgets/offline_notice.dart';
+import 'package:sidequests/viewmodel/context/connectivity_view_model.dart';
 import 'package:sidequests/viewmodel/profile/profile_view_model.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -41,7 +43,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const _userId = 'user-1';
 const _context = AppContext(timeOfDay: 'afternoon', dayOfWeek: 'monday', isConnected: true);
 const _savedLabel = 'Recomendaciones guardadas';
-const _queuedNotice = 'Misión iniciada sin conexión: se sincronizará al reconectar';
 
 const _rejected = PostgrestException(message: 'new row violates RLS', code: '42501');
 
@@ -68,9 +69,6 @@ class _FakeRemote implements SupabaseRemoteDataSource {
 
   /// Only the queued-write call: the read after it can still go through.
   Object? syncError;
-
-  /// The upsert reaches the server, but its answer never comes back.
-  bool loseUpsertAnswer = false;
   int queuedWritesSent = 0;
   final List<String> uploads = [];
 
@@ -123,15 +121,20 @@ class _FakeRemote implements SupabaseRemoteDataSource {
     return [...userQuests];
   }
 
+  /// Like the server, gives a new row its id when the client didn't send one.
   @override
   Future<Map<String, dynamic>> upsertUserQuest(Map<String, dynamic> userQuest) async {
     _failIfDown();
     final existing = userQuests.where((row) => row['id'] == userQuest['id']).firstOrNull;
-    final row = {'accepted_at': '2026-10-01T10:00:00Z', ...?existing, ...userQuest};
+    final row = {
+      'id': 'server-${userQuests.length + 1}',
+      'accepted_at': '2026-10-01T10:00:00Z',
+      ...?existing,
+      ...userQuest,
+    };
     userQuests
       ..removeWhere((r) => r['id'] == row['id'])
       ..insert(0, row);
-    if (loseUpsertAnswer) throw const SocketException('answer lost');
     return row;
   }
 
@@ -305,6 +308,9 @@ class _FakeConnectivity implements Connectivity {
   Future<List<ConnectivityResult>> checkConnectivity() async => [ConnectivityResult.none];
 
   @override
+  Stream<List<ConnectivityResult>> get onConnectivityChanged => const Stream.empty();
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -390,11 +396,28 @@ void main() {
     return (ids: batch.recommendations.map((r) => r.questId).toList(), batch: batch.batchId, cached: batch.fromCache);
   }
 
-  Future<UserQuest> acceptOffline(String questId) async {
+  /// What "Empezar ya" left on the device when tapped offline, before
+  /// starting a mission needed a connection: the attempt in the cache and its
+  /// upsert in the queue. Phones that ran that version can still hold one, so
+  /// the queue must keep syncing it. Leaves the network down, as it was then.
+  Future<UserQuest> queueLegacyStart(String questId, {LocalDataSource? on}) async {
+    final source = on ?? local;
     remote.offline = true;
-    final result = await repository.acceptQuestOrQueue(userId: _userId, questId: questId);
-    expect(result.queued, isTrue);
-    return result.userQuest;
+    final now = DateTime.now().toUtc();
+    final row = {
+      'id': 'uuid-${++nextId}',
+      'user_id': _userId,
+      'quest_id': questId,
+      'status': 'accepted',
+      'accepted_at': now.toIso8601String(),
+    };
+    await source.savePendingWrites([
+      ...source.getPendingWrites(),
+      PendingWrite(type: PendingWrite.acceptQuest, payload: row, createdAt: now).toJson(),
+    ]);
+    await source.cacheActiveQuestId(questId);
+    await source.cacheUserQuests([row, ...source.getUserQuests()]);
+    return UserQuest.fromJson(row);
   }
 
   setUp(() {
@@ -463,7 +486,7 @@ void main() {
 
     test('the saved list leaves out skipped and already started quests', () async {
       await loadRecommendationsOnline(repository);
-      await acceptOffline('a');
+      await queueLegacyStart('a');
 
       expect((await loadOffline()).ids, ['b']);
 
@@ -489,7 +512,7 @@ void main() {
       expect(tracker.of(AnalyticsEventType.recommendationShown), hasLength(2));
     });
 
-    test('after a restart offline, BQ4 reuses the saved batch_id', () async {
+    test('after a restart offline, BQ4 reuses the saved batch_id once a start goes through', () async {
       await loadRecommendationsOnline(repository);
       final savedBatch = local.saved!.batchId;
       remote.offline = true;
@@ -497,6 +520,7 @@ void main() {
       final viewModel = newViewModel(newRepository(local));
       await viewModel.load();
       await viewModel.loadRecommendations(const UserPreferences());
+      remote.offline = false; // back online before "Empezar ya": starting needs it
       await viewModel.startInstantPlan(_quest('a'));
 
       expect(tracker.of(AnalyticsEventType.recommendationShown), isEmpty);
@@ -518,11 +542,11 @@ void main() {
     });
   });
 
-  group('Queue & sync: accepting offline', () {
+  group('Starting a mission needs a connection', () {
     setUp(() => loadRecommendationsOnline(repository));
 
-    test('creates the attempt locally and queues an upsert with that same id', () async {
-      final userQuest = await acceptOffline('a');
+    test('a start queued by an earlier version: cached attempt, upsert queued with that id', () async {
+      final userQuest = await queueLegacyStart('a');
 
       expect(userQuest.status, 'accepted');
       expect(userQuest.questId, 'a');
@@ -536,16 +560,32 @@ void main() {
       expect(DateTime.parse(write.payload['accepted_at'] as String), userQuest.acceptedAt);
     });
 
-    test('the mission starts normally, with cached steps and the BQ4 event at that moment', () async {
+    test('offline, "Empezar ya" starts nothing, even with the steps saved, and says why', () async {
       final viewModel = newViewModel(repository);
       await viewModel.loadRecommendations(const UserPreferences());
       remote.offline = true;
+      expect(repository.hasCachedSteps('a'), isTrue);
+
+      final started = await viewModel.startInstantPlan(_quest('a'));
+
+      expect(started, isFalse);
+      expect(viewModel.errorMessage, QuestViewModel.startNeedsConnectionMessage);
+      expect(viewModel.currentMission, isNull);
+      expect(local.pendingWrites, isEmpty);
+      expect(local.userQuests, isEmpty);
+      expect(tracker.of(AnalyticsEventType.recommendationAccepted), isEmpty);
+    });
+
+    test('online, the mission starts on the server, with its steps and the BQ4 event', () async {
+      final viewModel = newViewModel(repository);
+      await viewModel.loadRecommendations(const UserPreferences());
 
       final started = await viewModel.startInstantPlan(_quest('a'));
 
       expect(started, isTrue);
-      expect(viewModel.instantPlanQueued, isTrue);
       expect(viewModel.currentMission!.questId, 'a');
+      expect(remote.userQuests.single['quest_id'], 'a');
+      expect(local.pendingWrites, isEmpty);
       expect(viewModel.steps.single.title, 'Paso a');
       final metadata = tracker.of(AnalyticsEventType.recommendationAccepted).single;
       expect(metadata['start_path'], 'instant_plan');
@@ -554,39 +594,29 @@ void main() {
       expect(metadata['batch_id'], isNotNull);
     });
 
-    test('without cached steps it fails as before: there would be nothing to follow', () async {
-      local.steps.clear();
+    test('tapping the card again opens the same mission, even offline, without a new start', () async {
       final viewModel = newViewModel(repository);
+      expect(await viewModel.startInstantPlan(_quest('a')), isTrue);
+      final first = viewModel.currentMission!;
       remote.offline = true;
 
-      final started = await viewModel.startInstantPlan(_quest('a'));
+      expect(await viewModel.startInstantPlan(_quest('a')), isTrue);
 
-      expect(started, isFalse);
-      expect(viewModel.errorMessage, startsWith('Sin conexión'));
-      expect(local.pendingWrites, isEmpty);
-      expect(tracker.of(AnalyticsEventType.recommendationAccepted), isEmpty);
+      expect(viewModel.currentMission!.id, first.id);
+      expect(remote.userQuests, hasLength(1));
+      expect(tracker.of(AnalyticsEventType.recommendationAccepted), hasLength(1));
     });
 
-    test('tapping the card again opens the same mission instead of queuing a second one', () async {
-      final first = await acceptOffline('a');
-      final second = await acceptOffline('a');
+    test('a server rejection keeps its own message and queues nothing', () async {
+      final viewModel = newViewModel(QuestRepository(_RejectingWrites(), local));
 
-      expect(second.id, first.id);
-      expect(local.pendingWrites, hasLength(1));
-      expect(local.userQuests, hasLength(1));
-    });
+      expect(await viewModel.startInstantPlan(_quest('a')), isFalse);
 
-    test('a server rejection of the first try is not queued', () async {
-      expect(
-        QuestRepository(_RejectingWrites(), local).acceptQuestOrQueue(userId: _userId, questId: 'a'),
-        throwsA(isA<AppException>()),
-      );
-      await pumpEventQueue();
-
+      expect(viewModel.errorMessage, _rejected.message);
       expect(local.pendingWrites, isEmpty);
     });
 
-    test('other accepts do not queue: "Aceptar misión" still fails offline', () async {
+    test('"Aceptar misión" fails offline too, queuing nothing', () async {
       remote.offline = true;
 
       await expectLater(
@@ -598,7 +628,7 @@ void main() {
     });
 
     test('progress offline still fails on a queued mission, unchanged', () async {
-      final userQuest = await acceptOffline('a');
+      final userQuest = await queueLegacyStart('a');
 
       await expectLater(
         repository.updateProgress(userQuest.copyWithProgress(status: 'in_progress', currentStep: 1)),
@@ -613,7 +643,7 @@ void main() {
     setUp(() => loadRecommendationsOnline(repository));
 
     test('success empties the queue and the server has the row with that id', () async {
-      final userQuest = await acceptOffline('a');
+      final userQuest = await queueLegacyStart('a');
       remote.offline = false;
 
       await repository.syncPendingWrites();
@@ -624,7 +654,7 @@ void main() {
     });
 
     test('app start with a connection syncs before reading the attempts', () async {
-      final userQuest = await acceptOffline('a');
+      final userQuest = await queueLegacyStart('a');
       remote.offline = false;
 
       final viewModel = newViewModel(newRepository(local));
@@ -636,8 +666,8 @@ void main() {
     });
 
     test('a network failure keeps the queue, in order, and the next sync finishes it', () async {
-      final first = await acceptOffline('a');
-      final second = await acceptOffline('b');
+      final first = await queueLegacyStart('a');
+      final second = await queueLegacyStart('b');
 
       await repository.syncPendingWrites(); // still offline
 
@@ -652,8 +682,8 @@ void main() {
     });
 
     test('a failure midway stops there: nothing after it is sent', () async {
-      await acceptOffline('a');
-      await acceptOffline('b');
+      await queueLegacyStart('a');
+      await queueLegacyStart('b');
       remote.offline = false;
       remote.syncError = const SocketException('dropped');
 
@@ -664,7 +694,7 @@ void main() {
     });
 
     test('a server rejection discards the entry and its local mission, without throwing', () async {
-      final userQuest = await acceptOffline('a');
+      final userQuest = await queueLegacyStart('a');
       remote.offline = false;
       remote.syncError = _rejected;
 
@@ -675,7 +705,7 @@ void main() {
     });
 
     test('after a rejection the view model has no ghost mission', () async {
-      await acceptOffline('a');
+      await queueLegacyStart('a');
       remote.offline = false;
       remote.syncError = _rejected;
 
@@ -696,7 +726,7 @@ void main() {
       ('too many connections', const PostgrestException(message: 'too many', code: '53300')),
     ]) {
       test('$name is not a rejection: the queue and the mission stay', () async {
-        final userQuest = await acceptOffline('a');
+        final userQuest = await queueLegacyStart('a');
         remote.offline = false;
         remote.syncError = error;
 
@@ -709,7 +739,7 @@ void main() {
 
     for (final code in ['42501', '23503', '23514', '22P02', 'PGRST204']) {
       test('$code is a rejection: it would never pass', () async {
-        await acceptOffline('a');
+        await queueLegacyStart('a');
         remote.offline = false;
         remote.syncError = PostgrestException(message: 'no', code: code);
 
@@ -720,8 +750,8 @@ void main() {
     }
 
     test('a rejection does not block the writes behind it', () async {
-      await acceptOffline('a');
-      final second = await acceptOffline('b');
+      await queueLegacyStart('a');
+      final second = await queueLegacyStart('b');
       remote.offline = false;
       final failingOnce = _FailsOnce(remote, _rejected);
 
@@ -732,7 +762,7 @@ void main() {
     });
 
     test('replaying never undoes progress saved before the sync ran', () async {
-      final userQuest = await acceptOffline('a');
+      final userQuest = await queueLegacyStart('a');
       remote.offline = false;
       await repository.updateProgress(
         userQuest.copyWithProgress(status: 'in_progress', currentStep: 1, completedSteps: [0]),
@@ -745,19 +775,19 @@ void main() {
       expect(remote.userQuests.single['current_step'], 1);
     });
 
-    test('a lost answer to the first try does not create a second attempt', () async {
-      remote.loseUpsertAnswer = true;
+    test('a queued start the server already has (its answer was lost) syncs without a second attempt', () async {
+      final userQuest = await queueLegacyStart('a');
+      remote.userQuests.add({...local.userQuests.single});
+      remote.offline = false;
 
-      final result = await repository.acceptQuestOrQueue(userId: _userId, questId: 'a');
-      remote.loseUpsertAnswer = false;
       await repository.syncPendingWrites();
 
-      expect(result.queued, isTrue);
-      expect(remote.userQuests.single['id'], result.userQuest.id);
+      expect(local.pendingWrites, isEmpty);
+      expect(remote.userQuests.single['id'], userQuest.id);
     });
 
     test('a read that succeeds while the write cannot be sent keeps the mission', () async {
-      final userQuest = await acceptOffline('a');
+      final userQuest = await queueLegacyStart('a');
       remote.offline = false;
       remote.syncError = const SocketException('flapping');
 
@@ -769,7 +799,7 @@ void main() {
     });
 
     test('another account never inherits a queued mission', () async {
-      await acceptOffline('a');
+      await queueLegacyStart('a');
       remote.offline = false;
       remote.syncError = const SocketException('flapping');
 
@@ -779,7 +809,7 @@ void main() {
     });
 
     test('concurrent syncs send each write once', () async {
-      await acceptOffline('a');
+      await queueLegacyStart('a');
       remote.offline = false;
 
       await Future.wait([repository.syncPendingWrites(), repository.syncPendingWrites()]);
@@ -814,7 +844,7 @@ void main() {
     setUp(() => loadRecommendationsOnline(repository));
 
     test('stay on the device, retryable, while the attempt cannot reach the server', () async {
-      final userQuest = await acceptOffline('a');
+      final userQuest = await queueLegacyStart('a');
       final pending = await repository.savePendingPhotoProof(
         attempt: userQuest,
         stepOrder: 0,
@@ -833,7 +863,7 @@ void main() {
     });
 
     test('go up right after the sync creates the attempt', () async {
-      final userQuest = await acceptOffline('a');
+      final userQuest = await queueLegacyStart('a');
       final pending = await repository.savePendingPhotoProof(
         attempt: userQuest,
         stepOrder: 0,
@@ -898,12 +928,11 @@ void main() {
       expect((await repository.getSteps('a')).single.title, 'Paso a');
       expect((await repository.getSteps('b')).single.title, 'Paso b');
 
-      final started = await repository.acceptQuestOrQueue(userId: _userId, questId: 'a');
-      expect(started.queued, isTrue);
+      final started = await queueLegacyStart('a', on: hive);
 
       await restart();
       final (userQuests: cached, fromCache: _) = await repository.getUserQuestsWithSource(_userId);
-      expect(cached.single.id, started.userQuest.id);
+      expect(cached.single.id, started.id);
       expect(hive.getPendingWrites(), hasLength(1));
 
       remote.offline = false;
@@ -911,7 +940,7 @@ void main() {
       final (userQuests: synced, :fromCache) = await repository.getUserQuestsWithSource(_userId);
 
       expect(fromCache, isFalse);
-      expect(synced.single.id, started.userQuest.id);
+      expect(synced.single.id, started.id);
       expect(hive.getPendingWrites(), isEmpty);
     });
 
@@ -940,8 +969,7 @@ void main() {
 
     test('signing out clears the queue and the saved list', () async {
       await loadRecommendationsOnline(repository);
-      remote.offline = true;
-      await repository.acceptQuestOrQueue(userId: _userId, questId: 'a');
+      await queueLegacyStart('a', on: hive);
 
       await hive.clear();
 
@@ -950,46 +978,79 @@ void main() {
     });
   });
 
-  testWidgets('Explore offline: label, "Empezar ya", notice and the mission opens', (tester) async {
-    await tester.runAsync(() async {
-      await loadRecommendationsOnline(repository);
-      await repository.getCatalog();
+  group('Explore without a connection', () {
+    /// Explore on the saved list, with the network down. [deviceOffline]: the
+    /// phone itself reports no connection (airplane mode), so the screen knows
+    /// before any tap; false is a network that's there but doesn't answer.
+    Future<void> pumpExplore(WidgetTester tester, {required bool deviceOffline}) async {
+      await tester.runAsync(() async {
+        await loadRecommendationsOnline(repository);
+        await repository.getCatalog();
+      });
+      remote.offline = true;
+
+      final viewModel = newViewModel(newRepository(local));
+      final profileViewModel = ProfileViewModel(
+        ProfileRepository(remote, local),
+        AuthRepository(remote, local),
+        _userId,
+      );
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<QuestViewModel>.value(value: viewModel),
+            ChangeNotifierProvider<ProfileViewModel>.value(value: profileViewModel),
+            if (deviceOffline)
+              ChangeNotifierProvider(
+                create: (_) => ConnectivityViewModel(connectivity: _FakeConnectivity()),
+              ),
+          ],
+          child: const MaterialApp(home: ExploreView()),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('airplane mode: saved list, "Empezar ya" blocked and the reason on screen', (
+      tester,
+    ) async {
+      await pumpExplore(tester, deviceOffline: true);
+
+      expect(find.text(_savedLabel), findsOneWidget);
+      expect(tracker.of(AnalyticsEventType.recommendationShown), isEmpty);
+      expect(find.text(OfflineMessages.browseMissions), findsOneWidget);
+      expect(find.text('Empezar ya →'), findsNothing);
+
+      final blocked = find.widgetWithText(FilledButton, 'Sin conexión');
+      expect(blocked, findsNWidgets(2)); // one per saved recommendation
+      for (final button in tester.widgetList<FilledButton>(blocked)) {
+        expect(button.onPressed, isNull);
+      }
+
+      expect(find.byType(MissionTabView), findsNothing);
+      expect(local.pendingWrites, isEmpty);
+      expect(local.userQuests, isEmpty);
     });
-    remote.offline = true;
 
-    final viewModel = newViewModel(newRepository(local));
-    final profileViewModel = ProfileViewModel(
-      ProfileRepository(remote, local),
-      AuthRepository(remote, local),
-      _userId,
-    );
-    await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          ChangeNotifierProvider<QuestViewModel>.value(value: viewModel),
-          ChangeNotifierProvider<ProfileViewModel>.value(value: profileViewModel),
-        ],
-        child: const MaterialApp(home: ExploreView()),
-      ),
-    );
-    await tester.pump();
-    await tester.pumpAndSettle();
+    testWidgets('a network that does not answer: the tap says why and no mission opens', (
+      tester,
+    ) async {
+      await pumpExplore(tester, deviceOffline: false);
 
-    expect(find.text(_savedLabel), findsOneWidget);
-    expect(tracker.of(AnalyticsEventType.recommendationShown), isEmpty);
+      await tester.ensureVisible(find.text('Empezar ya →').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Empezar ya →').first);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
 
-    await tester.ensureVisible(find.text('Empezar ya →').first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Empezar ya →').first);
-    await tester.pump();
-    await tester.pump();
-    await tester.pump();
-
-    expect(find.text(_queuedNotice), findsOneWidget);
-    await tester.pumpAndSettle();
-    expect(find.byType(MissionTabView), findsOneWidget);
-    expect(find.text('Paso a'), findsOneWidget);
-    expect(local.pendingWrites, hasLength(1));
+      expect(find.text(QuestViewModel.startNeedsConnectionMessage), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.byType(MissionTabView), findsNothing);
+      expect(local.pendingWrites, isEmpty);
+      expect(local.userQuests, isEmpty);
+    });
   });
 }
 

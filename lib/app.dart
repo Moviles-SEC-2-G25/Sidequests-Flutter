@@ -19,6 +19,7 @@ import 'repository/quest_repository.dart';
 import 'repository/social_repository.dart';
 import 'view/auth/auth_gate.dart';
 import 'viewmodel/auth/auth_view_model.dart';
+import 'viewmodel/context/connectivity_view_model.dart';
 import 'viewmodel/profile/profile_view_model.dart';
 import 'viewmodel/quests/quest_view_model.dart';
 import 'viewmodel/social/social_view_model.dart';
@@ -82,6 +83,9 @@ class SidequestsApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider(create: (_) => ThemeViewModel(localDataSource)),
+        // Above MaterialApp so every route, including login and the screens
+        // pushed over HomeShell, can block what needs the internet.
+        ChangeNotifierProvider(create: (_) => ConnectivityViewModel()),
         // Below providers depend on a signed-in userId. Provider's `create`
         // is lazy (runs on first read), and these are only ever read from
         // inside HomeShell (reachable only once authenticated), so reading
@@ -111,6 +115,8 @@ class SidequestsApp extends StatelessWidget {
       child: Consumer<ThemeViewModel>(
         builder: (context, themeViewModel, _) => MaterialApp(
           title: 'Sidequests',
+          // No "DEBUG" ribbon on the build that gets installed and graded.
+          debugShowCheckedModeBanner: false,
           theme: AppTheme.light,
           darkTheme: AppTheme.dark,
           themeMode: themeViewModel.themeMode,

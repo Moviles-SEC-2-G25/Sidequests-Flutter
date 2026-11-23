@@ -88,14 +88,7 @@ class _FakeQuestRepository implements QuestRepository {
       UserQuest(id: 'uq-$questId', userId: userId, questId: questId, acceptedAt: DateTime(2026, 1, 1));
 
   @override
-  Future<({UserQuest userQuest, bool queued, bool alreadyStarted})> acceptQuestOrQueue({
-    required String userId,
-    required String questId,
-  }) async => (
-    userQuest: await acceptQuest(userId: userId, questId: questId),
-    queued: false,
-    alreadyStarted: false,
-  );
+  UserQuest? activeAttempt({required String userId, required String questId}) => null;
 
   @override
   Future<List<QuestStep>> getSteps(String questId) async => const [];
