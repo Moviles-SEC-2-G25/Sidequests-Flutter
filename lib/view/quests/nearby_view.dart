@@ -5,6 +5,7 @@ import '../../core/app_theme.dart';
 import '../../core/distance.dart';
 import '../../models/quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../widgets/sponsored_badge.dart';
 import 'quest_detail_view.dart';
 
 /// "Cerca" tab: GPS-mode quests, sorted by real distance once the user
@@ -218,6 +219,10 @@ class _NearbyCard extends StatelessWidget {
                         Text('${quest.durationMinutes} min', style: bodySmall),
                       ],
                     ),
+                    if (quest.isSponsored) ...[
+                      const SizedBox(height: 6),
+                      const SponsoredBadge(),
+                    ],
                   ],
                 ),
               ),

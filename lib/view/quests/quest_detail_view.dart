@@ -12,6 +12,7 @@ import '../../viewmodel/quests/quest_view_model.dart';
 import '../widgets/offline_notice.dart';
 import '../widgets/quest_address.dart';
 import '../widgets/quest_compass.dart';
+import '../widgets/sponsored_badge.dart';
 import 'mission_tab_view.dart';
 
 /// Quest detail: full info, a 2x2 stat grid, difficulty banner, step count
@@ -93,10 +94,14 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (quest.isNew) _pill('NUEVO', AppColors.amber, Colors.white),
-                  if (quest.isNew) const SizedBox(width: 8),
+                  if (quest.isSponsored)
+                    SponsoredBadge(sponsorName: quest.sponsorName, showSponsorName: true),
                   Text(
                     categoryLabelEs(quest.category).toUpperCase(),
                     style: Theme.of(
