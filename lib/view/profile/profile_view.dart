@@ -12,6 +12,7 @@ import '../../viewmodel/theme_view_model.dart';
 import '../widgets/offline_notice.dart';
 import 'change_password_dialog.dart';
 import 'edit_preferences_view.dart';
+import 'mission_history_view.dart';
 import 'stats_view.dart';
 
 /// Profile: header + stats, friends (honest stub — no backend table),
@@ -633,7 +634,20 @@ class _RecentCompletions extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Completadas recientemente', style: Theme.of(context).textTheme.titleLarge),
+        // Only the last five fit here; the bitácora has every attempt,
+        // abandoned ones included, so it's offered even before a completion.
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              child: Text('Completadas recientemente', style: Theme.of(context).textTheme.titleLarge),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(MissionHistoryView.route()),
+              child: const Text('Ver bitácora'),
+            ),
+          ],
+        ),
         const SizedBox(height: 10),
         if (recent.isEmpty)
           Text(

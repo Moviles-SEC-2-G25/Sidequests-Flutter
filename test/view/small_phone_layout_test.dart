@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import 'package:sidequests/analytics/analytics_event_sink.dart';
 import 'package:sidequests/analytics/analytics_tracker.dart';
 import 'package:sidequests/core/app_exception.dart';
+import 'package:sidequests/core/mission_history.dart';
 import 'package:sidequests/core/quest_alternative_recommender.dart';
 import 'package:sidequests/core/verification/step_verification_strategy.dart';
 import 'package:sidequests/data/context/context_manager.dart';
@@ -45,6 +46,7 @@ import 'package:sidequests/view/auth/signup_view.dart';
 import 'package:sidequests/view/home_shell.dart';
 import 'package:sidequests/view/profile/change_password_dialog.dart';
 import 'package:sidequests/view/profile/edit_preferences_view.dart';
+import 'package:sidequests/view/profile/mission_history_view.dart';
 import 'package:sidequests/view/profile/profile_view.dart';
 import 'package:sidequests/view/profile/stats_view.dart';
 import 'package:sidequests/view/quests/abandon_mission_view.dart';
@@ -59,6 +61,7 @@ import 'package:sidequests/view/widgets/context_banner.dart';
 import 'package:sidequests/viewmodel/auth/auth_view_model.dart';
 import 'package:sidequests/viewmodel/context/connectivity_view_model.dart';
 import 'package:sidequests/viewmodel/context/context_status_view_model.dart';
+import 'package:sidequests/viewmodel/profile/mission_history_view_model.dart';
 import 'package:sidequests/viewmodel/profile/profile_view_model.dart';
 import 'package:sidequests/viewmodel/profile/stats_view_model.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
@@ -287,6 +290,66 @@ class _SavedQuests implements QuestRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// The bitácora's longest lines: a rated mission, the longest abandonment
+/// reason, a quest gone from the catalogue and step counts in the hundreds
+/// of thousands.
+class _SavedHistory extends _SavedQuests {
+  @override
+  Future<({List<UserQuest> userQuests, bool fromCache})> getUserQuestsWithSource(
+    String userId,
+  ) async => (
+    userQuests: [
+      ..._attempts,
+      UserQuest(
+        id: 'rated',
+        userId: 'u',
+        questId: 'c',
+        status: 'completed',
+        rating: 3,
+        acceptedAt: DateTime(2026, 9, 1),
+        completedAt: DateTime(2026, 9, 2),
+      ),
+      UserQuest(
+        id: 'gave-up',
+        userId: 'u',
+        questId: 'a',
+        status: 'abandoned',
+        abandonReason: AbandonmentReason.placeUnavailable.code,
+        acceptedAt: DateTime(2026, 9, 3),
+        abandonedAt: DateTime(2026, 9, 4),
+      ),
+      UserQuest(
+        id: 'gone',
+        userId: 'u',
+        questId: '$_long-sin-catalogo',
+        status: 'completed',
+        acceptedAt: DateTime(2026, 8, 1),
+      ),
+    ],
+    fromCache: true,
+  );
+
+  @override
+  Map<String, int> getStepTotals() => const {'rated': 123456, 'gave-up': 98765};
+
+  /// Abandoned and rated offline: the "Pendiente de sincronizar" marks and
+  /// the banner's count line.
+  @override
+  Set<String> pendingSyncAttemptIds() => const {'rated', 'gave-up'};
+}
+
+/// The bitácora with the device offline or not, as the banner changes with it.
+Widget _bitacora({required bool deviceOffline}) => ChangeNotifierProvider(
+  create: (_) => MissionHistoryViewModel(
+    _SavedHistory(),
+    'u',
+    runner: (input) async => buildMissionHistory(input),
+    isOffline: () async => deviceOffline,
+    offlineChanges: () => const Stream.empty(),
+  ),
+  child: const MissionHistoryView(),
+);
+
 class _Profile extends ChangeNotifier implements ProfileViewModel {
   @override
   Profile? profile = Profile(id: 'u', displayName: 'Maximiliano Alejandro', createdAt: DateTime(2026, 9));
@@ -411,6 +474,9 @@ void main() {
       create: (_) => StatsViewModel(_SavedQuests(), 'u', runner: (input) async => summarizeStats(input)),
       child: const StatsView(),
     ),
+    // Saved copy either way: "no pudimos conectar" (online) / "sin conexión".
+    'Mi bitácora': () => _bitacora(deviceOffline: false),
+    'Mi bitácora (sin red)': () => _bitacora(deviceOffline: true),
     'cambiar contraseña': () => const _PasswordDialog(),
     'banner de contexto': () => const Scaffold(body: ContextBanner()),
     'menú inferior': () =>
