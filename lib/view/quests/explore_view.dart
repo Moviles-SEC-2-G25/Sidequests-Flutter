@@ -11,6 +11,7 @@ import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import '../widgets/completion_likelihood_label.dart';
 import '../widgets/offline_notice.dart';
+import '../widgets/sponsored_badge.dart';
 import 'mission_tab_view.dart';
 import 'quest_detail_view.dart';
 
@@ -324,6 +325,10 @@ class _ContinueBanner extends StatelessWidget {
                       fontSize: 16,
                     ),
                   ),
+                  if (quest.isSponsored) ...[
+                    const SizedBox(height: 6),
+                    const SponsoredBadge(),
+                  ],
                 ],
               ),
             ),
@@ -555,12 +560,23 @@ class _RecommendationCardState extends State<_RecommendationCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Wraps instead of overflowing on a narrow phone with every badge on.
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Badge(text: '#$rank para ti', color: AppColors.primaryContainerLight),
+                Expanded(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _Badge(text: '#$rank para ti', color: AppColors.primaryContainerLight),
+                      if (quest.isNew)
+                        _Badge(text: 'NUEVO', color: AppColors.amber, textColor: Colors.white),
+                      if (quest.isSponsored) const SponsoredBadge(),
+                    ],
+                  ),
+                ),
                 const SizedBox(width: 6),
-                if (quest.isNew) _Badge(text: 'NUEVO', color: AppColors.amber, textColor: Colors.white),
-                const Spacer(),
                 _DifficultyBadge(difficulty: quest.difficulty),
               ],
             ),
@@ -780,8 +796,17 @@ class _QuestRow extends StatelessWidget {
         onTap: onTap,
         leading: Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 24)),
         title: Text(quest.title, style: Theme.of(context).textTheme.titleSmall),
-        subtitle: Text(
-          '${quest.durationMinutes} min · ${quest.estimatedCost > 0 ? '-\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Gratis'} · ${_difficultyLabel(quest.difficulty)}',
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${quest.durationMinutes} min · ${quest.estimatedCost > 0 ? '-\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Gratis'} · ${_difficultyLabel(quest.difficulty)}',
+            ),
+            if (quest.isSponsored) ...[
+              const SizedBox(height: 4),
+              const SponsoredBadge(),
+            ],
+          ],
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

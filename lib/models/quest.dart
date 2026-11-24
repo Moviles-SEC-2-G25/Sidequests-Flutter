@@ -17,6 +17,11 @@ class Quest {
   final bool isNew;
   final bool isSponsored;
   final String? sponsorName;
+
+  /// The sponsor's business type (Backend migration 010), e.g.
+  /// 'fitness_and_recreation'; null when not sponsored or not classified.
+  /// Not the activity [category]. Same field Kotlin reads.
+  final String? sponsorBusinessCategory;
   final bool isGroup;
 
   const Quest({
@@ -37,6 +42,7 @@ class Quest {
     this.isNew = false,
     this.isSponsored = false,
     this.sponsorName,
+    this.sponsorBusinessCategory,
     this.isGroup = false,
   });
 
@@ -58,6 +64,7 @@ class Quest {
     isNew: json['is_new'] as bool? ?? false,
     isSponsored: json['is_sponsored'] as bool? ?? false,
     sponsorName: json['sponsor_name'] as String?,
+    sponsorBusinessCategory: json['sponsor_business_category'] as String?,
     isGroup: json['is_group'] as bool? ?? false,
   );
 }

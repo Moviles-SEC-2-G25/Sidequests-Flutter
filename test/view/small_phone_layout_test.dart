@@ -58,6 +58,7 @@ import 'package:sidequests/view/quests/quest_completed_view.dart';
 import 'package:sidequests/view/quests/quest_detail_view.dart';
 import 'package:sidequests/view/social/social_view.dart';
 import 'package:sidequests/view/widgets/context_banner.dart';
+import 'package:sidequests/view/widgets/sponsored_badge.dart';
 import 'package:sidequests/viewmodel/auth/auth_view_model.dart';
 import 'package:sidequests/viewmodel/context/connectivity_view_model.dart';
 import 'package:sidequests/viewmodel/context/context_status_view_model.dart';
@@ -91,6 +92,10 @@ Quest _quest(String id, {String social = 'solo', String mode = 'anywhere'}) => Q
   socialLevel: social,
   locationName: 'Museo de Arte Moderno de Bogotá, Calle 24 #6-00',
   isNew: true,
+  // Every badge on at once: sponsored quests are always labelled (BQ12).
+  isSponsored: true,
+  sponsorName: 'Fundación Museo de Arte Moderno de Bogotá y Amigos del Centro Histórico',
+  sponsorBusinessCategory: 'arts_and_culture',
 );
 
 final _catalog = [
@@ -114,6 +119,10 @@ final _attempts = [
 ];
 
 const _evening = AppContext(timeOfDay: 'evening', dayOfWeek: 'friday', isConnected: false);
+
+/// Screens whose first view shows one of the (sponsored) quests above.
+/// ('alternativas' gets no suggestion from this catalogue: its empty state.)
+const _showsSponsoredQuest = {'Explorar', 'Misión', 'detalle (solo)', 'detalle (grupo)'};
 
 class _Connectivity implements Connectivity {
   final bool offline;
@@ -578,6 +587,9 @@ void main() {
               if (name == 'onboarding') {
                 await tester.tap(find.text('Get started')); // to the preferences step
                 await tester.pump();
+              }
+              if (_showsSponsoredQuest.contains(name)) {
+                expect(find.byType(SponsoredBadge), findsWidgets, reason: 'sin marca de patrocinio');
               }
               // Scroll to the end, so lazily built children are laid out too.
               final scrollables = find.byType(Scrollable);
