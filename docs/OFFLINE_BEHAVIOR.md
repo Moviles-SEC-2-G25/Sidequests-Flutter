@@ -23,6 +23,7 @@ abren encima del menú inferior). Los avisos usan `OfflineNotice` y los textos d
 | Abandonar una misión ("Salir") y ver alternativas | El abandono queda en cola; las alternativas se calculan en el teléfono. |
 | Calificar una misión completada | La calificación queda en cola. |
 | Perfil, insignias, recompensas, "Mis estadísticas" | Con los datos guardados, avisando que son del último acceso. |
+| "Mi bitácora": historial, búsqueda y filtros | Con los datos guardados; marca "Pendiente de sincronizar" lo hecho sin conexión y se actualiza sola al reconectar (detalle en `BITACORA.md`). |
 | Modo oscuro, notificaciones locales, huella | Ajustes locales. |
 | Agitar para una misión sorpresa | Prioriza misiones con pasos guardados; iniciarla sigue necesitando conexión. |
 
