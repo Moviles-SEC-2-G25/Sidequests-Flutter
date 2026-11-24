@@ -283,6 +283,14 @@ class QuestRepository {
     ];
   }
 
+  /// Attempts with a write still waiting for a connection — an acceptance, a
+  /// rating or an abandonment: what the device shows that the server doesn't
+  /// have yet. Read it after [getUserQuestsWithSource], which syncs first.
+  Set<String> pendingSyncAttemptIds() => {
+    for (final write in _pendingWrites())
+      if (write.payload['id'] case final String id) id,
+  };
+
   Set<String> _unsyncedAttemptIds() => {
     for (final write in _pendingWrites())
       if (write.type == PendingWrite.acceptQuest) write.payload['id'] as String,
