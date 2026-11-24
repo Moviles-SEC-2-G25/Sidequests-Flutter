@@ -5,6 +5,7 @@ import '../../core/app_theme.dart';
 import '../../core/quest_alternative_recommender.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../widgets/sponsored_badge.dart';
 import 'quest_detail_view.dart';
 
 /// Shown after abandoning a mission: up to three alternatives that fit the
@@ -167,6 +168,10 @@ class _AlternativeCard extends StatelessWidget {
             '${quest.estimatedCost > 0 ? '\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Gratis'}',
             style: textTheme.bodySmall,
           ),
+          if (quest.isSponsored) ...[
+            const SizedBox(height: 6),
+            const SponsoredBadge(),
+          ],
           const SizedBox(height: 10),
           Text(
             'Por qué te sirve',

@@ -11,6 +11,7 @@ import '../../models/quest_step.dart';
 import '../../models/user_quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import '../widgets/offline_notice.dart';
+import '../widgets/sponsored_badge.dart';
 import 'abandon_mission_view.dart';
 import 'quest_completed_view.dart';
 
@@ -147,6 +148,10 @@ class _MissionChecklist extends StatelessWidget {
                             style: Theme.of(context).textTheme.labelSmall,
                           ),
                           Text(quest.title, style: Theme.of(context).textTheme.titleMedium),
+                          if (quest.isSponsored) ...[
+                            const SizedBox(height: 4),
+                            const SponsoredBadge(),
+                          ],
                         ],
                       ),
                     ),
