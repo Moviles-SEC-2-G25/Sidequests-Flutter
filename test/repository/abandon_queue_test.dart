@@ -327,6 +327,44 @@ void main() {
     });
   });
 
+  // What the bitácora marks "Pendiente de sincronizar".
+  group('pendingSyncAttemptIds', () {
+    test('an attempt changed offline is pending until the queue reaches the server', () async {
+      expect(repository.pendingSyncAttemptIds(), isEmpty);
+
+      remote.offline = true;
+      await repository.abandonQuestOrQueue(_attempt('uq-1'), reason: 'too_far');
+      expect(repository.pendingSyncAttemptIds(), {'uq-1'});
+
+      remote.offline = false;
+      remote.serverRows.add(_row('uq-1'));
+      await repository.getUserQuestsWithSource(_userId);
+      expect(repository.pendingSyncAttemptIds(), isEmpty);
+    });
+
+    test('still pending after a read while the server is down', () async {
+      remote.offline = true;
+      await repository.abandonQuestOrQueue(_attempt('uq-1'), reason: 'too_far');
+      remote.offline = false;
+      remote.serverRows.add(_row('uq-1'));
+      remote.failUpsert = (_) => _serverDown;
+
+      await repository.getUserQuestsWithSource(_userId);
+
+      expect(repository.pendingSyncAttemptIds(), {'uq-1'});
+    });
+
+    test('a queued start and its abandonment are one attempt', () async {
+      remote.offline = true;
+      local.userQuests = [];
+      final started = await queueLegacyStart('a');
+      await repository.abandonQuestOrQueue(started, reason: 'other');
+
+      expect(local.pending, hasLength(2));
+      expect(repository.pendingSyncAttemptIds(), {'uq-new'});
+    });
+  });
+
   group('a progress write waits for the queue', () {
     Future<void> abandonOffline() async {
       remote.offline = true;
