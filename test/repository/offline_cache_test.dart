@@ -153,6 +153,18 @@ class _FakeLocal implements LocalDataSource {
   Future<void> cacheUserQuests(List<Map<String, dynamic>> userQuests) async =>
       this.userQuests = userQuests;
 
+  DateTime? userQuestsSyncedAt;
+  bool failSavingSyncedAt = false;
+
+  @override
+  DateTime? getUserQuestsSyncedAt() => userQuestsSyncedAt;
+
+  @override
+  Future<void> saveUserQuestsSyncedAt(DateTime syncedAt) async {
+    if (failSavingSyncedAt) throw StateError('disk full');
+    userQuestsSyncedAt = syncedAt;
+  }
+
   @override
   Future<void> cacheActiveQuestId(String? questId) async {}
 
@@ -299,6 +311,47 @@ void main() {
       final error = await _expectAppException(repository.getPhotoProofs('attempt-1'));
 
       expect(error.isRetryable, isTrue);
+    });
+  });
+
+  // What "Mi bitácora" shows as "Última actualización" (local storage strategy).
+  group('QuestRepository.userQuestsSyncedAt (when the attempts were last synced)', () {
+    late QuestRepository repository;
+
+    setUp(() => repository = QuestRepository(remote, local));
+
+    test('a server read saves when it happened; a fallback to the device keeps it', () async {
+      expect(repository.userQuestsSyncedAt(), isNull);
+
+      final before = DateTime.now();
+      await repository.getUserQuestsWithSource('user-1');
+      final syncedAt = repository.userQuestsSyncedAt();
+      expect(syncedAt, isNotNull);
+      expect(syncedAt!.isBefore(before), isFalse);
+      expect(syncedAt.isAfter(DateTime.now()), isFalse);
+
+      remote.offline = true;
+      final offlineRead = await repository.getUserQuestsWithSource('user-1');
+      expect(offlineRead.fromCache, isTrue);
+      expect(repository.userQuestsSyncedAt(), syncedAt);
+    });
+
+    test('a date that cannot be saved does not turn a fresh read into an offline one', () async {
+      local.failSavingSyncedAt = true;
+      remote.userQuests.add({
+        'id': 'attempt-1',
+        'user_id': 'user-1',
+        'quest_id': 'ramen-spot',
+        'status': 'completed',
+        'accepted_at': '2026-10-01T10:00:00Z',
+      });
+
+      final (:userQuests, :fromCache) = await repository.getUserQuestsWithSource('user-1');
+
+      expect(fromCache, isFalse);
+      expect(userQuests.single.id, 'attempt-1');
+      expect(local.userQuests, hasLength(1));
+      expect(repository.userQuestsSyncedAt(), isNull);
     });
   });
 

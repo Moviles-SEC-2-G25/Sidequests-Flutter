@@ -220,6 +220,7 @@ class QuestRepository {
       });
       final rows = _withUnsentWrites(_withUnsyncedAttempts(serverRows, userId));
       await _localDataSource.cacheUserQuests(rows);
+      await _saveUserQuestsSyncedAt();
       userQuestsFromCache = false;
       return (userQuests: rows.map(UserQuest.fromJson).toList(), fromCache: false);
     } catch (_) {
@@ -228,6 +229,23 @@ class QuestRepository {
         userQuests: _localDataSource.getUserQuests().map(UserQuest.fromJson).toList(),
         fromCache: true,
       );
+    }
+  }
+
+  /// Local storage strategy: when [getUserQuestsWithSource] last got the
+  /// attempts from the server, saved in Hive next to them, so it survives a
+  /// restart. Without a connection the attempts come from that copy, and this
+  /// says how old it is (MissionHistoryView shows it). Null if the server
+  /// never answered on this device.
+  DateTime? userQuestsSyncedAt() => _localDataSource.getUserQuestsSyncedAt();
+
+  /// Best effort, like saving the recommendations: a date that couldn't be
+  /// saved must not turn a fresh read into an offline one.
+  Future<void> _saveUserQuestsSyncedAt() async {
+    try {
+      await _localDataSource.saveUserQuestsSyncedAt(DateTime.now());
+    } catch (_) {
+      // Not saved this time; the attempts themselves are still fresh.
     }
   }
 

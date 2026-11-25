@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/app_exception.dart';
 import '../../core/mission_history.dart';
+import '../../data/cache/memory_cache.dart';
 import '../../models/quest.dart';
 import '../../models/user_quest.dart';
 import '../../repository/quest_repository.dart';
@@ -48,6 +49,18 @@ const kHistorySearchDebounce = Duration(milliseconds: 300);
 /// wait as ContextStatusViewModel's reconnect.
 const kHistoryReconnectDelay = Duration(seconds: 3);
 
+/// Filter + search combinations kept computed: the three filters and a few
+/// searches. LRU past it, so a long session of searching stays bounded.
+const kHistoryCacheMaxEntries = 10;
+
+/// Only a ceiling MemoryCache asks for: what really invalidates an entry is
+/// new data (every load() empties the cache), not time.
+const kHistoryCacheTtl = Duration(minutes: 10);
+
+/// What makes two runs of [buildMissionHistory] give the same answer over the
+/// same data: the filter and the search as it's compared ("Café " = "cafe").
+typedef _HistoryCacheKey = (HistoryFilter, String);
+
 /// "Mi bitácora": every attempt (completed, abandoned, in progress) grouped
 /// by month, with a filter and a search. Screen-scoped — provided by
 /// MissionHistoryView.route(), like StatsViewModel — so every visit starts
@@ -60,6 +73,17 @@ const kHistoryReconnectDelay = Duration(seconds: 3);
 /// the changes made offline are sent first, then fresh data replaces the
 /// saved copy. Kotlin: a ConnectivityManager callback as a Flow, with
 /// collectLatest { delay(3 s); load() }.
+///
+/// Caching: the history computed in the background for a filter + search is
+/// kept in memory ([MemoryCache], LRU), so going back to one already seen
+/// (a chip tapped again, the search cleared) is instant and spawns no
+/// isolate. It's only valid for the data it was computed from, so every
+/// load() — pull to refresh, the refresh after reconnecting — empties it.
+/// Kotlin: an LruCache in the ViewModel, cleared in load().
+///
+/// Local storage: [lastSyncedAt], when the attempts were last read from the
+/// server, comes from Hive (QuestRepository.userQuestsSyncedAt), so even
+/// after a restart offline the banner says how old the saved copy is.
 class MissionHistoryViewModel extends ChangeNotifier {
   final QuestRepository _questRepository;
   final String _userId;
@@ -68,6 +92,10 @@ class MissionHistoryViewModel extends ChangeNotifier {
   final Duration _reconnectDelay;
   final Future<bool> Function() _isOffline;
   final Stream<bool> Function() _offlineChanges;
+  final _historyCache = MemoryCache<_HistoryCacheKey, MissionHistory>(
+    ttl: kHistoryCacheTtl,
+    maxEntries: kHistoryCacheMaxEntries,
+  );
 
   /// Starts as loading so the very first frame already shows the spinner.
   HistoryStatus status = HistoryStatus.loading;
@@ -83,6 +111,10 @@ class MissionHistoryViewModel extends ChangeNotifier {
   /// A reload is out while a list is on screen (pull to refresh, or the
   /// refresh after reconnecting).
   bool isRefreshing = false;
+
+  /// When the attempts were last read from the server, saved on the device;
+  /// null if never. The banner shows it while the list isn't fresh.
+  DateTime? lastSyncedAt;
 
   HistoryFilter filter = HistoryFilter.all;
   String query = '';
@@ -160,7 +192,11 @@ class MissionHistoryViewModel extends ChangeNotifier {
       // After the read, which synced: whatever is left is still waiting.
       _pendingSyncIds = _questRepository.pendingSyncAttemptIds();
       _stepTotals = _questRepository.getStepTotals();
+      // Also after the read: a fresh one has just saved "now".
+      lastSyncedAt = _questRepository.userQuestsSyncedAt();
       isFromCache = fromCache;
+      // New data: nothing computed from the previous one is valid anymore.
+      _historyCache.clear();
       _searchTimer?.cancel();
       await _rebuild();
     } on AppException catch (e) {
@@ -190,8 +226,18 @@ class MissionHistoryViewModel extends ChangeNotifier {
 
   /// Runs [buildMissionHistory] off the UI thread with what was loaded and
   /// the current filter/search; only the latest run's answer is applied.
+  /// A filter/search already computed over this data comes from the cache.
   Future<void> _rebuild() async {
+    // Bumped on a cache hit too: a run still out for an older filter/search
+    // must not replace what the cache just showed.
     final generation = ++_generation;
+    final cacheKey = (filter, normalizeForSearch(query));
+    final cached = _historyCache.get(cacheKey);
+    if (cached != null) {
+      _show(cached);
+      return;
+    }
+
     isUpdating = true;
     notifyListeners();
 
@@ -205,8 +251,15 @@ class MissionHistoryViewModel extends ChangeNotifier {
         query: query,
       ),
     );
+    // A stale answer isn't cached either: a load() may have replaced the
+    // data it was computed from.
     if (_isDisposed || generation != _generation) return;
 
+    _historyCache.put(cacheKey, result);
+    _show(result);
+  }
+
+  void _show(MissionHistory result) {
     history = result;
     isUpdating = false;
     if (result.totalAttempts > 0) {

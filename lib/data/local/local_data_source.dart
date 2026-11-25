@@ -7,7 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Local cache: profile, preferences, quest catalog and steps, the user's
-/// attempts and their photo proofs, active quest and progress, analytics
+/// attempts (and when they were last synced) and their photo proofs, active
+/// quest and progress, analytics
 /// events and quest writes waiting for a connection, resolved quest addresses,
 /// the last recommendations, and the last weather reading per location.
 /// Repositories read from here when the network is unavailable and write
@@ -25,6 +26,7 @@ class LocalDataSource {
   static const _keyQuestSteps = 'quest_steps';
   static const _keyPhotoProofs = 'photo_proofs';
   static const _keyUserQuests = 'user_quests';
+  static const _keyUserQuestsSyncedAt = 'user_quests_synced_at';
   static const _keyActiveQuestId = 'active_quest_id';
   static const _keyStepTotals = 'step_totals';
   static const _keyActiveStepSession = 'active_step_session';
@@ -151,6 +153,18 @@ class LocalDataSource {
 
   Future<void> cacheUserQuests(List<Map<String, dynamic>> userQuests) =>
       _box.put(_keyUserQuests, userQuests);
+
+  /// When the attempts above were last read from the server, in local time;
+  /// null if that never happened on this device. In the same box as the copy
+  /// it dates, so sign-out clears both together. Stored as ISO-8601 (UTC),
+  /// like the dates of the queued writes.
+  DateTime? getUserQuestsSyncedAt() {
+    final saved = _box.get(_keyUserQuestsSyncedAt) as String?;
+    return saved == null ? null : DateTime.tryParse(saved)?.toLocal();
+  }
+
+  Future<void> saveUserQuestsSyncedAt(DateTime syncedAt) =>
+      _box.put(_keyUserQuestsSyncedAt, syncedAt.toUtc().toIso8601String());
 
   String? getActiveQuestId() => _box.get(_keyActiveQuestId) as String?;
 

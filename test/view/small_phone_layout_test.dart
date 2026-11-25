@@ -345,6 +345,10 @@ class _SavedHistory extends _SavedQuests {
   /// the banner's count line.
   @override
   Set<String> pendingSyncAttemptIds() => const {'rated', 'gave-up'};
+
+  /// The banner's "Última actualización" line, with its longest date.
+  @override
+  DateTime? userQuestsSyncedAt() => DateTime(2026, 9, 30, 23, 59);
 }
 
 /// The bitácora with the device offline or not, as the banner changes with it.

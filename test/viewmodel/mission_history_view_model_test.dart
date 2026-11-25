@@ -21,15 +21,20 @@ Quest _quest(String id, String title, String category) => Quest(
   socialLevel: 'solo',
 );
 
+/// When the fake server answers: what a fresh read saves as [syncedAt].
+final _serverAnsweredAt = DateTime(2026, 11, 25, 9, 30);
+
 /// Only what MissionHistoryViewModel reads, like StatsViewModel's fake.
 /// [fromCache] stands for "the server didn't answer"; a read that reaches
-/// it sends the queue first, as the real one does, so [pending] empties.
+/// it sends the queue first, as the real one does, so [pending] empties,
+/// and saves when it happened in [syncedAt] (the device's Hive copy).
 class _FakeQuestRepository implements QuestRepository {
   List<Quest> catalog = [];
   List<UserQuest> userQuests = [];
   bool fromCache = false;
   Map<String, int> stepTotals = {};
   Set<String> pending = {};
+  DateTime? syncedAt;
   Completer<void>? gate;
   bool throwAppException = false;
   int reads = 0;
@@ -44,7 +49,10 @@ class _FakeQuestRepository implements QuestRepository {
     reads++;
     await gate?.future;
     if (throwAppException) throw AppException('Algo salió mal');
-    if (!fromCache) pending = {};
+    if (!fromCache) {
+      pending = {};
+      syncedAt = _serverAnsweredAt;
+    }
     return (userQuests: userQuests, fromCache: fromCache);
   }
 
@@ -53,6 +61,9 @@ class _FakeQuestRepository implements QuestRepository {
 
   @override
   Map<String, int> getStepTotals() => stepTotals;
+
+  @override
+  DateTime? userQuestsSyncedAt() => syncedAt;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -361,6 +372,115 @@ void main() {
     });
   });
 
+  group('caching', () {
+    test('a filter already computed comes back from the cache: no new background run', () async {
+      seedHistory();
+      await viewModel.load(); // computes Todas
+      viewModel.setFilter(HistoryFilter.abandoned);
+      await pumpEventQueue();
+      expect(runner.inputs.length, 2);
+
+      viewModel.setFilter(HistoryFilter.all);
+      expect(viewModel.isUpdating, isFalse); // answered on the spot
+      expect(viewModel.history.matchCount, 2);
+      viewModel.setFilter(HistoryFilter.abandoned);
+      expect(viewModel.history.matchCount, 1);
+
+      await pumpEventQueue();
+      expect(runner.inputs.length, 2);
+    });
+
+    testWidgets('the same search written differently is the same entry', (tester) async {
+      seedHistory();
+      await viewModel.load();
+
+      viewModel.setQuery('cafe');
+      await tester.pump(kHistorySearchDebounce);
+      expect(runner.inputs.length, 2);
+
+      viewModel.setQuery('  CAFÉ ');
+      await tester.pump(kHistorySearchDebounce);
+      expect(runner.inputs.length, 2);
+      expect(viewModel.history.matchCount, 1);
+    });
+
+    test('a load empties it: a filter seen before is computed again over the new data', () async {
+      seedHistory();
+      await viewModel.load();
+      viewModel.setFilter(HistoryFilter.abandoned);
+      await pumpEventQueue();
+      expect(viewModel.history.matchCount, 1);
+
+      viewModel.setFilter(HistoryFilter.all);
+      repository.userQuests = [
+        ...repository.userQuests,
+        UserQuest(
+          id: 'uq-4',
+          userId: 'user-1',
+          questId: 'cafe',
+          status: 'abandoned',
+          acceptedAt: DateTime(2026, 11, 10),
+          abandonedAt: DateTime(2026, 11, 11),
+        ),
+      ];
+      await viewModel.load(); // pull to refresh, or the refresh after reconnecting
+      viewModel.setFilter(HistoryFilter.abandoned);
+      await pumpEventQueue();
+
+      expect(runner.inputs.length, 4);
+      expect(runner.inputs.last.userQuests, repository.userQuests);
+      expect(viewModel.history.matchCount, 2);
+    });
+
+    test('a cached answer is not replaced by an older run that answers later', () async {
+      seedHistory();
+      final gated = _GatedRunner();
+      final vm = build(withRunner: gated.call);
+      final loading = vm.load();
+      await pumpEventQueue();
+      gated.finish(0); // Todas, now cached
+      await loading;
+
+      vm.setFilter(HistoryFilter.abandoned); // out in the background
+      vm.setFilter(HistoryFilter.all); // from the cache
+      expect(vm.history.matchCount, 2);
+      expect(vm.isUpdating, isFalse);
+
+      gated.finish(1);
+      await pumpEventQueue();
+      expect(vm.history.matchCount, 2);
+      expect(gated.calls.length, 2);
+    });
+  });
+
+  group('local storage: when the bitácora was last synced', () {
+    test('a fresh read: the moment the server answered', () async {
+      seedHistory();
+
+      await viewModel.load();
+
+      expect(viewModel.lastSyncedAt, _serverAnsweredAt);
+    });
+
+    test('offline: the date saved on the device by an earlier session', () async {
+      seedHistory();
+      repository.fromCache = true;
+      repository.syncedAt = DateTime(2026, 11, 20, 8, 5);
+
+      await viewModel.load();
+
+      expect(viewModel.lastSyncedAt, DateTime(2026, 11, 20, 8, 5));
+    });
+
+    test('never synced on this device: null', () async {
+      repository.fromCache = true;
+
+      await viewModel.load();
+
+      expect(viewModel.lastSyncedAt, isNull);
+    });
+  });
+
   // testWidgets where time moves: its fake clock runs the reconnect wait.
   group('eventual connectivity', () {
     test('offline from the first reading', () async {
@@ -604,6 +724,20 @@ void main() {
 
       expect(find.textContaining('No pudimos conectar con el servidor'), findsOneWidget);
       expect(find.textContaining('Sin conexión'), findsNothing);
+    });
+
+    testWidgets('the saved copy says when it was last updated; a fresh list has no banner', (tester) async {
+      seedHistory();
+      repository.fromCache = true;
+      repository.syncedAt = DateTime(2026, 11, 20, 8, 5);
+
+      await pumpHistory(tester);
+      expect(find.text('Última actualización: Nov 20, 08:05'), findsOneWidget);
+
+      repository.fromCache = false;
+      await viewModel.load();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Última actualización'), findsNothing);
     });
 
     testWidgets('offline, then back: the banner and the pending marks follow the connection', (tester) async {
