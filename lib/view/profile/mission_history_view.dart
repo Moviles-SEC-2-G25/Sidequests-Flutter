@@ -150,7 +150,11 @@ class _Controls extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (notice != null) ...[
-          _ConnectionBanner(notice: notice, pendingSyncCount: history.pendingSyncCount),
+          _ConnectionBanner(
+            notice: notice,
+            pendingSyncCount: history.pendingSyncCount,
+            lastSyncedAt: historyViewModel.lastSyncedAt,
+          ),
           const SizedBox(height: 12),
         ],
         // Only the clear button follows the text as it's typed; the list
@@ -411,13 +415,16 @@ class _NoMatches extends StatelessWidget {
 }
 
 /// Where the list on screen comes from while it isn't the server's, fresh —
-/// and how many changes made offline are still waiting to go out. Same look
-/// as StatsView's offline banner.
+/// how old it is, and how many changes made offline are still waiting to go
+/// out. Same look as StatsView's offline banner.
 class _ConnectionBanner extends StatelessWidget {
   final HistoryConnectionNotice notice;
   final int pendingSyncCount;
 
-  const _ConnectionBanner({required this.notice, required this.pendingSyncCount});
+  /// Saved on the device (MissionHistoryViewModel.lastSyncedAt); null hides it.
+  final DateTime? lastSyncedAt;
+
+  const _ConnectionBanner({required this.notice, required this.pendingSyncCount, this.lastSyncedAt});
 
   @override
   Widget build(BuildContext context) {
@@ -438,6 +445,7 @@ class _ConnectionBanner extends StatelessWidget {
     final pending = pendingSyncCount == 1
         ? '1 misión con cambios por sincronizar.'
         : '$pendingSyncCount misiones con cambios por sincronizar.';
+    final syncedAt = lastSyncedAt;
 
     return Container(
       width: double.infinity,
@@ -456,6 +464,10 @@ class _ConnectionBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(message, style: textTheme.bodySmall),
+                if (syncedAt != null) ...[
+                  const SizedBox(height: 4),
+                  Text('Última actualización: ${_formatSyncedAt(syncedAt)}', style: textTheme.bodySmall),
+                ],
                 if (pendingSyncCount > 0) ...[
                   const SizedBox(height: 4),
                   Text(pending, style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
@@ -511,3 +523,10 @@ const _monthAbbrEs = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'S
 
 /// Same "Nov 12" as Perfil's "Completadas recientemente".
 String _formatShortDate(DateTime date) => '${_monthAbbrEs[date.month - 1]} ${date.day}';
+
+/// "Nov 12, 08:05", in the phone's time.
+String _formatSyncedAt(DateTime date) {
+  final local = date.toLocal();
+  String twoDigits(int value) => value.toString().padLeft(2, '0');
+  return '${_formatShortDate(local)}, ${twoDigits(local.hour)}:${twoDigits(local.minute)}';
+}
