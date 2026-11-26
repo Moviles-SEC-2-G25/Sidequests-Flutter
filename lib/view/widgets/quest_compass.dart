@@ -94,12 +94,18 @@ class _CompassArrow extends StatelessWidget {
         final angle = (bearing - heading) * pi / 180;
         return Row(
           children: [
-            Transform.rotate(
-              angle: angle,
-              child: const Icon(
-                Icons.navigation,
-                size: 48,
-                color: AppColors.primary,
+            // Micro-optimization: the compass sends a heading every ~32 ms, and
+            // each new angle repaints up to the nearest repaint boundary. Without
+            // this one that was the whole QuestDetailView scroll content; with
+            // it, only the arrow's own layer is repainted.
+            RepaintBoundary(
+              child: Transform.rotate(
+                angle: angle,
+                child: const Icon(
+                  Icons.navigation,
+                  size: 48,
+                  color: AppColors.primary,
+                ),
               ),
             ),
             const SizedBox(width: 16),
