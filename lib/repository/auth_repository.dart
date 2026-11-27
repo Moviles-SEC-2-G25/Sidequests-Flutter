@@ -8,6 +8,7 @@ import '../data/local/local_data_source.dart';
 import '../data/local/step_log_database.dart';
 import '../data/remote/network_guard.dart';
 import '../data/remote/supabase_remote_data_source.dart';
+import '../data/services/position_cache.dart';
 
 /// Single source of truth for the current session.
 class AuthRepository {
@@ -23,8 +24,17 @@ class AuthRepository {
   final LocalDataSource _localDataSource;
   final StepLogDatabase? _stepLog;
 
-  AuthRepository(this._remoteDataSource, this._localDataSource, {StepLogDatabase? stepLog})
-    : _stepLog = stepLog;
+  /// Where this account was a moment ago is its data too (null in tests that
+  /// don't involve the GPS).
+  final PositionCache? _positionCache;
+
+  AuthRepository(
+    this._remoteDataSource,
+    this._localDataSource, {
+    StepLogDatabase? stepLog,
+    PositionCache? positionCache,
+  }) : _stepLog = stepLog,
+       _positionCache = positionCache;
 
   User? get currentUser => _remoteDataSource.currentSession?.user;
 
@@ -106,6 +116,7 @@ class AuthRepository {
   /// The session ended without [signOut] (token rejected by the server): same
   /// cleanup, so the next account doesn't inherit this one's data or queues.
   Future<void> clearLocalData() async {
+    _positionCache?.invalidate();
     await _localDataSource.clear();
     await _clearStepLog();
   }
@@ -130,6 +141,8 @@ class AuthRepository {
     } catch (_) {
       // The token isn't revoked on the server; it just expires on its own.
     }
+    // First: it can't fail, so a Hive error below can't leave it behind.
+    _positionCache?.invalidate();
     await _localDataSource.clear();
     await _clearStepLog();
   }

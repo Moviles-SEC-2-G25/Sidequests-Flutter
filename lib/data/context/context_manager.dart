@@ -45,7 +45,9 @@ class ContextManager {
   /// Single-flight, not a cache: callers arriving during a reading share it
   /// (one recommendation list tracks several events at once), and the next
   /// call after it finishes reads the device again. Each caller still gets
-  /// its own [AppContext], since availableMinutes differs per caller.
+  /// its own [AppContext], since availableMinutes differs per caller. The
+  /// caching is one layer down: LocationService's PositionCache answers the
+  /// GPS part of consecutive readings with a fix under a minute old.
   Future<AppContext> snapshot({int? availableMinutes}) async {
     final reading = await (_readingInFlight ??= _readDevice().whenComplete(
       () => _readingInFlight = null,
