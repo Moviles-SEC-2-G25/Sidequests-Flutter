@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:sqflite/sqflite.dart' show databaseFactorySqflitePlugin;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -7,6 +9,7 @@ import 'analytics/analytics_tracker.dart';
 import 'core/app_theme.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
+import 'data/local/step_log_database.dart';
 import 'data/remote/network_guard.dart';
 import 'data/remote/supabase_remote_data_source.dart';
 import 'data/services/biometric_service.dart';
@@ -31,7 +34,12 @@ import 'viewmodel/theme_view_model.dart';
 class SidequestsApp extends StatelessWidget {
   final LocalDataSource localDataSource;
 
-  const SidequestsApp({super.key, required this.localDataSource});
+  /// One for the whole app (SQLite), shared by the repositories that write,
+  /// read and clear it. null on the web build, which has no sqflite.
+  final StepLogDatabase? stepLog;
+
+  SidequestsApp({super.key, required this.localDataSource, StepLogDatabase? stepLog})
+    : stepLog = stepLog ?? (kIsWeb ? null : StepLogDatabase(factory: databaseFactorySqflitePlugin));
 
   @override
   Widget build(BuildContext context) {
@@ -66,13 +74,14 @@ class SidequestsApp extends StatelessWidget {
           create: (_) => ReverseGeocodingService(localDataSource: localDataSource),
         ),
         Provider(
-          create: (_) => AuthRepository(remoteDataSource, localDataSource),
+          create: (_) => AuthRepository(remoteDataSource, localDataSource, stepLog: stepLog),
         ),
         Provider(
           create: (_) => ProfileRepository(remoteDataSource, localDataSource, network: network),
         ),
         Provider(
-          create: (_) => QuestRepository(remoteDataSource, localDataSource, network: network),
+          create: (_) =>
+              QuestRepository(remoteDataSource, localDataSource, network: network, stepLog: stepLog),
         ),
         Provider(create: (_) => SocialRepository()),
         ChangeNotifierProvider(

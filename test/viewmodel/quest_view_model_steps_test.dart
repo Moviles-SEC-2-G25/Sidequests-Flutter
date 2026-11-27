@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sidequests/analytics/analytics_event_sink.dart';
 import 'package:sidequests/analytics/analytics_tracker.dart';
 import 'package:sidequests/data/context/context_manager.dart';
+import 'package:sidequests/data/local/local_data_source.dart';
+import 'package:sidequests/data/local/step_log_database.dart';
+import 'package:sidequests/data/remote/supabase_remote_data_source.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/data/services/step_counter_service.dart';
@@ -12,11 +16,13 @@ import 'package:sidequests/models/abandonment_reason.dart';
 import 'package:sidequests/models/photo_proof.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_step.dart';
+import 'package:sidequests/models/step_log_entry.dart';
 import 'package:sidequests/models/step_session.dart';
 import 'package:sidequests/models/user_quest.dart';
 import 'package:sidequests/models/verified_check_in.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _NoLocation extends LocationService {
   @override
@@ -90,15 +96,38 @@ class _FakeQuestRepository implements QuestRepository {
   StepSession? activeSession;
   final List<StepSession?> savedSessions = [];
 
+  /// Walks handed to logWalk; with [walkLog] they also go through a real
+  /// repository, so its own error handling is the one under test.
+  final List<StepLogEntry> walks = [];
+  QuestRepository? walkLog;
+
+  /// The id acceptQuest gives the next attempt.
+  String nextAttemptId = 'uq-a';
+
   @override
-  Future<List<Quest>> getCatalog() async => [_quest];
+  Future<void> logWalk(StepLogEntry walk) async {
+    walks.add(walk);
+    await walkLog?.logWalk(walk);
+  }
+
+  @override
+  List<Quest> catalog = [_quest];
+
+  @override
+  Future<List<Quest>> getCatalog() async => catalog;
 
   @override
   Future<List<UserQuest>> getUserQuests(String userId) async => userQuests;
 
   @override
   Future<UserQuest> acceptQuest({required String userId, required String questId}) async =>
-      _userQuest('accepted');
+      UserQuest(
+        id: nextAttemptId,
+        userId: 'user-1',
+        questId: questId,
+        status: 'accepted',
+        acceptedAt: DateTime(2026, 1, 1),
+      );
 
   @override
   Future<List<QuestStep>> getSteps(String questId) async => steps;
@@ -149,6 +178,9 @@ void main() {
   late Future<StepCounterStatus> Function() requestAccess;
   late _FakeQuestRepository repository;
   late QuestViewModel viewModel;
+  final now = DateTime.utc(2026, 11, 26, 15);
+
+  setUpAll(sqfliteFfiInit);
 
   setUp(() {
     sensor = StreamController<int>.broadcast();
@@ -164,6 +196,7 @@ void main() {
         requestAccess: () => requestAccess(),
         openSettings: () async => true,
       ),
+      now: () => now,
     );
   });
 
@@ -277,4 +310,117 @@ void main() {
     expect(viewModel.stepTrackedUserQuestId, isNull);
     expect(repository.activeSession, isNull);
   });
+
+  group('step log (SQLite)', () {
+    /// Accepted with the catalogue loaded, so the walk knows its category.
+    Future<void> startWalking() async {
+      await viewModel.load();
+      await viewModel.acceptQuest('a');
+      await _flush();
+    }
+
+    Future<void> finishLastStep() async {
+      await viewModel.loadSteps('a');
+      await viewModel.completeCurrentStep(viewModel.currentMission!);
+    }
+
+    test('completing logs the walk as completed, with quest, category, steps and time', () async {
+      // Stored lowercased, like CompletionLikelihood, so "Food" and "food" group together.
+      repository.catalog = [
+        Quest(
+          id: 'a',
+          title: 'Quest a',
+          category: 'Food',
+          durationMinutes: 20,
+          difficulty: 'easy',
+          locationMode: 'anywhere',
+          socialLevel: 'solo',
+        ),
+      ];
+      await startWalking();
+      await walk([5000, 5080]);
+
+      await finishLastStep();
+
+      final logged = repository.walks.single;
+      expect(logged.toRow(), {
+        'attempt_id': 'uq-a',
+        'quest_id': 'a',
+        'category': 'food',
+        'steps': 80,
+        'outcome': 'completed',
+        'finished_at': now.millisecondsSinceEpoch,
+      });
+      expect(repository.stepTotals, {'uq-a': 80}); // Hive, untouched
+    });
+
+    test('abandoning logs it as abandoned', () async {
+      await startWalking();
+      await walk([100, 145]);
+
+      await viewModel.abandonQuest(viewModel.currentMission!, reason: AbandonmentReason.tooFar);
+
+      expect(repository.walks.single.outcome, StepLogEntry.abandoned);
+      expect(repository.walks.single.steps, 45);
+    });
+
+    test('a walk without steps is not logged', () async {
+      await startWalking();
+      await walk([700]); // a first reading only: 0 steps
+
+      await finishLastStep();
+
+      expect(repository.walks, isEmpty);
+    });
+
+    test('no reading at all: nothing logged either', () async {
+      await startWalking();
+
+      await finishLastStep();
+
+      expect(repository.walks, isEmpty);
+    });
+
+    test('banking an attempt because another quest was accepted is not a finished walk', () async {
+      await startWalking();
+      await walk([100, 160]);
+
+      repository.nextAttemptId = 'uq-b';
+      await viewModel.acceptQuest('a');
+      await _flush();
+
+      expect(repository.stepTotals, {'uq-a': 60});
+      expect(repository.walks, isEmpty);
+    });
+
+    test('a broken SQLite never stops completing or abandoning', () async {
+      final notADatabase = await Directory.systemTemp.createTemp('step_log_broken');
+      addTearDown(() => notADatabase.delete(recursive: true));
+      repository.walkLog = QuestRepository(
+        _UnusedRemote(),
+        _UnusedLocal(),
+        stepLog: StepLogDatabase(factory: databaseFactoryFfiNoIsolate, path: notADatabase.path),
+      );
+      await startWalking();
+      await walk([1000, 1100]);
+
+      await finishLastStep();
+
+      expect(viewModel.currentMission, isNull); // completed
+      expect(viewModel.stepErrorMessage, isNull);
+      expect(repository.walks, hasLength(1)); // it was tried
+      expect(repository.stepTotals, {'uq-a': 100});
+    });
+  });
+}
+
+/// The step log needs neither: only the SQLite part of the repository runs.
+class _UnusedRemote implements SupabaseRemoteDataSource {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _UnusedLocal implements LocalDataSource {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

@@ -92,6 +92,8 @@ class _StatsViewState extends State<StatsView> {
                   ...statsViewModel.categoryStats.map((stat) => _CategoryRateRow(stat: stat)),
                 const SizedBox(height: 24),
                 _StepsCard(steps: statsViewModel.totalSteps),
+                const SizedBox(height: 24),
+                _WalksSection(statsViewModel: statsViewModel),
               ],
             ),
           ),
@@ -273,6 +275,85 @@ class _StepsCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// "Tus caminatas": every walk finished with the podómetro, kept in SQLite on
+/// the device, so it reads the same offline.
+class _WalksSection extends StatelessWidget {
+  final StatsViewModel statsViewModel;
+
+  const _WalksSection({required this.statsViewModel});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final longest = statsViewModel.longestWalk;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Tus caminatas', style: textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Pasos de las misiones que completaste o abandonaste, guardados en tu teléfono',
+          style: textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        if (longest == null)
+          Text(
+            'Aún no hay caminatas guardadas. Se registran al completar o abandonar '
+            'una misión con el podómetro activo.',
+            style: textTheme.bodyMedium,
+          )
+        else ...[
+          Row(
+            children: [
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.calendar_today,
+                  value: formatThousands(statsViewModel.walkStepsLast7Days),
+                  label: 'Últimos 7 días',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatTile(
+                  icon: Icons.emoji_events_outlined,
+                  value: formatThousands(longest.steps),
+                  label: 'Caminata más larga',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${statsViewModel.longestWalkTitle ?? 'Misión'} · ${_formatDate(longest.finishedAt)}',
+            style: textTheme.bodySmall,
+          ),
+          if (statsViewModel.walkStepsByCategory.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Pasos por categoría', style: textTheme.titleSmall),
+            const SizedBox(height: 8),
+            for (final (:category, :steps) in statsViewModel.walkStepsByCategory)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(categoryLabelEs(category), style: textTheme.bodyMedium)),
+                    Text('${formatThousands(steps)} pasos', style: textTheme.bodySmall),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ],
+    );
+  }
+
+  /// 26/11/2026, in local time.
+  static String _formatDate(DateTime date) {
+    final local = date.toLocal();
+    return '${local.day}/${local.month}/${local.year}';
   }
 }
 

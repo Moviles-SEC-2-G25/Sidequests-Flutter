@@ -24,6 +24,7 @@ import '../../models/photo_proof.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../models/quest_step.dart';
+import '../../models/step_log_entry.dart';
 import '../../models/step_session.dart';
 import '../../models/user_preferences.dart';
 import '../../models/user_quest.dart';
@@ -760,7 +761,7 @@ class QuestViewModel extends ChangeNotifier {
       }
       _replaceUserQuest(updated);
       if (isLastStep) {
-        await _finishStepTracking(updated.id);
+        await _finishStepTracking(updated.id, outcome: StepLogEntry.completed);
       }
       return isLastStep;
     } on AppException catch (e) {
@@ -892,7 +893,7 @@ class QuestViewModel extends ChangeNotifier {
       final result = await _questRepository.abandonQuestOrQueue(attempt, reason: reason.code);
       abandonmentQueued = result.queued;
       _replaceUserQuest(result.userQuest);
-      await _finishStepTracking(attempt.id);
+      await _finishStepTracking(attempt.id, outcome: StepLogEntry.abandoned);
       _analyticsTracker.trackDetailed(
         AnalyticsEventType.questAbandoned,
         questId: questId,
@@ -1146,7 +1147,11 @@ class QuestViewModel extends ChangeNotifier {
   /// Saves the attempt's total and clears the active session. Also covers
   /// an attempt that was persisted but isn't being counted right now (app
   /// restarted with the permission since revoked).
-  Future<void> _finishStepTracking(String userQuestId) async {
+  ///
+  /// [outcome] (completed/abandoned) when the attempt itself ended: the walk
+  /// then goes to the step log too. Banking an attempt because another quest
+  /// was accepted doesn't end it, so it isn't logged.
+  Future<void> _finishStepTracking(String userQuestId, {String? outcome}) async {
     final isCounting = _stepCounter.session?.userQuestId == userQuestId;
     final finished = isCounting ? _stepCounter.stop() : _questRepository.getActiveStepSession();
     if (finished == null || finished.userQuestId != userQuestId) return;
@@ -1155,6 +1160,26 @@ class QuestViewModel extends ChangeNotifier {
       await _questRepository.saveStepTotal(userQuestId, finished.steps);
     }
     await _questRepository.saveActiveStepSession(null);
+    if (outcome != null && finished.hasData && finished.steps > 0) {
+      await _logWalk(userQuestId, finished.steps, outcome);
+    }
+  }
+
+  Future<void> _logWalk(String userQuestId, int steps, String outcome) {
+    final questId = userQuests
+        .cast<UserQuest?>()
+        .firstWhere((uq) => uq!.id == userQuestId, orElse: () => null)
+        ?.questId;
+    return _questRepository.logWalk(
+      StepLogEntry(
+        attemptId: userQuestId,
+        questId: questId ?? '',
+        category: questId == null ? null : questById(questId)?.category.toLowerCase(),
+        steps: steps,
+        outcome: outcome,
+        finishedAt: _now(),
+      ),
+    );
   }
 
   void _onStepCounterChange() {
