@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -22,6 +23,8 @@ import 'package:sidequests/models/user_quest.dart';
 import 'package:sidequests/models/verified_check_in.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/view/quests/mission_tab_view.dart';
+import 'package:sidequests/view/widgets/offline_notice.dart';
+import 'package:sidequests/viewmodel/context/connectivity_view_model.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 
 const _questLat = 4.6473;
@@ -675,6 +678,52 @@ void main() {
       expect(find.text(_savedNotice), findsNothing);
     });
 
+    testWidgets('offline: a saved arrival is the notice for that step, not "needs internet"', (
+      tester,
+    ) async {
+      final connectivity = _FakeConnectivity(offline: true);
+      await tester.runAsync(() => openMission([_step(0, 'location'), _step(1, 'none')]));
+      tester.view.physicalSize = const Size(360, 690);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<QuestViewModel>.value(value: viewModel),
+            ChangeNotifierProvider(create: (_) => ConnectivityViewModel(connectivity: connectivity)),
+          ],
+          child: const MaterialApp(home: MissionTabView()),
+        ),
+      );
+      await tester.pump();
+
+      // Not there yet: the general notice, as Lucas's offline mode shows it.
+      expect(find.text(OfflineMessages.missionProgress), findsOneWidget);
+      expect(find.text(_savedNotice), findsNothing);
+
+      repository.writeError = _noConnection;
+      await tester.runAsync(() => walkTo(20));
+      await tester.pump();
+
+      expect(find.text(_savedNotice), findsOneWidget);
+      expect(find.text(OfflineMessages.missionProgress), findsNothing);
+      expect(repository.verifiedCheckIn, isNotNull); // saved, not queued
+      final blocked = find.widgetWithText(FilledButton, 'Conéctate para completar');
+      await tester.ensureVisible(blocked);
+      expect(tester.widget<FilledButton>(blocked).onPressed, isNull);
+
+      // Back online: the reconnection load completes the step on its own.
+      repository.writeError = null;
+      connectivity.set(offline: false);
+      await tester.runAsync(() => viewModel.load());
+      await tester.pump();
+
+      expect(repository.progressUpdates.single.currentStep, 1);
+      expect(repository.verifiedCheckIn, isNull);
+      expect(find.text(_savedNotice), findsNothing);
+      expect(find.byType(OfflineNotice), findsNothing);
+    });
+
     testWidgets('photo_and_location: location ✓, photo asks for "Tomar foto"', (tester) async {
       await tester.runAsync(
         () => openMission([_step(0, 'photo_and_location'), _step(1, 'none')]),
@@ -689,4 +738,27 @@ void main() {
       expect(find.text('Tomar foto'), findsOneWidget);
     });
   });
+}
+
+/// The device's connectivity, switchable during a test.
+class _FakeConnectivity implements Connectivity {
+  List<ConnectivityResult> _current;
+  final _changes = StreamController<List<ConnectivityResult>>.broadcast();
+
+  _FakeConnectivity({required bool offline})
+    : _current = [offline ? ConnectivityResult.none : ConnectivityResult.wifi];
+
+  void set({required bool offline}) {
+    _current = [offline ? ConnectivityResult.none : ConnectivityResult.wifi];
+    _changes.add(_current);
+  }
+
+  @override
+  Future<List<ConnectivityResult>> checkConnectivity() async => _current;
+
+  @override
+  Stream<List<ConnectivityResult>> get onConnectivityChanged => _changes.stream;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

@@ -21,6 +21,7 @@ import 'package:sidequests/repository/auth_repository.dart';
 import 'package:sidequests/repository/profile_repository.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/view/quests/explore_view.dart';
+import 'package:sidequests/view/widgets/offline_notice.dart';
 import 'package:sidequests/viewmodel/profile/profile_view_model.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 
@@ -434,6 +435,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(_groupNotice), findsOneWidget);
+    expect(_groupNotice, OfflineMessages.awaitingSocialLevel('En grupo'));
+    expect(find.descendant(of: find.byType(OfflineNotice), matching: find.text(_groupNotice)), findsOneWidget);
     expect(find.text('Recomendaciones guardadas'), findsOneWidget);
     expect(tester.widget<ChoiceChip>(chip).selected, isTrue);
     expect(remote.requestedLevels, isEmpty);

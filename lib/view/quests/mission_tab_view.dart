@@ -170,7 +170,10 @@ class _MissionChecklist extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          if (isOffline) ...[
+          // A check-in saved for the current step says what happens with it
+          // ("se guardará cuando vuelvas a tener conexión"): saying instead
+          // that the step needs the internet would contradict it.
+          if (isOffline && !questViewModel.isCheckInSavedForCurrentStep) ...[
             const OfflineNotice(message: OfflineMessages.missionProgress),
             const SizedBox(height: 16),
           ],
