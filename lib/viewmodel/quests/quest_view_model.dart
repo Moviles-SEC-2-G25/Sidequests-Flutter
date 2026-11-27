@@ -227,6 +227,10 @@ class QuestViewModel extends ChangeNotifier {
   DateTime _lastJourneyEndedAt;
   final DateTime Function() _now;
 
+  /// "Probabilidad de que la termines" of the current catalog + userQuests.
+  /// Session-owned (app.dart), so signing out empties it.
+  final CompletionLikelihoodMemo _completionLikelihoodMemo;
+
   QuestViewModel(
     this._questRepository,
     this._contextManager,
@@ -240,7 +244,9 @@ class QuestViewModel extends ChangeNotifier {
     PhotoCaptureService? photoCapture,
     DateTime Function()? now,
     QuestAlternativesRunner questAlternativesRunner = _computeAlternativesInBackground,
+    CompletionLikelihoodMemo? completionLikelihoodMemo,
   }) : _now = now ?? DateTime.now,
+       _completionLikelihoodMemo = completionLikelihoodMemo ?? CompletionLikelihoodMemo(),
        _runQuestAlternatives = questAlternativesRunner,
        _lastJourneyEndedAt = (now ?? DateTime.now)(),
        selectedMinutes = initialFilters.minutes,
@@ -822,11 +828,16 @@ class QuestViewModel extends ChangeNotifier {
       _similarQuestRecommender.recommend(completed, catalog, userQuests, rating, selectedMinutes);
 
   /// "Probabilidad de que la termines" on Explore's cards, per category.
-  /// Recomputed on every read (no caching) — Explore reads it once per
-  /// section build and hands each card its level, so completing or
-  /// abandoning a quest updates the labels on the next notifyListeners().
-  Map<String, CompletionLevel> get completionLikelihoodByCategory =>
-      _completionLikelihood.byCategory(catalog, userQuests);
+  /// Cached (memoized) on the identity of [catalog] and [userQuests]: Explore
+  /// reads it on every build, but it only changes when one of those lists is
+  /// replaced — a load, or completing, abandoning or accepting a quest. That
+  /// holds because this class only ever replaces those lists, never modifies
+  /// them in place (add, remove, `[i] =`): keep it that way, or the labels
+  /// go stale. Unmodifiable, since every read shares the same map.
+  Map<String, CompletionLevel> get completionLikelihoodByCategory => _completionLikelihoodMemo.get(
+    (catalog, userQuests),
+    () => Map.unmodifiable(_completionLikelihood.byCategory(catalog, userQuests)),
+  );
 
   /// No catalog to show because none could be fetched and none was ever saved
   /// (as opposed to filters that exclude every quest).

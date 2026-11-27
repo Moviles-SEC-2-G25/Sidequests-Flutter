@@ -24,6 +24,7 @@ class StatsView extends StatefulWidget {
       create: (context) => StatsViewModel(
         context.read<QuestRepository>(),
         context.read<AuthViewModel>().userId!,
+        summaryCache: context.read<StatsSummaryCache?>(),
       ),
       child: const StatsView(),
     ),
