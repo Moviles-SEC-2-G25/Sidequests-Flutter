@@ -26,9 +26,12 @@ abren encima del menú inferior). Los avisos usan `OfflineNotice` y los textos d
 | "Mi bitácora": historial, búsqueda y filtros | Con los datos guardados; marca "Pendiente de sincronizar" lo hecho sin conexión y se actualiza sola al reconectar (detalle en `BITACORA.md`). |
 | Modo oscuro, notificaciones locales, huella | Ajustes locales. |
 | Agitar para una misión sorpresa | Prioriza misiones con pasos guardados; iniciarla sigue necesitando conexión. |
+| Retos en grupo (Explorar → "Descubre más"): ver "Mis retos", "Retos disponibles", progreso y siguiente paso | Última versión de cada lista guardada en el teléfono (sobrevive a reiniciar la app), con el aviso "Retos cargados antes · conéctate para hacer cambios". Se borra al cerrar sesión. |
 
 Al reconectar, la app sincroniza lo que quedó en cola (inicios de versiones
 anteriores, abandonos, calificaciones, fotos, analítica) y recarga los datos.
+Retos en grupo recarga sus dos listas cuando la conexión se mantiene 3 s; una
+solicitud pendiente **no** se reenvía sola (ver abajo).
 
 ## Bloqueado sin conexión (con aviso)
 
@@ -42,6 +45,8 @@ anteriores, abandonos, calificaciones, fotos, analítica) y recarga los datos.
 | Cambiar contraseña | Mensaje al tocar el ícono, sin abrir el formulario. |
 | Guardar preferencias (perfil y onboarding) | Aviso y "Guardar"/"Continue" desactivados. |
 | Cerrar sesión | Se permite, pero primero pide confirmar: sin conexión no se puede volver a entrar y se pierde lo no sincronizado. |
+| Retos en grupo: "Crear reto", "Unirme", "Marcar siguiente paso", actualizar | Botones desactivados y aviso. No se encolan: el servidor decide y registra cada solicitud (BQ2). |
+| Retos en grupo: "Reintentar solicitud pendiente" | Desactivado sin conexión. Si una solicitud salió pero no llegó respuesta (se cayó la red, 5 s sin respuesta), queda guardada con su `request_id` y se muestra "No sabemos si se guardó. Reconecta y reintenta: es seguro."; al reconectar, el botón la reenvía con el mismo `request_id` y el servidor no la aplica dos veces. Mientras está pendiente, las demás acciones esperan. |
 
 Si el teléfono dice tener conexión pero la red no responde (Wi‑Fi sin
 internet), cada llamada tiene límite de tiempo (5 s datos, 15 s autenticación)

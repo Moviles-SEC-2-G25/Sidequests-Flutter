@@ -10,7 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// attempts (and when they were last synced) and their photo proofs, active
 /// quest and progress, analytics
 /// events and quest writes waiting for a connection, resolved quest addresses,
-/// the last recommendations, and the last weather reading per location.
+/// the last recommendations, the last weather reading per location, and the
+/// last group challenge lists with the group request whose result is unknown.
 /// Repositories read from here when the network is unavailable and write
 /// through on every successful remote fetch or write. Session persistence
 /// is handled by supabase_flutter itself, not duplicated here.
@@ -38,6 +39,9 @@ class LocalDataSource {
   static const _keySavedRecommendations = 'saved_recommendations';
   static const _keyAddresses = 'addresses';
   static const _keyWeatherSnapshots = 'weather_snapshots';
+  static const _keyGroupChallengesMine = 'group_challenges_mine';
+  static const _keyGroupChallengesAvailable = 'group_challenges_available';
+  static const _keyPendingGroupAction = 'pending_group_action';
   static const _keyOnboardingComplete = 'onboarding_complete';
   static const _keyDarkMode = 'dark_mode';
   static const _keyExploreFilters = 'explore_filters';
@@ -293,6 +297,31 @@ class LocalDataSource {
     _keyWeatherSnapshots,
     {...(_box.get(_keyWeatherSnapshots) as Map? ?? const {}), coordinatesKey: snapshot},
   );
+
+  /// The last group challenge list the server sent: the user's ([mine]) or
+  /// the ones open to join. null when it never arrived on this device, as
+  /// opposed to an empty list. In the box, so sign-out clears both.
+  List<Map<String, dynamic>>? getGroupChallenges({required bool mine}) =>
+      (_box.get(mine ? _keyGroupChallengesMine : _keyGroupChallengesAvailable) as List?)
+          ?.cast<Map>()
+          .map((row) => row.cast<String, dynamic>())
+          .toList();
+
+  Future<void> cacheGroupChallenges({
+    required bool mine,
+    required List<Map<String, dynamic>> rows,
+  }) => _box.put(mine ? _keyGroupChallengesMine : _keyGroupChallengesAvailable, rows);
+
+  /// The group create/join/progress request that got no answer (dropped
+  /// connection, timeout), with its request id, so "Reintentar" sends exactly
+  /// that one again — even after a restart. Only one at a time. Cleared on
+  /// sign-out with the rest of the box.
+  Map<String, dynamic>? getPendingGroupAction() =>
+      (_box.get(_keyPendingGroupAction) as Map?)?.cast<String, dynamic>();
+
+  Future<void> savePendingGroupAction(Map<String, dynamic>? action) => action == null
+      ? _box.delete(_keyPendingGroupAction)
+      : _box.put(_keyPendingGroupAction, action);
 
   Future<Directory> _pendingProofsDirectory() async {
     final documents = await getApplicationDocumentsDirectory();

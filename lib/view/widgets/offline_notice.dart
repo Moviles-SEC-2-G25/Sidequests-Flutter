@@ -26,6 +26,12 @@ abstract final class OfflineMessages {
   static const photoUpload = 'Tu foto está guardada en el teléfono y se subirá cuando vuelvas a tener conexión.';
   static const savePreferences = 'Sin conexión: necesitas internet para guardar tus preferencias.';
 
+  /// Retos en grupo: the lists on screen are the ones saved on the phone;
+  /// create, join and steps need the server (they're never queued).
+  static const groupChallenges = 'Retos cargados antes · conéctate para hacer cambios.';
+  static const groupChallengesNothingSaved =
+      'Sin conexión: conéctate para ver los retos en grupo y hacer cambios.';
+
   /// ES13: a "¿Cómo te sientes hoy?" chip tapped while the list on screen is
   /// the saved one; [level] is the chip's name ("En grupo").
   static String awaitingSocialLevel(String level) =>

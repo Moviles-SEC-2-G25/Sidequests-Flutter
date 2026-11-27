@@ -19,6 +19,7 @@ import 'data/services/location_service.dart';
 import 'data/services/reverse_geocoding_service.dart';
 import 'data/services/weather_service.dart';
 import 'repository/auth_repository.dart';
+import 'repository/group_challenge_repository.dart';
 import 'repository/profile_repository.dart';
 import 'repository/quest_repository.dart';
 import 'repository/social_repository.dart';
@@ -114,6 +115,9 @@ class SidequestsApp extends StatelessWidget {
               QuestRepository(remoteDataSource, localDataSource, network: network, stepLog: stepLog),
         ),
         Provider(create: (_) => SocialRepository()),
+        Provider(
+          create: (_) => GroupChallengeRepository(remoteDataSource, localDataSource, network: network),
+        ),
         ChangeNotifierProvider(
           create: (context) => AuthViewModel(
             context.read<AuthRepository>(),
