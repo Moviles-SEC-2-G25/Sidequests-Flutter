@@ -17,4 +17,5 @@ abstract final class AnalyticsEventType {
   static const shakeSurprise = 'shake_surprise';
   static const similarQuestOpened = 'similar_quest_opened';
   static const photoProofUploaded = 'photo_proof_uploaded';
+  static const bq11CommercialBlockCompleted = 'bq11_commercial_block_completed';
 }
