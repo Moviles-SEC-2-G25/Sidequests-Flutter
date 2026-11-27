@@ -39,12 +39,25 @@ class SimilarQuestRecommender {
     List<UserQuest> userQuests,
     int rating,
     int maxMinutes,
-  ) {
-    final unavailableQuestIds = userQuests
-        .where((uq) => _activeOrCompletedStatuses.contains(uq.status))
-        .map((uq) => uq.questId)
-        .toSet();
+  ) => recommendExcluding(completed, catalog, unavailableQuestIds(userQuests), rating, maxMinutes);
 
+  /// The quests [recommend] never suggests: the ones the user already has a
+  /// claim on (completed, or accepted/in progress), per [userQuests].
+  static Set<String> unavailableQuestIds(Iterable<UserQuest> userQuests) => userQuests
+      .where((uq) => _activeOrCompletedStatuses.contains(uq.status))
+      .map((uq) => uq.questId)
+      .toSet();
+
+  /// [recommend] with the unavailable quests already worked out
+  /// ([unavailableQuestIds]). Split out so SimilarQuestWorker's isolate only
+  /// gets those ids, not every attempt; same rules, same answer.
+  List<Quest> recommendExcluding(
+    Quest completed,
+    List<Quest> catalog,
+    Set<String> unavailableQuestIds,
+    int rating,
+    int maxMinutes,
+  ) {
     final candidates = catalog.where(
       (quest) =>
           quest.id != completed.id &&
