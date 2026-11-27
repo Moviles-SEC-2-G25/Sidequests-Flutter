@@ -16,6 +16,7 @@ import '../../data/context/context_manager.dart';
 import '../../data/remote/network_guard.dart';
 import '../../data/services/location_check_in_service.dart';
 import '../../data/services/photo_capture_service.dart';
+import '../../data/services/reverse_geocoding_service.dart';
 import '../../data/services/step_counter_service.dart';
 import '../../models/abandonment_reason.dart';
 import '../../models/app_context.dart';
@@ -111,6 +112,9 @@ class QuestViewModel extends ChangeNotifier {
   final StreamController<void> _exploreTabRequests = StreamController<void>.broadcast();
   final QuestAlternativesRunner _runQuestAlternatives;
 
+  /// "📍 Cerca de: ..." (where the user is), from Nominatim.
+  final ReverseGeocodingService? _geocoding;
+
   /// Abandonments on their way, by attempt: a repeated tap gets the same one.
   final Map<String, Future<bool>> _abandonsInFlight = {};
 
@@ -152,6 +156,15 @@ class QuestViewModel extends ChangeNotifier {
 
   /// [recommendations] is the list saved on the device: the network failed.
   bool recommendationsFromCache = false;
+
+  /// Short address of where the user is ("📍 Cerca de: ..."); the last one
+  /// resolved is kept when a lookup fails.
+  String? currentArea;
+
+  /// Why [currentArea] couldn't be updated (offline, service unavailable).
+  String? currentAreaError;
+  double? _areaLatitude;
+  double? _areaLongitude;
 
   /// The social level of the last list the server answered, which is also the
   /// one saved on the device. null until one arrives this session.
@@ -245,7 +258,9 @@ class QuestViewModel extends ChangeNotifier {
     DateTime Function()? now,
     QuestAlternativesRunner questAlternativesRunner = _computeAlternativesInBackground,
     CompletionLikelihoodMemo? completionLikelihoodMemo,
+    ReverseGeocodingService? geocoding,
   }) : _now = now ?? DateTime.now,
+       _geocoding = geocoding,
        _completionLikelihoodMemo = completionLikelihoodMemo ?? CompletionLikelihoodMemo(),
        _runQuestAlternatives = questAlternativesRunner,
        _lastJourneyEndedAt = (now ?? DateTime.now)(),
@@ -425,6 +440,7 @@ class QuestViewModel extends ChangeNotifier {
       if (forceContext) _contextManager.forceNextReading();
       final context = await _contextWithinLimit();
       currentContext = context;
+      unawaited(_updateArea(context));
       final effectivePreferences = preferences.copyWith(
         locationMode: selectedLocationScope,
         socialLevel: sessionSocialLevel,
@@ -485,6 +501,7 @@ class QuestViewModel extends ChangeNotifier {
         reading.then(
           (context) {
             currentContext = context;
+            unawaited(_updateArea(context));
             notifyListeners();
           },
           onError: (Object _) {},
@@ -526,6 +543,7 @@ class QuestViewModel extends ChangeNotifier {
       final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
       currentContext = context;
       notifyListeners();
+      await _updateArea(context);
     } catch (_) {
       // A missing sensor: nothing new to adapt to.
     }
@@ -534,6 +552,32 @@ class QuestViewModel extends ChangeNotifier {
   /// With low battery and no charger, the last snapshot reused the previous
   /// GPS/weather reading (refreshed every 15 min, or on a manual refresh).
   bool get contextBatterySaverActive => _contextManager.batterySaverActive;
+
+  /// External service (mirror of the Kotlin app): Nominatim's short address
+  /// for where the user is. Offline, or when the lookup fails, the last known
+  /// address stays and [currentAreaError] says why.
+  Future<void> _updateArea(AppContext context) async {
+    final geocoding = _geocoding;
+    final latitude = context.latitude;
+    final longitude = context.longitude;
+    if (geocoding == null || latitude == null || longitude == null) return;
+    if (!context.isConnected) {
+      currentAreaError = 'Dirección no disponible sin conexión';
+      notifyListeners();
+      return;
+    }
+    if (latitude == _areaLatitude && longitude == _areaLongitude && currentArea != null) return;
+    final area = await geocoding.areaFor(latitude, longitude);
+    if (area != null) {
+      currentArea = area;
+      currentAreaError = null;
+      _areaLatitude = latitude;
+      _areaLongitude = longitude;
+    } else {
+      currentAreaError = 'Dirección no disponible por ahora';
+    }
+    notifyListeners();
+  }
 
   /// Back online. Recommendations reload only when Explore has nothing to show
   /// or only the saved list (it failed offline): reloading a live list the user

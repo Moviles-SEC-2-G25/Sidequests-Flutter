@@ -120,6 +120,12 @@ class _ProfileHeader extends StatelessWidget {
             children: [
               Text(name, style: Theme.of(context).textTheme.titleLarge),
               if (handle.isNotEmpty) Text(handle, style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                '📍 ${context.watch<QuestViewModel>().currentArea ?? 'Ubicación aún no disponible'}',
+                style: Theme.of(context).textTheme.bodySmall,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
           ),
         ),

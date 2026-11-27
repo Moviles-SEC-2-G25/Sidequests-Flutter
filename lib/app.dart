@@ -129,6 +129,7 @@ class SidequestsApp extends StatelessWidget {
             context.read<AuthViewModel>().userId!,
             initialFilters: context.read<QuestRepository>().getExploreFilters(),
             completionLikelihoodMemo: completionLikelihoodMemo,
+            geocoding: context.read<ReverseGeocodingService>(),
           ),
         ),
         ChangeNotifierProvider(

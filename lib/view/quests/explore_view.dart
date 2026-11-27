@@ -884,8 +884,8 @@ String _difficultyLabel(String difficulty) => switch (difficulty) {
   _ => difficulty,
 };
 
-/// The battery saver note under the greeting (mirror of the Kotlin app's
-/// live context line).
+/// "📍 Cerca de: ..." (Nominatim) and the battery saver note, under the
+/// greeting. Mirror of the Kotlin app's live context line.
 class _LiveContextNote extends StatelessWidget {
   final QuestViewModel questViewModel;
 
@@ -893,13 +893,38 @@ class _LiveContextNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!questViewModel.contextBatterySaverActive) return const SizedBox.shrink();
+    final area = questViewModel.currentArea;
+    final error = questViewModel.currentAreaError;
+    final hasLocation = questViewModel.currentContext?.hasLocation ?? false;
+    final String? locationText;
+    if (area != null) {
+      locationText = '📍 Cerca de: $area';
+    } else if (hasLocation) {
+      locationText = '📍 ${error ?? 'Ubicación disponible'}';
+    } else {
+      locationText = null;
+    }
+    final batterySaver = questViewModel.contextBatterySaverActive;
+    if (locationText == null && !batterySaver) return const SizedBox.shrink();
+
+    final style = Theme.of(context).textTheme.bodySmall;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Text(
-        '🔋 Ahorro de batería: usamos el último contexto (se actualiza cada 15 min). '
-        'Desliza hacia abajo para forzarlo.',
-        style: Theme.of(context).textTheme.bodySmall,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (locationText != null)
+            Text(locationText, style: style, maxLines: 2, overflow: TextOverflow.ellipsis),
+          if (batterySaver)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '🔋 Ahorro de batería: usamos el último contexto (se actualiza cada 15 min). '
+                'Desliza hacia abajo para forzarlo.',
+                style: style,
+              ),
+            ),
+        ],
       ),
     );
   }
