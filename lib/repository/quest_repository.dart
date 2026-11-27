@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -44,11 +45,17 @@ class QuestRepository {
   static const stepsCacheTtl = Duration(minutes: 10);
   static const stepsCacheMaxQuests = 20;
 
+  /// Smart Picks (mirror of the Kotlin app's CachedRecommendationRepository):
+  /// the same request within 10 minutes is answered from memory.
+  static const recommendationsCacheTtl = Duration(minutes: 10);
+  static const recommendationsCacheMaxEntries = 16;
+
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
   final String Function() _newId;
   final NetworkGuard _network;
   final MemoryCache<String, List<QuestStep>> _stepsCache;
+  final MemoryCache<String, RecommendationBatch> _recommendationsCache;
   final StepLogDatabase? _stepLog;
   Future<void>? _syncInFlight;
 
@@ -66,12 +73,16 @@ class QuestRepository {
     String Function()? newId,
     NetworkGuard network = const NetworkGuard(),
     MemoryCache<String, List<QuestStep>>? stepsCache,
+    MemoryCache<String, RecommendationBatch>? recommendationsCache,
     StepLogDatabase? stepLog,
   }) : _newId = newId ?? (() => const Uuid().v4()),
        _network = network,
        _stepLog = stepLog,
        _stepsCache =
-           stepsCache ?? MemoryCache(ttl: stepsCacheTtl, maxEntries: stepsCacheMaxQuests);
+           stepsCache ?? MemoryCache(ttl: stepsCacheTtl, maxEntries: stepsCacheMaxQuests),
+       _recommendationsCache =
+           recommendationsCache ??
+           MemoryCache(ttl: recommendationsCacheTtl, maxEntries: recommendationsCacheMaxEntries);
 
   Future<List<Quest>> getCatalog() async {
     try {
@@ -122,20 +133,44 @@ class QuestRepository {
   /// Delegates ranking to the shared `recommend_quests` RPC (BQ5) so Kotlin
   /// and Flutter never duplicate the recommendation logic. Every non-empty
   /// list is saved with its batch id and its missions' steps are prefetched,
-  /// so the list and each mission's detail can still be browsed offline; when
-  /// the network fails, the saved list comes back marked
-  /// [RecommendationBatch.fromCache].
+  /// so the list and each mission's detail can still be browsed offline.
+  ///
+  /// Caching (mirror of the Kotlin app's LRU with TTL): the same request
+  /// (time, social level, interests, location mode, exclusions, limit) within
+  /// [recommendationsCacheTtl] is answered from memory with no network call
+  /// ([RecommendationSource.memory]). When the network fails, an older answer
+  /// to the same request comes back ([RecommendationSource.staleMemory]),
+  /// else the saved list ([RecommendationSource.saved]). The cache is emptied
+  /// on sign-out (it's a session cache), so an account never sees another's.
   Future<RecommendationBatch> getRecommendations({
     required AppContext context,
     required UserPreferences preferences,
     List<String> excludedQuestIds = const [],
     int limit = 3,
   }) async {
+    final availableMinutes = context.availableMinutes ?? preferences.typicalTimeMinutes;
+    final key = jsonEncode([
+      availableMinutes,
+      preferences.socialLevel,
+      [...preferences.interests]..sort(),
+      preferences.locationMode,
+      [...excludedQuestIds]..sort(),
+      limit,
+    ]);
+    final cached = _recommendationsCache.get(key);
+    if (cached != null) {
+      return RecommendationBatch(
+        recommendations: _withoutUnavailable(cached.recommendations, excludedQuestIds),
+        batchId: cached.batchId,
+        source: RecommendationSource.memory,
+      );
+    }
+
     final List<Map<String, dynamic>> rows;
     try {
       rows = await _network.run(
         () => _remoteDataSource.recommendQuests(
-          availableMinutes: context.availableMinutes ?? preferences.typicalTimeMinutes,
+          availableMinutes: availableMinutes,
           socialLevel: preferences.socialLevel,
           interests: preferences.interests,
           locationMode: preferences.locationMode,
@@ -146,11 +181,21 @@ class QuestRepository {
     } on PostgrestException catch (e) {
       throw AppException(e.message);
     } catch (_) {
+      final stale = _recommendationsCache.getStale(key);
+      if (stale != null) {
+        return RecommendationBatch(
+          recommendations: _withoutUnavailable(stale.recommendations, excludedQuestIds),
+          batchId: stale.batchId,
+          source: RecommendationSource.staleMemory,
+        );
+      }
       return _savedRecommendations(excludedQuestIds);
     }
 
     final batchId = _newId();
     final recommendations = rows.map(QuestRecommendation.fromJson).toList();
+    final batch = RecommendationBatch(recommendations: recommendations, batchId: batchId);
+    _recommendationsCache.put(key, batch);
     // An empty answer (e.g. a narrow filter) must not erase a usable list.
     if (rows.isNotEmpty) {
       try {
@@ -160,7 +205,7 @@ class QuestRepository {
       }
       unawaited(_prefetchSteps(recommendations));
     }
-    return RecommendationBatch(recommendations: recommendations, batchId: batchId);
+    return batch;
   }
 
   /// For Explore to show right away when the catalog already fell back to the
@@ -176,20 +221,38 @@ class QuestRepository {
     final saved = _localDataSource.getSavedRecommendations();
     if (saved == null) throw const AppException(_noCacheMessage, isRetryable: true);
 
-    final unavailable = {
-      ...excludedQuestIds,
-      for (final row in _localDataSource.getUserQuests())
-        if (const {'accepted', 'in_progress', 'completed'}.contains(row['status']))
-          row['quest_id'] as String,
-    };
     return RecommendationBatch(
-      recommendations: saved.rows
-          .map(QuestRecommendation.fromJson)
-          .where((recommendation) => !unavailable.contains(recommendation.questId))
-          .toList(),
+      recommendations: _withoutUnavailable(
+        saved.rows.map(QuestRecommendation.fromJson).toList(),
+        excludedQuestIds,
+      ),
       batchId: saved.batchId,
       fromCache: true,
     );
+  }
+
+  /// A list answered earlier (saved, or in memory), minus what stopped making
+  /// sense since: quests skipped this session and quests already started or
+  /// completed.
+  List<QuestRecommendation> _withoutUnavailable(
+    List<QuestRecommendation> recommendations,
+    List<String> excludedQuestIds,
+  ) {
+    List<Map<String, dynamic>> attempts;
+    try {
+      attempts = _localDataSource.getUserQuests();
+    } catch (_) {
+      attempts = const [];
+    }
+    final unavailable = {
+      ...excludedQuestIds,
+      for (final row in attempts)
+        if (const {'accepted', 'in_progress', 'completed'}.contains(row['status']))
+          row['quest_id'] as String,
+    };
+    return recommendations
+        .where((recommendation) => !unavailable.contains(recommendation.questId))
+        .toList();
   }
 
   /// Best effort, one request per mission not cached yet: opening a mission

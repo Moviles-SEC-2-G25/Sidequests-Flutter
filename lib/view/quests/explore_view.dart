@@ -430,6 +430,10 @@ class _RecommendedSection extends StatelessWidget {
           'Basado en tu tiempo, intereses y historial',
           style: Theme.of(context).textTheme.bodySmall,
         ),
+        if (_sourceLabel(questViewModel) case final label?) ...[
+          const SizedBox(height: 2),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+        ],
         if (questViewModel.completionLabelsFromCache) const _SavedDataNote(),
         if (questViewModel.recommendationsFromCache) ...[
           const SizedBox(height: 8),
@@ -477,6 +481,19 @@ class _RecommendedSection extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Where Smart Picks came from (mirror of the Kotlin app's source line).
+String? _sourceLabel(QuestViewModel questViewModel) {
+  final count = questViewModel.recommendations.length;
+  final misiones = count == 1 ? 'misión' : 'misiones';
+  return switch (questViewModel.recommendationsSource) {
+    null => null,
+    RecommendationSource.network => 'Fuente: Supabase (BQ5) · $count $misiones',
+    RecommendationSource.memory => 'Fuente: caché en memoria · $count $misiones',
+    RecommendationSource.staleMemory ||
+    RecommendationSource.saved => 'Fuente: guardadas (sin conexión) · $count $misiones',
+  };
 }
 
 class _RecommendationCard extends StatefulWidget {

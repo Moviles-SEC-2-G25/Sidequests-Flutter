@@ -157,6 +157,10 @@ class QuestViewModel extends ChangeNotifier {
   /// [recommendations] is the list saved on the device: the network failed.
   bool recommendationsFromCache = false;
 
+  /// Where [recommendations] came from: the server, the in-memory LRU, or an
+  /// earlier list because the network failed. Null before the first load.
+  RecommendationSource? recommendationsSource;
+
   /// Short address of where the user is ("📍 Cerca de: ..."); the last one
   /// resolved is kept when a lookup fails.
   String? currentArea;
@@ -452,6 +456,7 @@ class QuestViewModel extends ChangeNotifier {
       );
       recommendations = batch.recommendations;
       recommendationsFromCache = batch.fromCache;
+      recommendationsSource = batch.source;
       // One batch_id per RPC call so BQ8 can group the events of one list.
       final batchId = batch.batchId;
       // BQ4: starts the decision clock on the first non-empty list shown
@@ -465,6 +470,8 @@ class QuestViewModel extends ChangeNotifier {
       // A saved list logged its impressions when it was first shown (BQ8).
       if (batch.fromCache) return;
       _lastServedSocialLevel = effectivePreferences.socialLevel;
+      // A list from the in-memory cache too: same list, same batch (as Kotlin).
+      if (batch.alreadyShown) return;
       for (final recommendation in recommendations) {
         _analyticsTracker.track(
           AnalyticsEventType.recommendationShown,
@@ -520,6 +527,7 @@ class QuestViewModel extends ChangeNotifier {
     if (saved == null || saved.recommendations.isEmpty) return;
     recommendations = saved.recommendations;
     recommendationsFromCache = true;
+    recommendationsSource = RecommendationSource.saved;
     _decisionStartedAt ??= _now();
     _decisionBatchId ??= saved.batchId;
     _visibleBatchId = saved.batchId;

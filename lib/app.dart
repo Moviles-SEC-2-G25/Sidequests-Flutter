@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import 'analytics/analytics_tracker.dart';
 import 'core/app_theme.dart';
 import 'core/completion_likelihood.dart';
+import 'data/cache/memory_cache.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
 import 'data/local/step_log_database.dart';
@@ -18,6 +19,7 @@ import 'data/services/biometric_service.dart';
 import 'data/services/location_service.dart';
 import 'data/services/reverse_geocoding_service.dart';
 import 'data/services/weather_service.dart';
+import 'models/quest_recommendation.dart';
 import 'repository/auth_repository.dart';
 import 'repository/profile_repository.dart';
 import 'repository/quest_repository.dart';
@@ -46,6 +48,13 @@ class SidequestsApp extends StatelessWidget {
   /// on sign-out by AuthRepository.
   final completionLikelihoodMemo = CompletionLikelihoodMemo();
   final statsSummaryCache = StatsSummaryCache();
+
+  /// Smart Picks' LRU with TTL (QuestRepository): account data, so it's a
+  /// session cache too.
+  final recommendationsCache = MemoryCache<String, RecommendationBatch>(
+    ttl: QuestRepository.recommendationsCacheTtl,
+    maxEntries: QuestRepository.recommendationsCacheMaxEntries,
+  );
 
   SidequestsApp({super.key, required this.localDataSource, StepLogDatabase? stepLog})
     : stepLog = stepLog ?? (kIsWeb ? null : StepLogDatabase(factory: databaseFactorySqflitePlugin));
@@ -88,15 +97,20 @@ class SidequestsApp extends StatelessWidget {
             remoteDataSource,
             localDataSource,
             stepLog: stepLog,
-            sessionCaches: [completionLikelihoodMemo, statsSummaryCache],
+            sessionCaches: [completionLikelihoodMemo, statsSummaryCache, recommendationsCache],
           ),
         ),
         Provider(
           create: (_) => ProfileRepository(remoteDataSource, localDataSource, network: network),
         ),
         Provider(
-          create: (_) =>
-              QuestRepository(remoteDataSource, localDataSource, network: network, stepLog: stepLog),
+          create: (_) => QuestRepository(
+            remoteDataSource,
+            localDataSource,
+            network: network,
+            stepLog: stepLog,
+            recommendationsCache: recommendationsCache,
+          ),
         ),
         Provider(create: (_) => SocialRepository()),
         ChangeNotifierProvider(
