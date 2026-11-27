@@ -434,10 +434,8 @@ class _RecommendedSection extends StatelessWidget {
         ],
         if (awaitingLevel != null) ...[
           const SizedBox(height: 8),
-          Text(
-            "Sin conexión: estas son tus últimas recomendaciones. "
-            "Aplicaremos '${_SocialMoodFilter.nameOf(awaitingLevel)}' al reconectar.",
-            style: Theme.of(context).textTheme.bodySmall,
+          OfflineNotice(
+            message: OfflineMessages.awaitingSocialLevel(_SocialMoodFilter.nameOf(awaitingLevel)),
           ),
         ],
         if (isOffline) ...[

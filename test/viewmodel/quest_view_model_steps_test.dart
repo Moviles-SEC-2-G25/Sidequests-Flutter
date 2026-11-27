@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sidequests/analytics/analytics_event_sink.dart';
 import 'package:sidequests/analytics/analytics_tracker.dart';
@@ -21,6 +24,9 @@ import 'package:sidequests/models/step_session.dart';
 import 'package:sidequests/models/user_quest.dart';
 import 'package:sidequests/models/verified_check_in.dart';
 import 'package:sidequests/repository/quest_repository.dart';
+import 'package:sidequests/view/quests/mission_tab_view.dart';
+import 'package:sidequests/view/widgets/offline_notice.dart';
+import 'package:sidequests/viewmodel/context/connectivity_view_model.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -310,6 +316,60 @@ void main() {
     expect(repository.activeSession, isNull);
   });
 
+  group('Misión tab: podómetro (ES12)', () {
+    Future<void> pumpMission(WidgetTester tester, {bool offline = false}) async {
+      await tester.runAsync(() async {
+        await viewModel.load();
+        await viewModel.acceptQuest('a');
+        await viewModel.loadSteps('a');
+        await _flush();
+      });
+      tester.view.physicalSize = const Size(360, 690);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<QuestViewModel>.value(value: viewModel),
+            ChangeNotifierProvider(
+              create: (_) => ConnectivityViewModel(connectivity: _StaticConnectivity(offline: offline)),
+            ),
+          ],
+          child: const MaterialApp(home: MissionTabView()),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('no permission: says how to allow it, with "Permitir"', (tester) async {
+      requestAccess = () async => StepCounterStatus.permissionDenied;
+
+      await pumpMission(tester);
+
+      expect(find.text('Activa "Actividad física" para contarlos durante la misión.'), findsOneWidget);
+      expect(find.text('Permitir'), findsOneWidget);
+    });
+
+    testWidgets('no sensor: says the phone has no step counter', (tester) async {
+      requestAccess = () async => StepCounterStatus.unavailable;
+
+      await pumpMission(tester);
+
+      expect(find.text('Tu teléfono no tiene contador de pasos.'), findsOneWidget);
+    });
+
+    testWidgets('offline it keeps counting and adds no notice of its own', (tester) async {
+      await pumpMission(tester, offline: true);
+      await tester.runAsync(() => walk([3000, 3042]));
+      await tester.pump();
+
+      expect(find.text('42 pasos caminados'), findsOneWidget);
+      // The only offline notice is the mission's own: nothing about the steps.
+      expect(find.byType(OfflineNotice), findsOneWidget);
+      expect(find.text(OfflineMessages.missionProgress), findsOneWidget);
+    });
+  });
+
   group('step log (SQLite)', () {
     /// Accepted with the catalogue loaded, so the walk knows its category.
     Future<void> startWalking() async {
@@ -420,6 +480,23 @@ class _UnusedRemote implements SupabaseRemoteDataSource {
 }
 
 class _UnusedLocal implements LocalDataSource {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// A device that is online or offline for the whole test.
+class _StaticConnectivity implements Connectivity {
+  final bool offline;
+
+  _StaticConnectivity({required this.offline});
+
+  @override
+  Future<List<ConnectivityResult>> checkConnectivity() async =>
+      [offline ? ConnectivityResult.none : ConnectivityResult.wifi];
+
+  @override
+  Stream<List<ConnectivityResult>> get onConnectivityChanged => const Stream.empty();
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

@@ -25,6 +25,11 @@ abstract final class OfflineMessages {
       'Tu avance está guardado.';
   static const photoUpload = 'Tu foto está guardada en el teléfono y se subirá cuando vuelvas a tener conexión.';
   static const savePreferences = 'Sin conexión: necesitas internet para guardar tus preferencias.';
+
+  /// ES13: a "¿Cómo te sientes hoy?" chip tapped while the list on screen is
+  /// the saved one; [level] is the chip's name ("En grupo").
+  static String awaitingSocialLevel(String level) =>
+      "Sin conexión: estas son tus últimas recomendaciones. Aplicaremos '$level' al reconectar.";
 }
 
 /// Inline card next to an action that needs the internet: says it's blocked

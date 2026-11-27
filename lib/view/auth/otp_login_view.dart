@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../viewmodel/auth/auth_view_model.dart';
+import '../widgets/offline_notice.dart';
 
 enum _OtpStep { email, code }
 
@@ -131,6 +132,10 @@ class _OtpLoginViewState extends State<OtpLoginView> {
         : _step == _OtpStep.email
         ? AuthViewModel.offlineSendMessage
         : AuthViewModel.offlineVerifyMessage;
+    // Also when the missing connection is found on the tap, before the
+    // connectivity stream says so: same notice as LoginView's.
+    final isOfflineNotice =
+        error == AuthViewModel.offlineSendMessage || error == AuthViewModel.offlineVerifyMessage;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Entrar con código')),
@@ -150,11 +155,14 @@ class _OtpLoginViewState extends State<OtpLoginView> {
                   },
                   if (error != null) ...[
                     const SizedBox(height: 12),
-                    Text(
-                      error,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
-                    ),
+                    if (isOfflineNotice)
+                      OfflineNotice(message: error)
+                    else
+                      Text(
+                        error,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      ),
                   ],
                 ],
               ),
