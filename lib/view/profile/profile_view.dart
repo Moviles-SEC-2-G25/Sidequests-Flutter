@@ -3,11 +3,13 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/category_labels.dart';
+import '../../core/smart/smart_difficulty_advisor.dart';
 import '../../data/local/local_data_source.dart';
 import '../../models/user_preferences.dart';
 import '../../viewmodel/auth/auth_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../../viewmodel/smart/smart_features_view_model.dart';
 import '../../viewmodel/theme_view_model.dart';
 import '../widgets/offline_notice.dart';
 import 'change_password_dialog.dart';
@@ -524,6 +526,47 @@ class _PreferencesSection extends StatelessWidget {
                 .map((interest) => Chip(label: Text(categoryLabelEs(interest))))
                 .toList(),
           ),
+        const SizedBox(height: 16),
+        _SmartDifficultySummary(preferredDifficulty: preferences.preferredDifficulty),
+      ],
+    );
+  }
+}
+
+/// DIFICULTAD: the preferred level and the BQ13 streaks behind the smart
+/// difficulty suggestions (mirror of the Kotlin profile).
+class _SmartDifficultySummary extends StatelessWidget {
+  final String preferredDifficulty;
+
+  const _SmartDifficultySummary({required this.preferredDifficulty});
+
+  @override
+  Widget build(BuildContext context) {
+    final smart = context.watch<SmartFeaturesViewModel?>();
+    final textTheme = Theme.of(context).textTheme;
+    final streaks = smart?.difficultyStreaks;
+    final last = smart?.lastOutcome;
+    final attempts = smart?.difficultyOutcomes.length ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('DIFICULTAD', style: textTheme.labelSmall?.copyWith(letterSpacing: 0.5)),
+        const SizedBox(height: 4),
+        Text(
+          'Preferida: ${difficultyLabelEs(preferredDifficulty)}',
+          style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        if (streaks != null)
+          Text(
+            'Racha en este nivel: ${streaks.completions} completadas · '
+            '${streaks.abandons} abandonadas por dificultad o tiempo',
+            style: textTheme.bodySmall,
+          ),
+        Text(
+          'Intentos registrados: $attempts'
+          '${last == null ? '' : ' · último: ${difficultyLabelEs(last.difficulty)} ${last.completed ? 'completada' : 'abandonada'}'}',
+          style: textTheme.bodySmall,
+        ),
       ],
     );
   }

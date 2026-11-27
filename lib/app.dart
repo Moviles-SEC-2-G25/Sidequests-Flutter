@@ -30,6 +30,7 @@ import 'viewmodel/context/connectivity_view_model.dart';
 import 'viewmodel/profile/stats_view_model.dart';
 import 'viewmodel/profile/profile_view_model.dart';
 import 'viewmodel/quests/quest_view_model.dart';
+import 'viewmodel/smart/smart_features_view_model.dart';
 import 'viewmodel/social/social_view_model.dart';
 import 'viewmodel/theme_view_model.dart';
 
@@ -136,6 +137,22 @@ class SidequestsApp extends StatelessWidget {
         // Placed above MaterialApp/Navigator (not inside HomeShell) so any
         // route pushed on top of HomeShell can still see them.
         ChangeNotifierProvider(
+          create: (context) => ProfileViewModel(
+            context.read<ProfileRepository>(),
+            context.read<AuthRepository>(),
+            context.read<AuthViewModel>().userId!,
+          ),
+        ),
+        // Smart time + smart difficulty (BQ13), per signed-in user.
+        ChangeNotifierProvider(
+          create: (context) => SmartFeaturesViewModel(
+            localDataSource,
+            context.read<AuthViewModel>().userId!,
+            analyticsTracker: analyticsTracker,
+            preferredDifficulty: () => context.read<ProfileViewModel>().preferences.preferredDifficulty,
+          ),
+        ),
+        ChangeNotifierProvider(
           create: (context) => QuestViewModel(
             context.read<QuestRepository>(),
             contextManager,
@@ -144,13 +161,7 @@ class SidequestsApp extends StatelessWidget {
             initialFilters: context.read<QuestRepository>().getExploreFilters(),
             completionLikelihoodMemo: completionLikelihoodMemo,
             geocoding: context.read<ReverseGeocodingService>(),
-          ),
-        ),
-        ChangeNotifierProvider(
-          create: (context) => ProfileViewModel(
-            context.read<ProfileRepository>(),
-            context.read<AuthRepository>(),
-            context.read<AuthViewModel>().userId!,
+            onAttemptFinished: context.read<SmartFeaturesViewModel>().recordOutcome,
           ),
         ),
         ChangeNotifierProvider(

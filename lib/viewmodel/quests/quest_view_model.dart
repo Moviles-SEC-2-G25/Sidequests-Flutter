@@ -48,6 +48,11 @@ const _autoCheckInRetryInterval = Duration(seconds: 30);
 /// Hive — enough to survive an app kill without writing on every reading.
 const _stepPersistInterval = 25;
 
+/// A finished attempt, for the smart difficulty feature (BQ13): completed, or
+/// abandoned with a reason.
+typedef AttemptFinishedCallback =
+    void Function({required String difficulty, required bool completed, AbandonmentReason? reason});
+
 /// One automatic location check-in, for HomeShell to announce.
 class CheckInEvent {
   /// The attempt as it was before the step was completed.
@@ -114,6 +119,7 @@ class QuestViewModel extends ChangeNotifier {
 
   /// "📍 Cerca de: ..." (where the user is), from Nominatim.
   final ReverseGeocodingService? _geocoding;
+  final AttemptFinishedCallback? _onAttemptFinished;
 
   /// Abandonments on their way, by attempt: a repeated tap gets the same one.
   final Map<String, Future<bool>> _abandonsInFlight = {};
@@ -263,8 +269,10 @@ class QuestViewModel extends ChangeNotifier {
     QuestAlternativesRunner questAlternativesRunner = _computeAlternativesInBackground,
     CompletionLikelihoodMemo? completionLikelihoodMemo,
     ReverseGeocodingService? geocoding,
+    AttemptFinishedCallback? onAttemptFinished,
   }) : _now = now ?? DateTime.now,
        _geocoding = geocoding,
+       _onAttemptFinished = onAttemptFinished,
        _completionLikelihoodMemo = completionLikelihoodMemo ?? CompletionLikelihoodMemo(),
        _runQuestAlternatives = questAlternativesRunner,
        _lastJourneyEndedAt = (now ?? DateTime.now)(),
@@ -375,6 +383,15 @@ class QuestViewModel extends ChangeNotifier {
     selectedMinutes = minutes;
     _saveFilters();
     registerInteraction();
+    notifyListeners();
+  }
+
+  /// Smart available time preselected it when Explore opened: not a choice
+  /// of the user, so it isn't a BQ4 interaction (the caller reloads).
+  void applySmartMinutes(int minutes) {
+    if (minutes == selectedMinutes) return;
+    selectedMinutes = minutes;
+    _saveFilters();
     notifyListeners();
   }
 
@@ -829,6 +846,8 @@ class QuestViewModel extends ChangeNotifier {
       _replaceUserQuest(updated);
       if (isLastStep) {
         await _finishStepTracking(updated.id, outcome: StepLogEntry.completed);
+        final difficulty = questById(updated.questId)?.difficulty;
+        if (difficulty != null) _onAttemptFinished?.call(difficulty: difficulty, completed: true);
       }
       return isLastStep;
     } on AppException catch (e) {
@@ -992,6 +1011,10 @@ class QuestViewModel extends ChangeNotifier {
           uploadedPhotoProofCount: uploadedProofs,
         ),
       );
+      final difficulty = quest?.difficulty;
+      if (difficulty != null) {
+        _onAttemptFinished?.call(difficulty: difficulty, completed: false, reason: reason);
+      }
       questAlternatives = QuestAlternativesState(
         sourceQuestId: questId,
         sourceAttemptId: attempt.id,

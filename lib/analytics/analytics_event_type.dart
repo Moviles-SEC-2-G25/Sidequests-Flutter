@@ -17,4 +17,10 @@ abstract final class AnalyticsEventType {
   static const shakeSurprise = 'shake_surprise';
   static const similarQuestOpened = 'similar_quest_opened';
   static const photoProofUploaded = 'photo_proof_uploaded';
+
+  // Smart features, same names as the Kotlin app.
+  static const smartTimeApplied = 'smart_time_applied';
+  static const smartDifficultySuggested = 'smart_difficulty_suggested';
+  static const smartDifficultyAccepted = 'smart_difficulty_accepted';
+  static const smartDifficultyDismissed = 'smart_difficulty_dismissed';
 }
