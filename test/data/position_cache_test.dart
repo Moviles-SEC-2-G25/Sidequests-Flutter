@@ -428,7 +428,7 @@ void main() {
     test('signing out empties it: the next account reads the GPS again', () async {
       await location.getCurrentPosition();
 
-      await AuthRepository(_FakeRemote(), _FakeLocal(), positionCache: cache).signOut();
+      await AuthRepository(_FakeRemote(), _FakeLocal(), sessionCaches: [cache]).signOut();
       await location.getCurrentPosition();
 
       expect(geolocator.freshRequests, hasLength(2));
@@ -438,7 +438,7 @@ void main() {
     test('a session the server ended (clearLocalData) empties it too', () async {
       await location.getCurrentPosition();
 
-      await AuthRepository(_FakeRemote(), _FakeLocal(), positionCache: cache).clearLocalData();
+      await AuthRepository(_FakeRemote(), _FakeLocal(), sessionCaches: [cache]).clearLocalData();
       await location.getCurrentPosition();
 
       expect(geolocator.freshRequests, hasLength(2));

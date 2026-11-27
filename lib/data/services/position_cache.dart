@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../core/memo.dart';
+
 /// Caching strategy (Alejandro, Sprint 4): a two-level cache in front of the
 /// GPS, so consecutive context snapshots reuse a recent fix instead of each
 /// turning the radio on for a new one.
@@ -37,7 +39,7 @@ import 'package:geolocator/geolocator.dart';
 /// it was taken (not stored: an OS fix may already be old when it arrives) and
 /// how precise it is. A reading also can't go stale on a server, but it does
 /// when the user walks, hence a TTL of seconds instead of minutes.
-class PositionCache {
+class PositionCache implements SessionCache {
   static const ttl = Duration(seconds: 60);
   static const coarseAccuracyMeters = 100.0;
   static const preciseAccuracyMeters = 30.0;
@@ -149,6 +151,9 @@ class PositionCache {
   /// answered by memory, and what was learned about the device (approximate
   /// permission, best available accuracy) is asked again. The counters stay,
   /// they measure the whole run.
+  @override
+  void clear() => invalidate();
+
   void invalidate() {
     _position = null;
     _lastFresh.clear();

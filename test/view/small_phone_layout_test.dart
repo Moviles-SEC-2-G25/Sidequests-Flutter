@@ -14,6 +14,7 @@ import 'package:sidequests/core/app_exception.dart';
 import 'package:sidequests/core/mission_history.dart';
 import 'package:sidequests/core/quest_alternative_recommender.dart';
 import 'package:sidequests/core/verification/step_verification_strategy.dart';
+import 'package:sidequests/core/workers/similar_quest_worker.dart';
 import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/local/local_data_source.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
@@ -536,6 +537,8 @@ void main() {
                 _contextManager(),
                 _SilentTracker(),
                 'u',
+                // "Te podría gustar" ranked here: no isolate in testWidgets.
+                similarQuestRunner: const SynchronousSimilarQuestRunner(),
                 stepCounter: StepCounterService(
                   requestAccess: () async => StepCounterStatus.permissionDenied,
                 ),

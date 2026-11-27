@@ -52,8 +52,11 @@ class _FakeQuestRepository implements QuestRepository {
   QuestRepository? walkSource;
   Completer<void>? walksGate;
 
+  int walkReads = 0;
+
   @override
   Future<WalkStats> getWalkStats({required DateTime since}) async {
+    walkReads++;
     walksSince = since;
     await walksGate?.future;
     return walkSource?.getWalkStats(since: since) ?? walks;
@@ -489,6 +492,133 @@ void main() {
       expect(find.text('Últimos 7 días'), findsNothing);
     });
   });
+
+  group('StatsSummaryCache (caching strategy)', () {
+    late StatsSummaryCache cache;
+    late int runs;
+
+    Future<StatsSummary> countingRunner(StatsInput input) async {
+      runs++;
+      return summarizeStats(input);
+    }
+
+    /// Each visit to "Mis estadísticas" creates a new StatsViewModel.
+    Future<StatsViewModel> openStats() async {
+      final screen = StatsViewModel(repository, 'user-1', runner: countingRunner, summaryCache: cache);
+      await screen.load();
+      return screen;
+    }
+
+    setUp(() {
+      cache = StatsSummaryCache();
+      runs = 0;
+      seedHistory();
+    });
+
+    test('opening it twice without changes runs the isolate once', () async {
+      final first = await openStats();
+      final second = await openStats();
+
+      expect(runs, 1);
+      expect(second.completedCount, first.completedCount);
+      expect(second.categoryStats.map((s) => s.category), ['food', 'art']);
+      expect(second.status, StatsStatus.data);
+    });
+
+    test('the walks (SQLite) are read on every visit all the same', () async {
+      await openStats();
+      await openStats();
+
+      expect(repository.walkReads, 2);
+    });
+
+    test('a new attempt invalidates it', () async {
+      await openStats();
+
+      repository.userQuests = [...repository.userQuests, _attempt('uq-6', 'f1', 'completed')];
+      final screen = await openStats();
+
+      expect(runs, 2);
+      expect(screen.completedCount, 4);
+    });
+
+    test('an attempt changing status invalidates it', () async {
+      await openStats();
+
+      repository.userQuests = [
+        for (final uq in repository.userQuests)
+          uq.id == 'uq-3' ? _attempt('uq-3', 'f3', 'completed') : uq,
+      ];
+      final screen = await openStats();
+
+      expect(runs, 2);
+      expect(screen.completedCount, 4);
+    });
+
+    test('new step totals or a recategorized quest invalidate it', () async {
+      await openStats();
+
+      repository.stepTotals = {'uq-1': 500};
+      expect((await openStats()).totalSteps, 500);
+
+      repository.catalog = [
+        for (final quest in repository.catalog) quest.id == 'a1' ? _quest('a1', 'Food') : quest,
+      ];
+      await openStats();
+
+      expect(runs, 3);
+    });
+
+    test('same contents in new list objects: still a hit', () async {
+      await openStats();
+
+      repository.userQuests = [...repository.userQuests];
+      repository.catalog = [...repository.catalog];
+      await openStats();
+
+      expect(runs, 1);
+    });
+
+    test('the offline banner still follows each load, even from the cache', () async {
+      await openStats();
+
+      repository.fromCache = true;
+      final screen = await openStats();
+
+      expect(runs, 1);
+      expect(screen.isFromCache, isTrue);
+    });
+
+    test('a failed computation is not kept: the next visit computes again', () async {
+      final failing = StatsViewModel(
+        repository,
+        'user-1',
+        runner: (input) async => throw AppException('Falló el cálculo'),
+        summaryCache: cache,
+      );
+      await failing.load();
+      expect(failing.status, StatsStatus.error);
+
+      await openStats();
+
+      expect(runs, 1);
+    });
+
+    test('the fingerprint covers id and status of attempts, catalog categories and step totals', () {
+      StatsInput input({String status = 'completed', String category = 'Food', int steps = 10}) => StatsInput(
+        catalog: [_quest('f1', category)],
+        userQuests: [_attempt('uq-1', 'f1', status)],
+        stepTotals: {'uq-1': steps},
+      );
+
+      final base = statsFingerprint(input());
+      expect(statsFingerprint(input()), base);
+      expect(statsFingerprint(input(status: 'abandoned')), isNot(base));
+      expect(statsFingerprint(input(category: 'Art')), isNot(base));
+      expect(statsFingerprint(input(steps: 11)), isNot(base));
+    });
+  });
+
 }
 
 /// The walks only touch the SQLite part of the repository.

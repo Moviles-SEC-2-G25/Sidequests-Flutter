@@ -12,6 +12,7 @@ import '../../core/quest_alternative_recommender.dart';
 import '../../core/similar_quest_recommender.dart';
 import '../../core/verification/step_verification_strategy.dart';
 import '../../core/verification/verification_strategies.dart';
+import '../../core/workers/similar_quest_worker.dart';
 import '../../data/context/context_manager.dart';
 import '../../data/remote/network_guard.dart';
 import '../../data/services/location_check_in_service.dart';
@@ -94,13 +95,19 @@ typedef QuestAlternativesRunner =
 Future<List<QuestAlternative>> _computeAlternativesInBackground(QuestAlternativesInput input) =>
     compute(computeQuestAlternatives, input);
 
+/// What a "Te podría gustar" ranking was asked with (see
+/// QuestViewModel.similarQuestsFor).
+typedef _SimilarQuestsInputs =
+    ({Quest completed, int rating, List<Quest> catalog, List<UserQuest> userQuests, int maxMinutes});
+
 /// Explore, nearby, quest detail and mission-in-progress state.
 class QuestViewModel extends ChangeNotifier {
   final QuestRepository _questRepository;
   final ContextManager _contextManager;
   final AnalyticsTracker _analyticsTracker;
   final String _userId;
-  final SimilarQuestRecommender _similarQuestRecommender;
+  /// Ranks "Te podría gustar" off the UI thread (SimilarQuestWorker).
+  final SimilarQuestRunner _similarQuestRunner;
   final CompletionLikelihood _completionLikelihood;
   final StepCounterService _stepCounter;
   late final StreamSubscription<void> _stepCounterSubscription;
@@ -116,6 +123,19 @@ class QuestViewModel extends ChangeNotifier {
 
   /// Bumped on every load and on leaving, so a late result is dropped.
   int _alternativesGeneration = 0;
+
+  /// The id of the last "Te podría gustar" ranking asked for. An answer with
+  /// another id is older (the user tapped another star since) and is dropped.
+  int _latestSimilarRequestId = 0;
+
+  /// What the last ranking was asked with, so a rebuild with the same inputs
+  /// asks for nothing. Lists and quests compare by identity: this class only
+  /// ever replaces [catalog] and [userQuests].
+  _SimilarQuestsInputs? _similarQuestsInputs;
+
+  /// The latest ranking applied, and the completed quest it's for.
+  ({String completedQuestId, List<Quest> quests})? _similarQuests;
+  bool _isDisposed = false;
 
   /// `"<user_quests.id>:<currentStep>"` of the step whose location is being
   /// watched; null when the GPS is off.
@@ -227,26 +247,32 @@ class QuestViewModel extends ChangeNotifier {
   DateTime _lastJourneyEndedAt;
   final DateTime Function() _now;
 
+  /// "Probabilidad de que la termines" of the current catalog + userQuests.
+  /// Session-owned (app.dart), so signing out empties it.
+  final CompletionLikelihoodMemo _completionLikelihoodMemo;
+
   QuestViewModel(
     this._questRepository,
     this._contextManager,
     this._analyticsTracker,
     this._userId, {
     ExploreFilters initialFilters = const ExploreFilters(),
-    SimilarQuestRecommender similarQuestRecommender = const SimilarQuestRecommender(),
+    SimilarQuestRunner? similarQuestRunner,
     CompletionLikelihood completionLikelihood = const CompletionLikelihood(),
     StepCounterService? stepCounter,
     LocationCheckInService? locationCheckIn,
     PhotoCaptureService? photoCapture,
     DateTime Function()? now,
     QuestAlternativesRunner questAlternativesRunner = _computeAlternativesInBackground,
+    CompletionLikelihoodMemo? completionLikelihoodMemo,
   }) : _now = now ?? DateTime.now,
+       _completionLikelihoodMemo = completionLikelihoodMemo ?? CompletionLikelihoodMemo(),
        _runQuestAlternatives = questAlternativesRunner,
        _lastJourneyEndedAt = (now ?? DateTime.now)(),
        selectedMinutes = initialFilters.minutes,
        selectedLocationScope = initialFilters.locationScope,
        selectedCategory = initialFilters.category,
-       _similarQuestRecommender = similarQuestRecommender,
+       _similarQuestRunner = similarQuestRunner ?? SimilarQuestWorker(),
        _completionLikelihood = completionLikelihood,
        _stepCounter = stepCounter ?? StepCounterService(),
        _checkIn = locationCheckIn ?? LocationCheckInService(),
@@ -814,19 +840,61 @@ class QuestViewModel extends ChangeNotifier {
   /// notify: it runs while that view is being built, and it's the only reader.
   void clearRatingError() => ratingErrorMessage = null;
 
-  /// "Te podría gustar" on QuestCompletedView. Pure recomputation from
-  /// [rating] each call (no caching), so the view just re-invokes it as the
-  /// user picks a star rating, before saving — no separate "recalculate"
-  /// step needed.
-  List<Quest> similarQuests({required Quest completed, required int rating}) =>
-      _similarQuestRecommender.recommend(completed, catalog, userQuests, rating, selectedMinutes);
+  /// "Te podría gustar" on QuestCompletedView, for the pending (not yet saved)
+  /// [rating]. Read on every build: when the inputs changed since the last
+  /// request — another star, or a new catalog, attempts or minutes — it asks
+  /// the worker isolate for a new ranking, and meanwhile keeps the last one on
+  /// screen; the answer notifies. Empty until the first answer for [completed].
+  List<Quest> similarQuestsFor({required Quest completed, required int rating}) {
+    if (_similarInputsFor(completed, rating) != _similarQuestsInputs) {
+      unawaited(requestSimilarQuests(completed: completed, rating: rating));
+    }
+    final shown = _similarQuests;
+    return shown != null && shown.completedQuestId == completed.id ? shown.quests : const [];
+  }
+
+  /// Asks for a new "Te podría gustar" ranking now, with only the small
+  /// values the worker needs (it keeps its own copy of the catalog). Completes
+  /// with the quests once applied, or with null when a newer request overtook
+  /// it: only the answer to the latest requestId is applied.
+  Future<List<Quest>?> requestSimilarQuests({required Quest completed, required int rating}) async {
+    _similarQuestsInputs = _similarInputsFor(completed, rating);
+    final requestId = ++_latestSimilarRequestId;
+    final answer = await _similarQuestRunner.recommend(
+      requestId: requestId,
+      catalog: catalog,
+      query: SimilarQuestQuery(
+        completed: completed,
+        rating: rating,
+        maxMinutes: selectedMinutes,
+        unavailableQuestIds: SimilarQuestRecommender.unavailableQuestIds(userQuests),
+      ),
+    );
+    if (_isDisposed || answer.requestId != _latestSimilarRequestId) return null;
+    _similarQuests = (completedQuestId: completed.id, quests: answer.quests);
+    notifyListeners();
+    return answer.quests;
+  }
+
+  _SimilarQuestsInputs _similarInputsFor(Quest completed, int rating) => (
+    completed: completed,
+    rating: rating,
+    catalog: catalog,
+    userQuests: userQuests,
+    maxMinutes: selectedMinutes,
+  );
 
   /// "Probabilidad de que la termines" on Explore's cards, per category.
-  /// Recomputed on every read (no caching) — Explore reads it once per
-  /// section build and hands each card its level, so completing or
-  /// abandoning a quest updates the labels on the next notifyListeners().
-  Map<String, CompletionLevel> get completionLikelihoodByCategory =>
-      _completionLikelihood.byCategory(catalog, userQuests);
+  /// Cached (memoized) on the identity of [catalog] and [userQuests]: Explore
+  /// reads it on every build, but it only changes when one of those lists is
+  /// replaced — a load, or completing, abandoning or accepting a quest. That
+  /// holds because this class only ever replaces those lists, never modifies
+  /// them in place (add, remove, `[i] =`): keep it that way, or the labels
+  /// go stale. Unmodifiable, since every read shares the same map.
+  Map<String, CompletionLevel> get completionLikelihoodByCategory => _completionLikelihoodMemo.get(
+    (catalog, userQuests),
+    () => Map.unmodifiable(_completionLikelihood.byCategory(catalog, userQuests)),
+  );
 
   /// No catalog to show because none could be fetched and none was ever saved
   /// (as opposed to filters that exclude every quest).
@@ -1660,6 +1728,9 @@ class QuestViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
+    // Kills the "Te podría gustar" worker isolate and closes its ports.
+    _similarQuestRunner.close();
     _stepCounterSubscription.cancel();
     _stepCounter.dispose();
     _stopCheckIn();

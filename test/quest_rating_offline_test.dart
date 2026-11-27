@@ -13,6 +13,7 @@ import 'package:sidequests/analytics/analytics_event_type.dart';
 import 'package:sidequests/analytics/analytics_tracker.dart';
 import 'package:sidequests/core/app_exception.dart';
 import 'package:sidequests/core/verification/step_verification_strategy.dart';
+import 'package:sidequests/core/workers/similar_quest_worker.dart';
 import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/local/local_data_source.dart';
 import 'package:sidequests/data/remote/supabase_remote_data_source.dart';
@@ -261,6 +262,8 @@ QuestViewModel _viewModel(QuestRepository repository, AnalyticsTracker tracker) 
   _contextManager(),
   tracker,
   _userId,
+  // A real isolate never answers inside testWidgets' fake async zone.
+  similarQuestRunner: const SynchronousSimilarQuestRunner(),
   stepCounter: StepCounterService(requestAccess: () async => StepCounterStatus.unavailable),
   locationCheckIn: LocationCheckInService(
     requestAccess: () async => LocationAccess.granted,
@@ -633,13 +636,13 @@ void main() {
       final callsToLoad = noRemote.calls;
       final completed = viewModel.questById('ramen')!;
 
-      final liked = viewModel.similarQuests(completed: completed, rating: 5);
-      final disliked = viewModel.similarQuests(completed: completed, rating: 1);
+      final liked = await viewModel.requestSimilarQuests(completed: completed, rating: 5);
+      final disliked = await viewModel.requestSimilarQuests(completed: completed, rating: 1);
 
       // Same category first when liked, last when not; never what's done,
       // in progress or too long.
-      expect(liked.map((q) => q.id), ['sushi', 'museo']);
-      expect(disliked.map((q) => q.id), ['museo', 'sushi']);
+      expect(liked!.map((q) => q.id), ['sushi', 'museo']);
+      expect(disliked!.map((q) => q.id), ['museo', 'sushi']);
       expect(noRemote.calls, callsToLoad);
     });
 
@@ -655,10 +658,11 @@ void main() {
 
       expect(saved, isTrue);
       expect(viewModel.ratingQueued, isTrue);
-      expect(
-        viewModel.similarQuests(completed: viewModel.questById('ramen')!, rating: 1).map((q) => q.id),
-        ['museo', 'sushi'],
+      final similar = await viewModel.requestSimilarQuests(
+        completed: viewModel.questById('ramen')!,
+        rating: 1,
       );
+      expect(similar!.map((q) => q.id), ['museo', 'sushi']);
 
       await restart();
       final cached = hive.getUserQuests().firstWhere((row) => row['id'] == 'uq-1');

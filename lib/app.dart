@@ -7,6 +7,8 @@ import 'package:uuid/uuid.dart';
 
 import 'analytics/analytics_tracker.dart';
 import 'core/app_theme.dart';
+import 'core/completion_likelihood.dart';
+import 'core/workers/similar_quest_worker.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
 import 'data/local/step_log_database.dart';
@@ -23,6 +25,7 @@ import 'repository/social_repository.dart';
 import 'view/auth/auth_gate.dart';
 import 'viewmodel/auth/auth_view_model.dart';
 import 'viewmodel/context/connectivity_view_model.dart';
+import 'viewmodel/profile/stats_view_model.dart';
 import 'viewmodel/profile/profile_view_model.dart';
 import 'viewmodel/quests/quest_view_model.dart';
 import 'viewmodel/social/social_view_model.dart';
@@ -37,6 +40,17 @@ class SidequestsApp extends StatelessWidget {
   /// One for the whole app (SQLite), shared by the repositories that write,
   /// read and clear it. null on the web build, which has no sqflite.
   final StepLogDatabase? stepLog;
+
+  /// Caching strategy: memoized results for the whole session, created once
+  /// here (StatsViewModel is created on every visit to its screen) and emptied
+  /// on sign-out by AuthRepository.
+  final completionLikelihoodMemo = CompletionLikelihoodMemo();
+  final statsSummaryCache = StatsSummaryCache();
+
+  /// Multithreading strategy: the "Te podría gustar" worker isolate. Owned
+  /// here, not by QuestViewModel, so signing out (AuthRepository) kills it
+  /// too; it only spawns the first time a completed mission needs it.
+  final similarQuestWorker = SimilarQuestWorker();
 
   SidequestsApp({super.key, required this.localDataSource, StepLogDatabase? stepLog})
     : stepLog = stepLog ?? (kIsWeb ? null : StepLogDatabase(factory: databaseFactorySqflitePlugin));
@@ -76,6 +90,7 @@ class SidequestsApp extends StatelessWidget {
         Provider(create: (_) => BiometricService()),
         Provider.value(value: locationService),
         Provider.value(value: weatherService),
+        Provider.value(value: statsSummaryCache),
         Provider(
           create: (_) => ReverseGeocodingService(localDataSource: localDataSource),
         ),
@@ -84,7 +99,11 @@ class SidequestsApp extends StatelessWidget {
             remoteDataSource,
             localDataSource,
             stepLog: stepLog,
-            positionCache: locationService.positionCache,
+            sessionCaches: [
+              completionLikelihoodMemo,
+              statsSummaryCache,
+              locationService.positionCache,
+            ],
           ),
         ),
         Provider(
@@ -119,6 +138,8 @@ class SidequestsApp extends StatelessWidget {
             analyticsTracker,
             context.read<AuthViewModel>().userId!,
             initialFilters: context.read<QuestRepository>().getExploreFilters(),
+            completionLikelihoodMemo: completionLikelihoodMemo,
+            similarQuestRunner: similarQuestWorker,
           ),
         ),
         ChangeNotifierProvider(

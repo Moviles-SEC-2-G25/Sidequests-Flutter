@@ -1,5 +1,11 @@
 import '../models/quest.dart';
 import '../models/user_quest.dart';
+import 'memo.dart';
+
+/// [CompletionLikelihood.byCategory]'s last result, keyed by the identity of
+/// the catalog and the attempts it was computed from.
+typedef CompletionLikelihoodMemo =
+    Memo<(List<Quest>, List<UserQuest>), Map<String, CompletionLevel>>;
 
 /// "Probabilidad de que la termines" label shown on Explore's quest cards.
 enum CompletionLevel { high, medium, low, newForYou }

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/app_exception.dart';
 import '../../core/completion_likelihood.dart';
+import '../../core/memo.dart';
 import '../../models/quest.dart';
 import '../../models/step_log_entry.dart';
 import '../../models/user_quest.dart';
@@ -96,6 +97,25 @@ typedef StatsRunner = Future<StatsSummary> Function(StatsInput input);
 
 Future<StatsSummary> _summarizeInBackground(StatsInput input) => compute(summarizeStats, input);
 
+/// The last [StatsSummary] and the [statsFingerprint] it was computed for.
+/// One for the whole session (app.dart), since a StatsViewModel only lives
+/// while its screen is open; signing out empties it.
+typedef StatsSummaryCache = AsyncMemo<int, StatsSummary>;
+
+/// A cheap fingerprint of everything [summarizeStats] reads: id and status of
+/// each attempt (an attempt's quest never changes), id and category of each
+/// quest, and the step totals. Equal fingerprints mean the same summary, so
+/// the isolate isn't needed — barring a hash collision, which is unlikely but
+/// possible: the price of not comparing the whole input.
+int statsFingerprint(StatsInput input) {
+  final stepTotals = input.stepTotals.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+  return Object.hash(
+    Object.hashAll([for (final uq in input.userQuests) Object.hash(uq.id, uq.status)]),
+    Object.hashAll([for (final quest in input.catalog) Object.hash(quest.id, quest.category)]),
+    Object.hashAll([for (final entry in stepTotals) Object.hash(entry.key, entry.value)]),
+  );
+}
+
 /// "Mis estadísticas": completed missions, the user's own completion rate
 /// per category (same CompletionLikelihood as Explore's labels) and total
 /// walked steps. Screen-scoped — provided by StatsView.route(), so every
@@ -140,8 +160,13 @@ class StatsViewModel extends ChangeNotifier {
     this._userId, {
     StatsRunner runner = _summarizeInBackground,
     DateTime Function()? now,
+    StatsSummaryCache? summaryCache,
   }) : _runner = runner,
-       _now = now ?? DateTime.now;
+       _now = now ?? DateTime.now,
+       _summaryCache = summaryCache;
+
+  /// Without it (tests), every load computes, as before the cache.
+  final StatsSummaryCache? _summaryCache;
 
   double? get overallRate => attemptCount == 0 ? null : completedCount / attemptCount;
 
@@ -160,13 +185,16 @@ class StatsViewModel extends ChangeNotifier {
       final catalog = await catalogFuture;
       final walks = await walksFuture;
 
-      final summary = await _runner(
-        StatsInput(
-          catalog: catalog,
-          userQuests: userQuests,
-          stepTotals: _questRepository.getStepTotals(),
-        ),
+      final input = StatsInput(
+        catalog: catalog,
+        userQuests: userQuests,
+        stepTotals: _questRepository.getStepTotals(),
       );
+      // Same data as last time: no isolate. The walks above are read anyway.
+      final cache = _summaryCache;
+      final summary = cache == null
+          ? await _runner(input)
+          : await cache.get(statsFingerprint(input), () => _runner(input));
       isFromCache = fromCache;
       attemptCount = summary.attemptCount;
       completedCount = summary.completedCount;

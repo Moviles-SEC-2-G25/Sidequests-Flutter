@@ -16,6 +16,7 @@ import 'package:sidequests/analytics/analytics_event_sink.dart';
 import 'package:sidequests/analytics/analytics_event_type.dart';
 import 'package:sidequests/analytics/analytics_tracker.dart';
 import 'package:sidequests/core/verification/step_verification_strategy.dart';
+import 'package:sidequests/core/workers/similar_quest_worker.dart';
 import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/local/local_data_source.dart';
 import 'package:sidequests/data/remote/network_guard.dart';
@@ -325,6 +326,8 @@ QuestViewModel _viewModel(
   tracker,
   _userId,
   now: now,
+  // A real isolate never answers inside testWidgets' fake async zone.
+  similarQuestRunner: const SynchronousSimilarQuestRunner(),
   stepCounter: StepCounterService(requestAccess: () async => StepCounterStatus.unavailable),
   locationCheckIn: LocationCheckInService(
     requestAccess: () async => LocationAccess.granted,

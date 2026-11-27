@@ -4,11 +4,11 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/app_exception.dart';
+import '../core/memo.dart';
 import '../data/local/local_data_source.dart';
 import '../data/local/step_log_database.dart';
 import '../data/remote/network_guard.dart';
 import '../data/remote/supabase_remote_data_source.dart';
-import '../data/services/position_cache.dart';
 
 /// Single source of truth for the current session.
 class AuthRepository {
@@ -24,17 +24,16 @@ class AuthRepository {
   final LocalDataSource _localDataSource;
   final StepLogDatabase? _stepLog;
 
-  /// Where this account was a moment ago is its data too (null in tests that
-  /// don't involve the GPS).
-  final PositionCache? _positionCache;
+  /// In-memory caches of this account's data, emptied with the rest.
+  final List<SessionCache> _sessionCaches;
 
   AuthRepository(
     this._remoteDataSource,
     this._localDataSource, {
     StepLogDatabase? stepLog,
-    PositionCache? positionCache,
+    List<SessionCache> sessionCaches = const [],
   }) : _stepLog = stepLog,
-       _positionCache = positionCache;
+       _sessionCaches = sessionCaches;
 
   User? get currentUser => _remoteDataSource.currentSession?.user;
 
@@ -116,9 +115,15 @@ class AuthRepository {
   /// The session ended without [signOut] (token rejected by the server): same
   /// cleanup, so the next account doesn't inherit this one's data or queues.
   Future<void> clearLocalData() async {
-    _positionCache?.invalidate();
     await _localDataSource.clear();
+    _clearSessionCaches();
     await _clearStepLog();
+  }
+
+  void _clearSessionCaches() {
+    for (final cache in _sessionCaches) {
+      cache.clear();
+    }
   }
 
   /// The walks are this account's too. A failure must not keep anyone signed
@@ -141,9 +146,8 @@ class AuthRepository {
     } catch (_) {
       // The token isn't revoked on the server; it just expires on its own.
     }
-    // First: it can't fail, so a Hive error below can't leave it behind.
-    _positionCache?.invalidate();
     await _localDataSource.clear();
+    _clearSessionCaches();
     await _clearStepLog();
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sidequests/core/memo.dart';
 import 'package:sidequests/data/local/local_data_source.dart';
 import 'package:sidequests/data/local/step_log_database.dart';
 import 'package:sidequests/data/remote/supabase_remote_data_source.dart';
@@ -160,6 +161,70 @@ void main() {
       await AuthRepository(remote, local).signOut();
 
       expect(local.clears, 1);
+    });
+  });
+
+  group('AuthRepository empties the session caches with the rest of the account', () {
+    late Memo<String, int> likelihood;
+    late AsyncMemo<int, int> stats;
+    late int computations;
+
+    int compute() => ++computations;
+
+    setUp(() {
+      likelihood = Memo();
+      stats = AsyncMemo();
+      computations = 0;
+    });
+
+    Future<void> fillBoth() async {
+      likelihood.get('k', compute);
+      await stats.get(1, () async => compute());
+      computations = 0;
+    }
+
+    Future<void> expectBothEmpty() async {
+      likelihood.get('k', compute);
+      await stats.get(1, () async => compute());
+      expect(computations, 2, reason: 'both computed again');
+    }
+
+    test('signing out', () async {
+      await fillBoth();
+
+      await AuthRepository(remote, local, sessionCaches: [likelihood, stats]).signOut();
+
+      await expectBothEmpty();
+    });
+
+    test('signing out offline', () async {
+      remote.signOutFails = true;
+      await fillBoth();
+
+      await AuthRepository(remote, local, sessionCaches: [likelihood, stats]).signOut();
+
+      await expectBothEmpty();
+    });
+
+    test('a session the server ended (clearLocalData)', () async {
+      await fillBoth();
+
+      await AuthRepository(remote, local, sessionCaches: [likelihood, stats]).clearLocalData();
+
+      await expectBothEmpty();
+    });
+
+    test('even when the step log cannot be cleared', () async {
+      await fillBoth();
+
+      await AuthRepository(
+        remote,
+        local,
+        stepLog: await _brokenDatabase(),
+        sessionCaches: [likelihood, stats],
+      ).signOut();
+
+      await expectBothEmpty();
     });
   });
 }
