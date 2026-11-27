@@ -37,6 +37,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   static const _exploreTabIndex = 0;
+  static const _missionTabIndex = 3;
 
   int _index = 0;
   late final ShakeDetector _shakeDetector = widget.shakeDetector ?? ShakeDetector();
@@ -53,6 +54,9 @@ class _HomeShellState extends State<HomeShell> {
   late final StreamSubscription<void> _exploreTabSubscription;
   late final AppLifecycleListener _lifecycleListener;
 
+  /// Kept to tell it the Misión tab is gone in dispose (no context there).
+  late final QuestViewModel _questViewModel = context.read<QuestViewModel>();
+
   static const _pages = [
     ExploreView(),
     NearbyView(),
@@ -65,6 +69,7 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _updateShakeSubscription();
+    _updateMissionVisibility();
 
     final questViewModel = context.read<QuestViewModel>();
     // Lives here, not in MissionTabView: the shell is mounted exactly once
@@ -82,6 +87,7 @@ class _HomeShellState extends State<HomeShell> {
         );
         _isAppResumed = state == AppLifecycleState.resumed;
         _updateShakeSubscription();
+        _updateMissionVisibility();
       },
     );
   }
@@ -94,6 +100,7 @@ class _HomeShellState extends State<HomeShell> {
     if (isCurrent == _isRouteCurrent) return;
     _isRouteCurrent = isCurrent;
     _updateShakeSubscription();
+    _updateMissionVisibility();
     if (isCurrent && _index == _exploreTabIndex) {
       context.read<QuestViewModel>().onExploreVisible();
     }
@@ -121,6 +128,7 @@ class _HomeShellState extends State<HomeShell> {
     setState(() {
       _index = index;
       _updateShakeSubscription();
+      _updateMissionVisibility();
       if (index == _exploreTabIndex) context.read<QuestViewModel>().onExploreVisible();
     });
   }
@@ -167,6 +175,15 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
+  /// BQ11 only measures while the Misión tab is really on screen: the same
+  /// rule as the shake (IndexedStack keeps the tab mounted when hidden).
+  void _updateMissionVisibility() {
+    _questViewModel.setMissionScreenVisible(
+      this,
+      _index == _missionTabIndex && _isRouteCurrent && _isAppResumed,
+    );
+  }
+
   void _onShake() {
     // A shake right after a push, before the route change reaches this State.
     if (!(ModalRoute.isCurrentOf(context) ?? true)) return;
@@ -194,6 +211,7 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    _questViewModel.setMissionScreenVisible(this, false);
     _shakeSubscription?.cancel();
     _shakeDetector.dispose();
     _checkInSubscription.cancel();
