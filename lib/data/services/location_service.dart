@@ -57,6 +57,7 @@ class LocationService {
 
     return positionCache.get(
       accuracy: accuracy,
+      permission: permission,
       maxAge: maxAge,
       forceFresh: forceFresh,
       readFresh: () => _readFresh(accuracy),

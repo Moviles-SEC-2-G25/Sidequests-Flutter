@@ -28,16 +28,19 @@ Position _position({required DateTime at, double accuracy = 15, double latitude 
   speedAccuracy: 0,
 );
 
-/// The plugin: GPS on and permission granted unless a test changes it. A
-/// fresh fix is taken "now" by the test's clock; with [timesOut] none arrives.
+/// The plugin: GPS on and precise permission granted unless a test changes
+/// it. A fresh fix is taken "now" by the test's clock; with [timesOut] none
+/// arrives.
 class _FakeGeolocator extends GeolocatorPlatform {
   final DateTime Function() clock;
   bool serviceEnabled = true;
   LocationPermission permission = LocationPermission.whileInUse;
+  LocationAccuracyStatus accuracyStatus = LocationAccuracyStatus.precise;
   Position? lastKnown;
   double freshAccuracy = 15;
   bool timesOut = false;
   int lastKnownCalls = 0;
+  int accuracyStatusCalls = 0;
   final List<LocationSettings?> freshRequests = [];
 
   _FakeGeolocator(this.clock);
@@ -50,6 +53,12 @@ class _FakeGeolocator extends GeolocatorPlatform {
 
   @override
   Future<LocationPermission> requestPermission() async => permission;
+
+  @override
+  Future<LocationAccuracyStatus> getLocationAccuracy() async {
+    accuracyStatusCalls++;
+    return accuracyStatus;
+  }
 
   @override
   Future<Position?> getLastKnownPosition({bool forceLocationManager = false}) async {
@@ -134,6 +143,7 @@ void main() {
 
       expect(geolocator.freshRequests, hasLength(2));
       expect(cache.memoryHits, 0);
+      expect(logs.last, contains('L1 rejected: TTL expired (age 60 s)'));
     });
 
     test('a fix less precise than the caller asks for is a miss', () async {
@@ -147,6 +157,7 @@ void main() {
       expect(cache.memoryHits, 1, reason: 'high needs 30 m or better');
       expect(geolocator.freshRequests, hasLength(2));
       expect(geolocator.freshRequests.last?.accuracy, LocationAccuracy.high);
+      expect(logs.last, contains('L1 rejected: accuracy too low (±50 m > 30 m)'));
     });
 
     test('the radius each caller accepts: 100 m up to medium, 30 m from high', () async {
@@ -165,17 +176,22 @@ void main() {
         expect(PositionCache.maxAccuracyMetersFor(precise), 30);
       }
 
-      geolocator.freshAccuracy = 100;
-      await location.getCurrentPosition();
-      await location.getCurrentPosition();
-      expect(cache.memoryHits, 1, reason: 'exactly 100 m still answers medium');
+      // Through level 2 with no reading of this run yet, so nothing excuses a
+      // coarser fix (that's the 'when the device can't do better' group).
+      for (final (accuracy, limit) in [
+        (LocationAccuracy.medium, 100.0),
+        (LocationAccuracy.high, 30.0),
+      ]) {
+        for (final (radius, answers) in [(limit, true), (limit + 1, false)]) {
+          cache.invalidate();
+          final osFix = _position(at: now, accuracy: radius);
+          geolocator.lastKnown = osFix;
 
-      geolocator.freshAccuracy = 101;
-      now = now.add(PositionCache.ttl);
-      await location.getCurrentPosition();
-      await location.getCurrentPosition();
-      expect(cache.memoryHits, 1, reason: '101 m never answers medium');
-      expect(geolocator.freshRequests, hasLength(3));
+          final position = await location.getCurrentPosition(accuracy: accuracy);
+
+          expect(identical(position, osFix), answers, reason: '±$radius m for $accuracy');
+        }
+      }
     });
 
     test('a device clock moved back (negative age) is a miss', () async {
@@ -185,6 +201,97 @@ void main() {
 
       expect(geolocator.freshRequests, hasLength(2));
       expect(cache.memoryHits, 0);
+    });
+  });
+
+  group("when the device can't do better", () {
+    test('approximate permission: a ±2000 m fix answers the second lookup from level 1', () async {
+      geolocator.accuracyStatus = LocationAccuracyStatus.reduced;
+      geolocator.freshAccuracy = 2000;
+
+      final first = await location.getCurrentPosition();
+      now = now.add(const Duration(seconds: 5));
+      final second = await location.getCurrentPosition();
+
+      expect(second, same(first));
+      expect((cache.memoryHits, cache.freshReads), (1, 1));
+      expect(logs.last, contains('L1 accepted: approximate permission'));
+    });
+
+    test('approximate permission takes a coarse OS fix too, even for a high caller', () async {
+      geolocator.accuracyStatus = LocationAccuracyStatus.reduced;
+      final osFix = _position(at: now.subtract(const Duration(seconds: 10)), accuracy: 2000);
+      geolocator.lastKnown = osFix;
+
+      final position = await location.getCurrentPosition(accuracy: LocationAccuracy.high);
+
+      expect(position, same(osFix));
+      expect(geolocator.freshRequests, isEmpty);
+      expect(logs.last, contains('L2 accepted: approximate permission'));
+    });
+
+    test('approximate or not is asked once, again on a new permission or invalidation', () async {
+      geolocator.accuracyStatus = LocationAccuracyStatus.reduced;
+      geolocator.freshAccuracy = 2000;
+
+      await location.getCurrentPosition(); // a fresh reading: nothing to judge yet
+      await location.getCurrentPosition(); // asks
+      await location.getCurrentPosition(); // remembers
+      expect(geolocator.accuracyStatusCalls, 1);
+
+      geolocator.permission = LocationPermission.always;
+      await location.getCurrentPosition();
+      expect(geolocator.accuracyStatusCalls, 2);
+
+      cache.invalidate();
+      await location.getCurrentPosition(); // level 1 empty: a fresh reading
+      await location.getCurrentPosition();
+      expect(geolocator.accuracyStatusCalls, 3);
+      expect((cache.memoryHits, cache.freshReads), (4, 2));
+    });
+
+    test('above the threshold but as precise as the last fresh reading: best available', () async {
+      geolocator.freshAccuracy = 2000; // precise permission, but only network location
+
+      final first = await location.getCurrentPosition();
+      now = now.add(const Duration(seconds: 30));
+      final second = await location.getCurrentPosition();
+
+      expect(second, same(first));
+      expect((cache.memoryHits, cache.freshReads), (1, 1));
+      expect(logs.last, contains('L1 accepted: best available (last fresh ±2000 m)'));
+    });
+
+    test('a cached fix worse than the last fresh reading at that accuracy is a miss', () async {
+      geolocator.freshAccuracy = 500;
+      await location.getCurrentPosition(); // medium manages ±500 m
+
+      geolocator.freshAccuracy = 2000;
+      now = now.add(const Duration(seconds: 5));
+      await location.getCurrentPosition(accuracy: LocationAccuracy.low); // ±2000 m into level 1
+
+      now = now.add(const Duration(seconds: 5));
+      await location.getCurrentPosition();
+
+      expect(geolocator.freshRequests, hasLength(3));
+      expect(cache.memoryHits, 0);
+      expect(
+        logs.last,
+        contains('L1 rejected: accuracy too low (±2000 m, worse than last fresh ±500 m)'),
+      );
+    });
+
+    test('best available lasts only while that fresh reading is under the TTL', () async {
+      geolocator.freshAccuracy = 2000;
+      await location.getCurrentPosition();
+
+      now = now.add(PositionCache.ttl);
+      final osFix = _position(at: now.subtract(const Duration(seconds: 5)), accuracy: 2000);
+      geolocator.lastKnown = osFix;
+
+      expect(await location.getCurrentPosition(), isNot(same(osFix)));
+      expect(logs.last, contains('L1 rejected: TTL expired (age 60 s)'));
+      expect(logs.last, contains('L2 rejected: accuracy too low (±2000 m > 100 m)'));
     });
   });
 
