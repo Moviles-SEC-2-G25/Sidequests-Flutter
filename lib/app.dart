@@ -63,7 +63,13 @@ class SidequestsApp extends StatelessWidget {
     // every context snapshot (recommendations, analytics) hit the same
     // cache instead of each keeping a separate one.
     final weatherService = WeatherService(localDataSource: localDataSource);
-    final contextManager = ContextManager(weatherService: weatherService);
+    // Same idea for the GPS: one LocationService, so its PositionCache serves
+    // the snapshots and the weather card alike, and sign-out clears that one.
+    final locationService = LocationService();
+    final contextManager = ContextManager(
+      locationService: locationService,
+      weatherService: weatherService,
+    );
     final analyticsTracker = AnalyticsTracker(
       eventSink: remoteDataSource,
       contextManager: contextManager,
@@ -82,7 +88,7 @@ class SidequestsApp extends StatelessWidget {
         Provider.value(value: contextManager),
         Provider.value(value: analyticsTracker),
         Provider(create: (_) => BiometricService()),
-        Provider(create: (_) => LocationService()),
+        Provider.value(value: locationService),
         Provider.value(value: weatherService),
         Provider.value(value: statsSummaryCache),
         Provider(
@@ -93,7 +99,11 @@ class SidequestsApp extends StatelessWidget {
             remoteDataSource,
             localDataSource,
             stepLog: stepLog,
-            sessionCaches: [completionLikelihoodMemo, statsSummaryCache, similarQuestWorker],
+            sessionCaches: [
+              completionLikelihoodMemo,
+              statsSummaryCache,
+              locationService.positionCache,
+            ],
           ),
         ),
         Provider(
