@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/app_exception.dart';
 import '../../core/completion_likelihood.dart';
 import '../../models/quest.dart';
+import '../../models/step_log_entry.dart';
 import '../../models/user_quest.dart';
 import '../../repository/quest_repository.dart';
 
@@ -121,11 +122,26 @@ class StatsViewModel extends ChangeNotifier {
   /// attempt has step data (≠ 0 steps walked).
   int? totalSteps;
 
+  /// "Tus caminatas", from the step log (SQLite, on the device).
+  static const walkWindow = Duration(days: 7);
+  int walkStepsLast7Days = 0;
+  List<({String category, int steps})> walkStepsByCategory = [];
+  StepLogEntry? longestWalk;
+
+  /// The title of [longestWalk]'s quest; null when it left the catalogue.
+  String? longestWalkTitle;
+
+  bool get hasWalks => longestWalk != null;
+
+  final DateTime Function() _now;
+
   StatsViewModel(
     this._questRepository,
     this._userId, {
     StatsRunner runner = _summarizeInBackground,
-  }) : _runner = runner;
+    DateTime Function()? now,
+  }) : _runner = runner,
+       _now = now ?? DateTime.now;
 
   double? get overallRate => attemptCount == 0 ? null : completedCount / attemptCount;
 
@@ -138,8 +154,11 @@ class StatsViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       final catalogFuture = _questRepository.getCatalog();
+      // Local reads, so they don't wait on the network calls; never throws.
+      final walksFuture = _questRepository.getWalkStats(since: _now().subtract(walkWindow));
       final (:userQuests, :fromCache) = await _questRepository.getUserQuestsWithSource(_userId);
       final catalog = await catalogFuture;
+      final walks = await walksFuture;
 
       final summary = await _runner(
         StatsInput(
@@ -153,6 +172,13 @@ class StatsViewModel extends ChangeNotifier {
       completedCount = summary.completedCount;
       categoryStats = summary.categoryStats;
       totalSteps = summary.totalSteps;
+      walkStepsLast7Days = walks.recentSteps;
+      walkStepsByCategory = walks.stepsByCategory;
+      longestWalk = walks.longestWalk;
+      longestWalkTitle = catalog
+          .cast<Quest?>()
+          .firstWhere((quest) => quest!.id == walks.longestWalk?.questId, orElse: () => null)
+          ?.title;
 
       if (attemptCount > 0) {
         status = StatsStatus.data;

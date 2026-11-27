@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/app_exception.dart';
 import '../data/local/local_data_source.dart';
+import '../data/local/step_log_database.dart';
 import '../data/remote/network_guard.dart';
 import '../data/remote/supabase_remote_data_source.dart';
 
@@ -19,8 +21,10 @@ class AuthRepository {
 
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
+  final StepLogDatabase? _stepLog;
 
-  AuthRepository(this._remoteDataSource, this._localDataSource);
+  AuthRepository(this._remoteDataSource, this._localDataSource, {StepLogDatabase? stepLog})
+    : _stepLog = stepLog;
 
   User? get currentUser => _remoteDataSource.currentSession?.user;
 
@@ -101,7 +105,20 @@ class AuthRepository {
 
   /// The session ended without [signOut] (token rejected by the server): same
   /// cleanup, so the next account doesn't inherit this one's data or queues.
-  Future<void> clearLocalData() => _localDataSource.clear();
+  Future<void> clearLocalData() async {
+    await _localDataSource.clear();
+    await _clearStepLog();
+  }
+
+  /// The walks are this account's too. A failure must not keep anyone signed
+  /// in, so it's only logged.
+  Future<void> _clearStepLog() async {
+    try {
+      await _stepLog?.clear();
+    } catch (error) {
+      debugPrint('Step log: not cleared ($error)');
+    }
+  }
 
   /// gotrue drops the local session first and only then tells the server, so
   /// a failure there (no connection) means the user is already out: the cache
@@ -114,5 +131,6 @@ class AuthRepository {
       // The token isn't revoked on the server; it just expires on its own.
     }
     await _localDataSource.clear();
+    await _clearStepLog();
   }
 }

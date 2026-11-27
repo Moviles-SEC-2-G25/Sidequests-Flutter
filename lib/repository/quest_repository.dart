@@ -9,6 +9,7 @@ import '../core/app_exception.dart';
 import '../core/photo_proof_rules.dart';
 import '../data/cache/memory_cache.dart';
 import '../data/local/local_data_source.dart';
+import '../data/local/step_log_database.dart';
 import '../data/remote/network_guard.dart';
 import '../data/remote/supabase_remote_data_source.dart';
 import '../models/app_context.dart';
@@ -18,6 +19,7 @@ import '../models/photo_proof.dart';
 import '../models/quest.dart';
 import '../models/quest_recommendation.dart';
 import '../models/quest_step.dart';
+import '../models/step_log_entry.dart';
 import '../models/step_session.dart';
 import '../models/user_preferences.dart';
 import '../models/user_quest.dart';
@@ -47,6 +49,7 @@ class QuestRepository {
   final String Function() _newId;
   final NetworkGuard _network;
   final MemoryCache<String, List<QuestStep>> _stepsCache;
+  final StepLogDatabase? _stepLog;
   Future<void>? _syncInFlight;
 
   /// The last [getCatalog] fell back to the cache. Catches what the
@@ -63,8 +66,10 @@ class QuestRepository {
     String Function()? newId,
     NetworkGuard network = const NetworkGuard(),
     MemoryCache<String, List<QuestStep>>? stepsCache,
+    StepLogDatabase? stepLog,
   }) : _newId = newId ?? (() => const Uuid().v4()),
        _network = network,
+       _stepLog = stepLog,
        _stepsCache =
            stepsCache ?? MemoryCache(ttl: stepsCacheTtl, maxEntries: stepsCacheMaxQuests);
 
@@ -425,6 +430,39 @@ class QuestRepository {
 
   Future<void> saveActiveStepSession(StepSession? session) =>
       _localDataSource.saveActiveStepSession(session?.toJson());
+
+  /// Saves a finished walk in SQLite. A walk without steps isn't one, and
+  /// without a database (web build) there's nowhere to keep it. Never throws:
+  /// a storage failure must not stop the mission it came from.
+  Future<void> logWalk(StepLogEntry walk) async {
+    final stepLog = _stepLog;
+    if (stepLog == null || walk.steps <= 0) return;
+    try {
+      await stepLog.insertOrReplace(walk);
+    } catch (error) {
+      debugPrint('Step log: walk not saved ($error)');
+    }
+  }
+
+  static const WalkStats _noWalks = (recentSteps: 0, stepsByCategory: [], longestWalk: null);
+
+  /// The walks for "Mis estadísticas", all from the device. Empty when there's
+  /// no database or it can't be read: the rest of the screen still loads.
+  Future<WalkStats> getWalkStats({required DateTime since}) async {
+    final stepLog = _stepLog;
+    if (stepLog == null) return _noWalks;
+    try {
+      final (recentSteps, stepsByCategory, longestWalk) = await (
+        stepLog.stepsSince(since),
+        stepLog.stepsByCategory(),
+        stepLog.topWalk(),
+      ).wait;
+      return (recentSteps: recentSteps, stepsByCategory: stepsByCategory, longestWalk: longestWalk);
+    } catch (error) {
+      debugPrint('Step log: walks not read ($error)');
+      return _noWalks;
+    }
+  }
 
   /// A location check-in waiting for a connection, local-only: QuestViewModel
   /// completes the step itself once it can, so nothing is queued here.

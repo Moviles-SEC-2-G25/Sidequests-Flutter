@@ -5,11 +5,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:sidequests/core/app_exception.dart';
 import 'package:sidequests/core/completion_likelihood.dart';
+import 'package:sidequests/data/local/local_data_source.dart';
+import 'package:sidequests/data/local/step_log_database.dart';
+import 'package:sidequests/data/remote/supabase_remote_data_source.dart';
 import 'package:sidequests/models/quest.dart';
+import 'package:sidequests/models/step_log_entry.dart';
 import 'package:sidequests/models/user_quest.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/view/profile/stats_view.dart';
 import 'package:sidequests/viewmodel/profile/stats_view_model.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 Quest _quest(String id, String category) => Quest(
   id: id,
@@ -38,6 +43,21 @@ class _FakeQuestRepository implements QuestRepository {
   Map<String, int> stepTotals = {};
   Completer<void>? gate;
   bool throwAppException = false;
+
+  /// What the step log (SQLite) answers, and the date it was asked from.
+  WalkStats walks = (recentSteps: 0, stepsByCategory: const [], longestWalk: null);
+  DateTime? walksSince;
+
+  /// When set, the walks come from a real repository over SQLite.
+  QuestRepository? walkSource;
+  Completer<void>? walksGate;
+
+  @override
+  Future<WalkStats> getWalkStats({required DateTime since}) async {
+    walksSince = since;
+    await walksGate?.future;
+    return walkSource?.getWalkStats(since: since) ?? walks;
+  }
 
   @override
   Future<List<Quest>> getCatalog() async => catalog;
@@ -317,4 +337,167 @@ void main() {
       expect(find.text('Reintentar'), findsOneWidget);
     });
   });
+
+  group('Tus caminatas (SQLite)', () {
+    final now = DateTime.utc(2026, 11, 26, 18);
+    late StepLogDatabase database;
+
+    setUpAll(sqfliteFfiInit);
+
+    setUp(() {
+      database = StepLogDatabase(factory: databaseFactoryFfiNoIsolate, path: inMemoryDatabasePath);
+      repository.walkSource = QuestRepository(_NoRemote(), _NoLocal(), stepLog: database);
+      viewModel = StatsViewModel(repository, 'user-1', runner: _inline, now: () => now);
+      seedHistory();
+    });
+
+    tearDown(() => database.close());
+
+    Future<void> logWalk(String attemptId, String questId, String category, int steps, DateTime at) =>
+        database.insertOrReplace(
+          StepLogEntry(
+            attemptId: attemptId,
+            questId: questId,
+            category: category,
+            steps: steps,
+            outcome: StepLogEntry.completed,
+            finishedAt: at,
+          ),
+        );
+
+    Future<void> logSomeWalks() async {
+      await logWalk('uq-1', 'f1', 'food', 900, now.subtract(const Duration(days: 10)));
+      await logWalk('uq-2', 'f2', 'food', 300, now.subtract(const Duration(days: 2)));
+      await logWalk('uq-4', 'a1', 'art', 200, now.subtract(const Duration(hours: 1)));
+    }
+
+    test('reads the last 7 days, the steps per category and the longest walk', () async {
+      await logSomeWalks();
+
+      await viewModel.load();
+
+      expect(repository.walksSince, now.subtract(const Duration(days: 7)));
+      expect(viewModel.walkStepsLast7Days, 500);
+      expect(viewModel.walkStepsByCategory, [
+        (category: 'food', steps: 1200),
+        (category: 'art', steps: 200),
+      ]);
+      expect(viewModel.longestWalk!.steps, 900);
+      expect(viewModel.longestWalkTitle, 'Quest f1');
+      expect(viewModel.hasWalks, isTrue);
+    });
+
+    test('no walks yet: nothing to show, and the rest of the screen still loads', () async {
+      await viewModel.load();
+
+      expect(viewModel.hasWalks, isFalse);
+      expect(viewModel.walkStepsLast7Days, 0);
+      expect(viewModel.walkStepsByCategory, isEmpty);
+      expect(viewModel.status, StatsStatus.data);
+    });
+
+    test('offline (attempts from the cache): the walks are there all the same', () async {
+      await logSomeWalks();
+      repository.fromCache = true;
+
+      await viewModel.load();
+
+      expect(viewModel.isFromCache, isTrue);
+      expect(viewModel.walkStepsLast7Days, 500);
+    });
+
+    test('the walks are read before the summary is computed', () async {
+      repository.walksGate = Completer<void>();
+      var computed = false;
+      viewModel = StatsViewModel(
+        repository,
+        'user-1',
+        runner: (input) async {
+          computed = true;
+          return summarizeStats(input);
+        },
+        now: () => now,
+      );
+
+      final load = viewModel.load();
+      await pumpEventQueue();
+      expect(computed, isFalse);
+
+      repository.walksGate!.complete();
+      await load;
+      expect(computed, isTrue);
+    });
+
+    test('a quest that left the catalogue: the longest walk is still shown, untitled', () async {
+      await logWalk('uq-9', 'gone', 'food', 4000, now);
+
+      await viewModel.load();
+
+      expect(viewModel.longestWalk!.steps, 4000);
+      expect(viewModel.longestWalkTitle, isNull);
+    });
+
+    // The view gets the walks from the fake, not SQLite: FFI queries don't
+    // advance under testWidgets' fake clock. The tests above read SQLite.
+    Future<void> pumpStats(WidgetTester tester, {WalkStats? walks}) async {
+      repository.walkSource = null;
+      if (walks != null) repository.walks = walks;
+      tester.view.physicalSize = const Size(360, 690);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(value: viewModel, child: const MaterialApp(home: StatsView())),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Tus caminatas'), 200);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('StatsView shows the section with its numbers', (tester) async {
+      await pumpStats(
+        tester,
+        walks: (
+          recentSteps: 500,
+          stepsByCategory: const [(category: 'food', steps: 1200), (category: 'art', steps: 200)],
+          longestWalk: StepLogEntry(
+            attemptId: 'uq-1',
+            questId: 'f1',
+            category: 'food',
+            steps: 900,
+            outcome: StepLogEntry.completed,
+            finishedAt: now.subtract(const Duration(days: 10)),
+          ),
+        ),
+      );
+      await tester.scrollUntilVisible(find.text('Pasos por categoría'), 200);
+
+      expect(find.text('Tus caminatas'), findsOneWidget);
+      expect(find.text('500'), findsOneWidget); // last 7 days
+      expect(find.text('900'), findsOneWidget); // longest
+      expect(find.text('Últimos 7 días'), findsOneWidget);
+      expect(find.text('Caminata más larga'), findsOneWidget);
+      expect(find.textContaining('Quest f1 · '), findsOneWidget);
+      expect(find.text('1.200 pasos'), findsOneWidget);
+      expect(find.text('200 pasos'), findsOneWidget);
+    });
+
+    testWidgets('StatsView: the empty state', (tester) async {
+      await pumpStats(tester);
+
+      expect(find.text('Tus caminatas'), findsOneWidget);
+      expect(find.textContaining('Aún no hay caminatas guardadas'), findsOneWidget);
+      expect(find.text('Últimos 7 días'), findsNothing);
+    });
+  });
+}
+
+/// The walks only touch the SQLite part of the repository.
+class _NoRemote implements SupabaseRemoteDataSource {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _NoLocal implements LocalDataSource {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

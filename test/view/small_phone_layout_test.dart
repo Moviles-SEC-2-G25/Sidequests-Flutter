@@ -32,6 +32,7 @@ import 'package:sidequests/models/profile.dart';
 import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/quest_recommendation.dart';
 import 'package:sidequests/models/quest_step.dart';
+import 'package:sidequests/models/step_log_entry.dart';
 import 'package:sidequests/models/step_session.dart';
 import 'package:sidequests/models/user_preferences.dart';
 import 'package:sidequests/models/user_quest.dart';
@@ -202,6 +203,21 @@ class _SilentTracker extends AnalyticsTracker {
 
 /// Everything the screens read, from the device's saved copy.
 class _SavedQuests implements QuestRepository {
+  /// Long names and big numbers, so "Tus caminatas" is checked too.
+  @override
+  Future<WalkStats> getWalkStats({required DateTime since}) async => (
+    recentSteps: 1234567,
+    stepsByCategory: [(category: _catalog.first.category, steps: 1234567)],
+    longestWalk: StepLogEntry(
+      attemptId: 'w',
+      questId: _catalog.first.id,
+      category: _catalog.first.category,
+      steps: 1234567,
+      outcome: StepLogEntry.completed,
+      finishedAt: DateTime.utc(2026, 11, 26),
+    ),
+  );
+
   @override
   bool catalogFromCache = true;
 
