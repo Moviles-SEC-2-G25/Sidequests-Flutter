@@ -40,6 +40,7 @@ class LocalDataSource {
   static const _keyWeatherSnapshots = 'weather_snapshots';
   static const _keyOnboardingComplete = 'onboarding_complete';
   static const _keyDarkMode = 'dark_mode';
+  static const _keyAutoTheme = 'auto_theme';
   static const _keyExploreFilters = 'explore_filters';
   static const _keyMissionNotifications = 'mission_notifications_enabled';
   static const _keyDailyReminders = 'daily_reminders_enabled';
@@ -65,6 +66,11 @@ class LocalDataSource {
   bool isDarkMode() => _prefs.getBool(_keyDarkMode) ?? false;
 
   Future<void> setDarkMode(bool value) => _prefs.setBool(_keyDarkMode, value);
+
+  /// Theme follows the ambient light sensor instead of the manual toggle.
+  bool isAutoThemeEnabled() => _prefs.getBool(_keyAutoTheme) ?? false;
+
+  Future<void> setAutoThemeEnabled(bool value) => _prefs.setBool(_keyAutoTheme, value);
 
   /// Explore's last filters; null until the user changes one.
   Map<String, dynamic>? getExploreFilters() {

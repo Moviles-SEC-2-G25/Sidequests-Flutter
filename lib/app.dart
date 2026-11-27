@@ -13,6 +13,7 @@ import 'data/local/local_data_source.dart';
 import 'data/local/step_log_database.dart';
 import 'data/remote/network_guard.dart';
 import 'data/remote/supabase_remote_data_source.dart';
+import 'data/services/ambient_light_monitor.dart';
 import 'data/services/biometric_service.dart';
 import 'data/services/location_service.dart';
 import 'data/services/reverse_geocoding_service.dart';
@@ -105,7 +106,12 @@ class SidequestsApp extends StatelessWidget {
             analyticsTracker,
           ),
         ),
-        ChangeNotifierProvider(create: (_) => ThemeViewModel(localDataSource)),
+        ChangeNotifierProvider(
+          create: (_) => ThemeViewModel(
+            localDataSource,
+            lightMonitor: kIsWeb ? null : AmbientLightMonitor(),
+          ),
+        ),
         // Above MaterialApp so every route, including login and the screens
         // pushed over HomeShell, can block what needs the internet.
         ChangeNotifierProvider(create: (_) => ConnectivityViewModel()),

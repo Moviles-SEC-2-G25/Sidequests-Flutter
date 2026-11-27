@@ -764,10 +764,28 @@ class _SettingsSectionState extends State<_SettingsSection> {
         const SizedBox(height: 4),
         _SettingSwitch(
           title: 'Modo oscuro',
-          subtitle: 'Más cómodo para los ojos',
+          subtitle: themeViewModel.autoThemeEnabled
+              ? 'Lo decide el sensor de luz; tocarlo vuelve al modo manual'
+              : 'Más cómodo para los ojos',
           value: themeViewModel.isDarkMode,
           onChanged: themeViewModel.setDarkMode,
         ),
+        if (themeViewModel.lightSensorAvailable)
+          _SettingSwitch(
+            title: 'Tema automático (sensor de luz)',
+            subtitle: 'Luz ambiente: ${themeViewModel.ambientLux == null ? 'esperando al sensor…' : '${themeViewModel.ambientLux!.toInt()} lux'}'
+                '${themeViewModel.autoThemeEnabled ? ' · el modo oscuro sigue la luz a tu alrededor' : ''}',
+            value: themeViewModel.autoThemeEnabled,
+            onChanged: themeViewModel.setAutoThemeEnabled,
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Este dispositivo no tiene sensor de luz ambiente: el tema es manual.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         _SettingSwitch(
           title: 'Notificaciones de misiones',
           subtitle: 'Alertas de misiones cercanas — aún sin push real (FCM pendiente)',
