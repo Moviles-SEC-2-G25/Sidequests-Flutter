@@ -9,6 +9,7 @@ import 'analytics/analytics_tracker.dart';
 import 'core/app_theme.dart';
 import 'core/completion_likelihood.dart';
 import 'core/workers/similar_quest_worker.dart';
+import 'data/cache/byte_lru_cache.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
 import 'data/local/step_log_database.dart';
@@ -19,6 +20,7 @@ import 'data/services/location_service.dart';
 import 'data/services/reverse_geocoding_service.dart';
 import 'data/services/weather_service.dart';
 import 'repository/auth_repository.dart';
+import 'repository/evidence_repository.dart';
 import 'repository/profile_repository.dart';
 import 'repository/quest_repository.dart';
 import 'repository/social_repository.dart';
@@ -51,6 +53,13 @@ class SidequestsApp extends StatelessWidget {
   /// here, not by QuestViewModel, so signing out (AuthRepository) kills it
   /// too; it only spawns the first time a completed mission needs it.
   final similarQuestWorker = SimilarQuestWorker();
+
+  /// Caching strategy (Alejandro, Sprint 4): the in-memory level of
+  /// "Evidencias de un intento", bounded in bytes. Owned here so sign-out
+  /// (AuthRepository) empties them; the disk level is LocalDataSource's
+  /// EvidenceStore, cleared in LocalDataSource.clear().
+  final evidenceThumbnailCache = ByteLruCache<String>(maxBytes: kEvidenceThumbnailCacheBytes);
+  final evidencePhotoCache = ByteLruCache<String>(maxBytes: kEvidencePhotoCacheBytes);
 
   SidequestsApp({super.key, required this.localDataSource, StepLogDatabase? stepLog})
     : stepLog = stepLog ?? (kIsWeb ? null : StepLogDatabase(factory: databaseFactorySqflitePlugin));
@@ -103,6 +112,8 @@ class SidequestsApp extends StatelessWidget {
               completionLikelihoodMemo,
               statsSummaryCache,
               locationService.positionCache,
+              evidenceThumbnailCache,
+              evidencePhotoCache,
             ],
           ),
         ),
@@ -112,6 +123,16 @@ class SidequestsApp extends StatelessWidget {
         Provider(
           create: (_) =>
               QuestRepository(remoteDataSource, localDataSource, network: network, stepLog: stepLog),
+        ),
+        Provider(
+          create: (context) => EvidenceRepository(
+            context.read<QuestRepository>(),
+            remoteDataSource,
+            localDataSource,
+            network: network,
+            thumbnailCache: evidenceThumbnailCache,
+            photoCache: evidencePhotoCache,
+          ),
         ),
         Provider(create: (_) => SocialRepository()),
         ChangeNotifierProvider(

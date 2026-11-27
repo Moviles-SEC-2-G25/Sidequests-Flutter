@@ -24,6 +24,7 @@ abren encima del menú inferior). Los avisos usan `OfflineNotice` y los textos d
 | Calificar una misión completada | La calificación queda en cola. |
 | Perfil, insignias, recompensas, "Mis estadísticas" | Con los datos guardados, avisando que son del último acceso. |
 | "Mi bitácora": historial, búsqueda y filtros | Con los datos guardados; marca "Pendiente de sincronizar" lo hecho sin conexión y se actualiza sola al reconectar (detalle en `BITACORA.md`). |
+| "Evidencias" de un intento (desde Mi bitácora) | Lista de fotos guardada; las fotos guardadas en el teléfono se ven y hacen zoom; las demás dicen "Disponible al reconectar" y las no subidas "Pendiente de subir". "Guardar todas" se desactiva. Al reconectar recarga la lista y descarga lo que falte (máx. 3 a la vez). |
 | Modo oscuro, notificaciones locales, huella | Ajustes locales. |
 | Agitar para una misión sorpresa | Prioriza misiones con pasos guardados; iniciarla sigue necesitando conexión. |
 
