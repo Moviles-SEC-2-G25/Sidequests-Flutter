@@ -416,10 +416,13 @@ class QuestViewModel extends ChangeNotifier {
     _interactionCount++;
   }
 
-  Future<void> loadRecommendations(UserPreferences preferences) async {
+  /// [forceContext]: a manual refresh, which reads GPS and weather again even
+  /// with the battery saver on.
+  Future<void> loadRecommendations(UserPreferences preferences, {bool forceContext = false}) async {
     isLoadingRecommendations = true;
     notifyListeners();
     try {
+      if (forceContext) _contextManager.forceNextReading();
       final context = await _contextWithinLimit();
       currentContext = context;
       final effectivePreferences = preferences.copyWith(
@@ -517,14 +520,20 @@ class QuestViewModel extends ChangeNotifier {
   /// Just the context (weather, time of day), so Explore can adapt again
   /// without asking for recommendations or logging anything. On failure the
   /// last one stays.
-  Future<void> refreshContext() async {
+  Future<void> refreshContext({bool force = false}) async {
     try {
-      currentContext = await _contextManager.snapshot(availableMinutes: selectedMinutes);
+      if (force) _contextManager.forceNextReading();
+      final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
+      currentContext = context;
       notifyListeners();
     } catch (_) {
       // A missing sensor: nothing new to adapt to.
     }
   }
+
+  /// With low battery and no charger, the last snapshot reused the previous
+  /// GPS/weather reading (refreshed every 15 min, or on a manual refresh).
+  bool get contextBatterySaverActive => _contextManager.batterySaverActive;
 
   /// Back online. Recommendations reload only when Explore has nothing to show
   /// or only the saved list (it failed offline): reloading a live list the user
@@ -534,9 +543,9 @@ class QuestViewModel extends ChangeNotifier {
   Future<void> refreshAfterReconnect(UserPreferences preferences) async {
     await load();
     if (recommendations.isEmpty || recommendationsFromCache) {
-      await loadRecommendations(preferences);
+      await loadRecommendations(preferences, forceContext: true);
     } else {
-      await refreshContext();
+      await refreshContext(force: true);
     }
   }
 

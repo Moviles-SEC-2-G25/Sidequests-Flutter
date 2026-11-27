@@ -4,8 +4,12 @@ import 'package:provider/provider.dart';
 import '../../viewmodel/context/context_status_view_model.dart';
 
 /// Context-aware banner: adapts to the device's connectivity and battery.
+/// Offline it offers "Reintentar" (mirror of the Kotlin app's offline banner):
+/// a Wi-Fi without internet can look offline and still let a retry through.
 class ContextBanner extends StatelessWidget {
-  const ContextBanner({super.key});
+  final VoidCallback? onRetry;
+
+  const ContextBanner({super.key, this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +48,15 @@ class ContextBanner extends StatelessWidget {
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ),
+              if (status.isOffline && onRetry != null)
+                TextButton(
+                  onPressed: onRetry,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text('Reintentar'),
+                ),
             ],
           ),
         ),

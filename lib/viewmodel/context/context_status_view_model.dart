@@ -72,9 +72,17 @@ class ContextStatusViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Low = at or below the threshold and not charging (as in Kotlin's
+  /// DeviceStatus): plugged in, there's no energy to save.
   Future<void> _refreshBattery() async {
     try {
-      final low = await _battery.batteryLevel <= _lowBatteryThreshold;
+      var low = await _battery.batteryLevel <= _lowBatteryThreshold;
+      if (low) {
+        try {
+          final state = await _battery.batteryState;
+          low = state != BatteryState.charging && state != BatteryState.full;
+        } catch (_) {}
+      }
       if (low == isLowBattery) return;
       isLowBattery = low;
       notifyListeners();

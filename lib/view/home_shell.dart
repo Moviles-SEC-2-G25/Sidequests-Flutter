@@ -209,7 +209,7 @@ class _HomeShellState extends State<HomeShell> {
       child: Scaffold(
       body: Column(
         children: [
-          const ContextBanner(),
+          ContextBanner(onRetry: _refreshAfterReconnect),
           Expanded(child: IndexedStack(index: _index, children: _pages)),
         ],
       ),

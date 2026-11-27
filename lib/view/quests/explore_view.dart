@@ -32,13 +32,15 @@ class _ExploreViewState extends State<ExploreView> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
   }
 
-  Future<void> _loadAll() async {
+  /// [force] (pull to refresh): reads GPS and weather again even with the
+  /// battery saver on, as Kotlin's "Refresh context".
+  Future<void> _loadAll({bool force = false}) async {
     final questViewModel = context.read<QuestViewModel>();
     final profileViewModel = context.read<ProfileViewModel>();
     await Future.wait([questViewModel.load(), profileViewModel.load()]);
     if (!mounted) return;
     questViewModel.showSavedRecommendationsIfOffline();
-    await questViewModel.loadRecommendations(profileViewModel.preferences);
+    await questViewModel.loadRecommendations(profileViewModel.preferences, forceContext: force);
   }
 
   String get _greeting {
@@ -56,7 +58,7 @@ class _ExploreViewState extends State<ExploreView> {
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadAll,
+          onRefresh: () => _loadAll(force: true),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             // Keyed so a conditional insertion above (the "continue" banner
@@ -69,6 +71,7 @@ class _ExploreViewState extends State<ExploreView> {
                 greeting: _greeting,
                 displayName: profileViewModel.profile?.displayName,
               ),
+              _LiveContextNote(key: const ValueKey('live-context'), questViewModel: questViewModel),
               const SizedBox(height: 20),
               _TimeAndScopeFilters(
                 key: const ValueKey('filters'),
@@ -880,3 +883,24 @@ String _difficultyLabel(String difficulty) => switch (difficulty) {
   'hard' => 'Difícil',
   _ => difficulty,
 };
+
+/// The battery saver note under the greeting (mirror of the Kotlin app's
+/// live context line).
+class _LiveContextNote extends StatelessWidget {
+  final QuestViewModel questViewModel;
+
+  const _LiveContextNote({super.key, required this.questViewModel});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!questViewModel.contextBatterySaverActive) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        '🔋 Ahorro de batería: usamos el último contexto (se actualiza cada 15 min). '
+        'Desliza hacia abajo para forzarlo.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+    );
+  }
+}
