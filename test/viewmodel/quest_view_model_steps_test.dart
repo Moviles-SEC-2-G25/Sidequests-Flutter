@@ -110,7 +110,6 @@ class _FakeQuestRepository implements QuestRepository {
     await walkLog?.logWalk(walk);
   }
 
-  @override
   List<Quest> catalog = [_quest];
 
   @override

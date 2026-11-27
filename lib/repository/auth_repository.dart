@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/app_exception.dart';
+import '../core/memo.dart';
 import '../data/local/local_data_source.dart';
 import '../data/local/step_log_database.dart';
 import '../data/remote/network_guard.dart';
@@ -23,8 +24,16 @@ class AuthRepository {
   final LocalDataSource _localDataSource;
   final StepLogDatabase? _stepLog;
 
-  AuthRepository(this._remoteDataSource, this._localDataSource, {StepLogDatabase? stepLog})
-    : _stepLog = stepLog;
+  /// In-memory caches of this account's data, emptied with the rest.
+  final List<SessionCache> _sessionCaches;
+
+  AuthRepository(
+    this._remoteDataSource,
+    this._localDataSource, {
+    StepLogDatabase? stepLog,
+    List<SessionCache> sessionCaches = const [],
+  }) : _stepLog = stepLog,
+       _sessionCaches = sessionCaches;
 
   User? get currentUser => _remoteDataSource.currentSession?.user;
 
@@ -107,7 +116,14 @@ class AuthRepository {
   /// cleanup, so the next account doesn't inherit this one's data or queues.
   Future<void> clearLocalData() async {
     await _localDataSource.clear();
+    _clearSessionCaches();
     await _clearStepLog();
+  }
+
+  void _clearSessionCaches() {
+    for (final cache in _sessionCaches) {
+      cache.clear();
+    }
   }
 
   /// The walks are this account's too. A failure must not keep anyone signed
@@ -131,6 +147,7 @@ class AuthRepository {
       // The token isn't revoked on the server; it just expires on its own.
     }
     await _localDataSource.clear();
+    _clearSessionCaches();
     await _clearStepLog();
   }
 }
