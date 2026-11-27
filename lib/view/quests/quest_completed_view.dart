@@ -160,9 +160,10 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
   }
 }
 
-/// "Te podría gustar": up to 3 quests ranked by [SimilarQuestRecommender],
-/// recomputed on every build so it tracks the pending (not-yet-saved)
-/// rating as the user taps stars.
+/// "Te podría gustar": up to 3 quests ranked by SimilarQuestRecommender. It
+/// tracks the pending (not-yet-saved) rating as the user taps stars: each new
+/// rating is ranked by a worker isolate, off the UI thread, and the section
+/// repaints when the answer arrives (keeping the previous list meanwhile).
 class _SimilarQuestsSection extends StatelessWidget {
   final Quest completed;
   final int rating;
@@ -172,7 +173,7 @@ class _SimilarQuestsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final questViewModel = context.watch<QuestViewModel>();
-    final similar = questViewModel.similarQuests(completed: completed, rating: rating);
+    final similar = questViewModel.similarQuestsFor(completed: completed, rating: rating);
     if (similar.isEmpty) return const SizedBox.shrink();
 
     return Padding(

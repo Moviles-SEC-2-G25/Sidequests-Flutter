@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import 'analytics/analytics_tracker.dart';
 import 'core/app_theme.dart';
 import 'core/completion_likelihood.dart';
+import 'core/workers/similar_quest_worker.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
 import 'data/local/step_log_database.dart';
@@ -45,6 +46,11 @@ class SidequestsApp extends StatelessWidget {
   /// on sign-out by AuthRepository.
   final completionLikelihoodMemo = CompletionLikelihoodMemo();
   final statsSummaryCache = StatsSummaryCache();
+
+  /// Multithreading strategy: the "Te podría gustar" worker isolate. Owned
+  /// here, not by QuestViewModel, so signing out (AuthRepository) kills it
+  /// too; it only spawns the first time a completed mission needs it.
+  final similarQuestWorker = SimilarQuestWorker();
 
   SidequestsApp({super.key, required this.localDataSource, StepLogDatabase? stepLog})
     : stepLog = stepLog ?? (kIsWeb ? null : StepLogDatabase(factory: databaseFactorySqflitePlugin));
@@ -87,7 +93,7 @@ class SidequestsApp extends StatelessWidget {
             remoteDataSource,
             localDataSource,
             stepLog: stepLog,
-            sessionCaches: [completionLikelihoodMemo, statsSummaryCache],
+            sessionCaches: [completionLikelihoodMemo, statsSummaryCache, similarQuestWorker],
           ),
         ),
         Provider(
@@ -123,6 +129,7 @@ class SidequestsApp extends StatelessWidget {
             context.read<AuthViewModel>().userId!,
             initialFilters: context.read<QuestRepository>().getExploreFilters(),
             completionLikelihoodMemo: completionLikelihoodMemo,
+            similarQuestRunner: similarQuestWorker,
           ),
         ),
         ChangeNotifierProvider(
