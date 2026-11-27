@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,6 +9,8 @@ import '../../core/category_labels.dart';
 import '../../core/smart/smart_difficulty_advisor.dart';
 import '../../data/local/local_data_source.dart';
 import '../../models/user_preferences.dart';
+import '../../telemetry/app_module.dart';
+import '../../telemetry/bq1_telemetry.dart';
 import '../../viewmodel/auth/auth_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
@@ -45,6 +50,7 @@ class _ProfileViewState extends State<ProfileView> {
   Widget build(BuildContext context) {
     final profileViewModel = context.watch<ProfileViewModel>();
     final questViewModel = context.watch<QuestViewModel>();
+    final telemetry = context.watch<Bq1Telemetry?>();
 
     if (profileViewModel.isLoading && profileViewModel.profile == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -89,6 +95,11 @@ class _ProfileViewState extends State<ProfileView> {
             const _PublishedPhotosSection(),
             const SizedBox(height: 24),
             _SettingsSection(profileViewModel: profileViewModel),
+            // BQ1 debug card, as in the Kotlin app: debug builds only.
+            if (kDebugMode && telemetry != null) ...[
+              const SizedBox(height: 24),
+              _Bq1DebugCard(telemetry: telemetry),
+            ],
           ],
         ),
       ),
@@ -568,6 +579,71 @@ class _SmartDifficultySummary extends StatelessWidget {
           style: textTheme.bodySmall,
         ),
       ],
+    );
+  }
+}
+
+/// BQ1 (debug builds only): what the telemetry queue holds and buttons to
+/// try it without waiting 10 minutes in the background (mirror of Kotlin's
+/// Bq1DebugCard).
+class _Bq1DebugCard extends StatelessWidget {
+  final Bq1Telemetry telemetry;
+
+  const _Bq1DebugCard({required this.telemetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('BQ1 · TELEMETRÍA (DEBUG)', style: textTheme.labelSmall?.copyWith(letterSpacing: 1)),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<int>(
+            valueListenable: telemetry.pendingCount,
+            builder: (_, count, _) => Text('Eventos en cola: $count', style: textTheme.bodySmall),
+          ),
+          ValueListenableBuilder(
+            valueListenable: telemetry.lastResume,
+            builder: (_, resume, _) => Text(
+              resume == null
+                  ? 'Sin regresos largos en esta sesión'
+                  : 'Último regreso: ${resume.background.inMinutes} min fuera · misión ${resume.questId}',
+              style: textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: telemetry.simulateLongResume,
+                child: const Text('Simular regreso largo'),
+              ),
+              OutlinedButton(
+                onPressed: () => telemetry.report(
+                  AppModule.geocoding,
+                  StateError('Simulated geocoding failure'),
+                ),
+                child: const Text('Simular fallo de geocodificación'),
+              ),
+              OutlinedButton(
+                // Uncaught on purpose: reaches PlatformDispatcher.onError.
+                onPressed: () => unawaited(Future<void>(() => throw StateError('Simulated crash (BQ1 debug)'))),
+                child: const Text('Simular error no controlado'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

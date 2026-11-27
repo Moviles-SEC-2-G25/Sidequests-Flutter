@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../analytics/analytics_tracker.dart';
 import '../data/services/shake_detector.dart';
+import '../telemetry/bq1_telemetry.dart';
 import '../viewmodel/context/context_status_view_model.dart';
 import '../viewmodel/profile/profile_view_model.dart';
 import '../viewmodel/quests/quest_view_model.dart';
@@ -52,6 +53,7 @@ class _HomeShellState extends State<HomeShell> {
   late final StreamSubscription<CheckInEvent> _checkInSubscription;
   late final StreamSubscription<void> _exploreTabSubscription;
   late final AppLifecycleListener _lifecycleListener;
+  Bq1Telemetry? _telemetry;
 
   static const _pages = [
     ExploreView(),
@@ -67,6 +69,14 @@ class _HomeShellState extends State<HomeShell> {
     _updateShakeSubscription();
 
     final questViewModel = context.read<QuestViewModel>();
+    // BQ1: "tracking a location-based quest" = an accepted, unfinished Nearby
+    // (gps) quest when the app goes to the background.
+    _telemetry = context.read<Bq1Telemetry?>();
+    _telemetry?.activeNearbyQuestId = () {
+      final mission = questViewModel.currentMission;
+      if (mission == null) return null;
+      return questViewModel.questById(mission.questId)?.locationMode == 'gps' ? mission.questId : null;
+    };
     // Lives here, not in MissionTabView: the shell is mounted exactly once
     // (MissionTabView can also be pushed on top of itself), and the
     // check-in should be announced whichever tab is showing.
@@ -199,6 +209,7 @@ class _HomeShellState extends State<HomeShell> {
     _checkInSubscription.cancel();
     _exploreTabSubscription.cancel();
     _lifecycleListener.dispose();
+    _telemetry?.activeNearbyQuestId = () => null;
     super.dispose();
   }
 
