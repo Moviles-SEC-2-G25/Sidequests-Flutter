@@ -9,6 +9,7 @@ import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../social/group_challenges_view.dart';
 import '../widgets/completion_likelihood_label.dart';
 import '../widgets/offline_notice.dart';
 import '../widgets/sponsored_badge.dart';
@@ -17,7 +18,8 @@ import 'quest_detail_view.dart';
 
 /// The "Explorar" tab: greeting, time/scope filters, a "continue where you
 /// left off" banner, AI-personalized recommendations (backed by the shared
-/// `recommend_quests` RPC / BQ5), and the full filterable catalogue below.
+/// `recommend_quests` RPC / BQ5), "Descubre más" (Retos en grupo), and the
+/// full filterable catalogue below.
 class ExploreView extends StatefulWidget {
   const ExploreView({super.key});
 
@@ -101,6 +103,8 @@ class _ExploreViewState extends State<ExploreView> {
                 questViewModel: questViewModel,
                 profileViewModel: profileViewModel,
               ),
+              const SizedBox(height: 24),
+              const _DiscoverMoreSection(key: ValueKey('discover-more')),
               const SizedBox(height: 24),
               _AllMissionsSection(key: const ValueKey('all-missions'), questViewModel: questViewModel),
             ],
@@ -336,6 +340,46 @@ class _ContinueBanner extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "Descubre más": the way into Retos en grupo, like Kotlin's "Discover
+/// more" → "Group challenges" shortcut. Opens offline too: the screen shows
+/// the challenges saved on the phone and says why changes wait.
+class _DiscoverMoreSection extends StatelessWidget {
+  const _DiscoverMoreSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Descubre más', style: textTheme.titleLarge),
+        const SizedBox(height: 10),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            onTap: () => Navigator.of(context).push(GroupChallengesView.route()),
+            leading: Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? AppColors.primaryContainerDark
+                    : AppColors.primaryContainerLight,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text('👥', style: TextStyle(fontSize: 22)),
+            ),
+            title: Text('Retos en grupo', style: textTheme.titleSmall),
+            subtitle: const Text('Explora en compañía'),
+            trailing: const Icon(Icons.chevron_right),
+          ),
+        ),
+      ],
     );
   }
 }

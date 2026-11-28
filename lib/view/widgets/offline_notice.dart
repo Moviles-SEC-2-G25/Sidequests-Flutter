@@ -30,6 +30,12 @@ abstract final class OfflineMessages {
   static const offlinePackRetry =
       'Sin conexión: podrás reintentar las descargas cuando vuelvas a tener internet.';
 
+  /// Retos en grupo: the lists on screen are the ones saved on the phone;
+  /// create, join and steps need the server (they're never queued).
+  static const groupChallenges = 'Retos cargados antes · conéctate para hacer cambios.';
+  static const groupChallengesNothingSaved =
+      'Sin conexión: conéctate para ver los retos en grupo y hacer cambios.';
+
   /// ES13: a "¿Cómo te sientes hoy?" chip tapped while the list on screen is
   /// the saved one; [level] is the chip's name ("En grupo").
   static String awaitingSocialLevel(String level) =>
