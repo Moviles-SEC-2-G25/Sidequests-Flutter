@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import 'analytics/analytics_tracker.dart';
 import 'core/app_theme.dart';
 import 'core/completion_likelihood.dart';
+import 'data/cache/memory_cache.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
 import 'data/local/step_log_database.dart';
@@ -18,16 +19,20 @@ import 'data/services/biometric_service.dart';
 import 'data/services/location_service.dart';
 import 'data/services/reverse_geocoding_service.dart';
 import 'data/services/weather_service.dart';
+import 'models/quest_recommendation.dart';
 import 'repository/auth_repository.dart';
 import 'repository/profile_repository.dart';
 import 'repository/quest_repository.dart';
 import 'repository/social_repository.dart';
+import 'telemetry/app_module.dart';
+import 'telemetry/bq1_telemetry.dart';
 import 'view/auth/auth_gate.dart';
 import 'viewmodel/auth/auth_view_model.dart';
 import 'viewmodel/context/connectivity_view_model.dart';
 import 'viewmodel/profile/stats_view_model.dart';
 import 'viewmodel/profile/profile_view_model.dart';
 import 'viewmodel/quests/quest_view_model.dart';
+import 'viewmodel/smart/smart_features_view_model.dart';
 import 'viewmodel/social/social_view_model.dart';
 import 'viewmodel/theme_view_model.dart';
 
@@ -47,8 +52,22 @@ class SidequestsApp extends StatelessWidget {
   final completionLikelihoodMemo = CompletionLikelihoodMemo();
   final statsSummaryCache = StatsSummaryCache();
 
-  SidequestsApp({super.key, required this.localDataSource, StepLogDatabase? stepLog})
-    : stepLog = stepLog ?? (kIsWeb ? null : StepLogDatabase(factory: databaseFactorySqflitePlugin));
+  /// Smart Picks' LRU with TTL (QuestRepository): account data, so it's a
+  /// session cache too.
+  final recommendationsCache = MemoryCache<String, RecommendationBatch>(
+    ttl: QuestRepository.recommendationsCacheTtl,
+    maxEntries: QuestRepository.recommendationsCacheMaxEntries,
+  );
+
+  /// BQ1 telemetry; null in tests and on the web build.
+  final Bq1Telemetry? telemetry;
+
+  SidequestsApp({
+    super.key,
+    required this.localDataSource,
+    StepLogDatabase? stepLog,
+    this.telemetry,
+  }) : stepLog = stepLog ?? (kIsWeb ? null : StepLogDatabase(factory: databaseFactorySqflitePlugin));
 
   @override
   Widget build(BuildContext context) {
@@ -83,20 +102,26 @@ class SidequestsApp extends StatelessWidget {
         Provider(
           create: (_) => ReverseGeocodingService(localDataSource: localDataSource),
         ),
+        Provider<Bq1Telemetry?>.value(value: telemetry),
         Provider(
           create: (_) => AuthRepository(
             remoteDataSource,
             localDataSource,
             stepLog: stepLog,
-            sessionCaches: [completionLikelihoodMemo, statsSummaryCache],
+            sessionCaches: [completionLikelihoodMemo, statsSummaryCache, recommendationsCache],
           ),
         ),
         Provider(
           create: (_) => ProfileRepository(remoteDataSource, localDataSource, network: network),
         ),
         Provider(
-          create: (_) =>
-              QuestRepository(remoteDataSource, localDataSource, network: network, stepLog: stepLog),
+          create: (_) => QuestRepository(
+            remoteDataSource,
+            localDataSource,
+            network: network,
+            stepLog: stepLog,
+            recommendationsCache: recommendationsCache,
+          ),
         ),
         Provider(create: (_) => SocialRepository()),
         ChangeNotifierProvider(
@@ -122,6 +147,22 @@ class SidequestsApp extends StatelessWidget {
         // Placed above MaterialApp/Navigator (not inside HomeShell) so any
         // route pushed on top of HomeShell can still see them.
         ChangeNotifierProvider(
+          create: (context) => ProfileViewModel(
+            context.read<ProfileRepository>(),
+            context.read<AuthRepository>(),
+            context.read<AuthViewModel>().userId!,
+          ),
+        ),
+        // Smart time + smart difficulty (BQ13), per signed-in user.
+        ChangeNotifierProvider(
+          create: (context) => SmartFeaturesViewModel(
+            localDataSource,
+            context.read<AuthViewModel>().userId!,
+            analyticsTracker: analyticsTracker,
+            preferredDifficulty: () => context.read<ProfileViewModel>().preferences.preferredDifficulty,
+          ),
+        ),
+        ChangeNotifierProvider(
           create: (context) => QuestViewModel(
             context.read<QuestRepository>(),
             contextManager,
@@ -129,14 +170,9 @@ class SidequestsApp extends StatelessWidget {
             context.read<AuthViewModel>().userId!,
             initialFilters: context.read<QuestRepository>().getExploreFilters(),
             completionLikelihoodMemo: completionLikelihoodMemo,
+            failureReporter: telemetry ?? FailureReporter.none,
             geocoding: context.read<ReverseGeocodingService>(),
-          ),
-        ),
-        ChangeNotifierProvider(
-          create: (context) => ProfileViewModel(
-            context.read<ProfileRepository>(),
-            context.read<AuthRepository>(),
-            context.read<AuthViewModel>().userId!,
+            onAttemptFinished: context.read<SmartFeaturesViewModel>().recordOutcome,
           ),
         ),
         ChangeNotifierProvider(

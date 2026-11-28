@@ -41,6 +41,23 @@ class QuestRecommendation {
       );
 }
 
+/// Where a [RecommendationBatch] came from (shown on the Smart Picks section,
+/// as in the Kotlin app).
+enum RecommendationSource {
+  /// A new answer from `recommend_quests`.
+  network,
+
+  /// The same request answered by the server less than 10 minutes ago, from
+  /// the in-memory LRU: no network call.
+  memory,
+
+  /// The network failed: an older answer to the same request, from memory.
+  staleMemory,
+
+  /// The network failed: the last list saved on the device.
+  saved,
+}
+
 /// One list from `recommend_quests`, or the last one saved on the device.
 class RecommendationBatch {
   final List<QuestRecommendation> recommendations;
@@ -48,13 +65,21 @@ class RecommendationBatch {
   /// Groups the BQ8 events of this list; a saved list keeps its original one.
   final String batchId;
 
-  /// True when the network failed and this list was already shown (and its
-  /// `recommendation_shown` events logged) when it was saved.
-  final bool fromCache;
+  final RecommendationSource source;
 
   const RecommendationBatch({
     required this.recommendations,
     required this.batchId,
-    this.fromCache = false,
-  });
+    bool fromCache = false,
+    RecommendationSource? source,
+  }) : source = source ?? (fromCache ? RecommendationSource.saved : RecommendationSource.network);
+
+  /// True when the network failed and this list was already shown (and its
+  /// `recommendation_shown` events logged) when it was first answered.
+  bool get fromCache =>
+      source == RecommendationSource.saved || source == RecommendationSource.staleMemory;
+
+  /// This list's `recommendation_shown` events were already logged: only a
+  /// new answer from the server logs them (BQ8 impressions).
+  bool get alreadyShown => source != RecommendationSource.network;
 }

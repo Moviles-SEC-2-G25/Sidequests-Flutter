@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 import '../../core/app_theme.dart';
 import '../../core/category_labels.dart';
 import '../../core/completion_likelihood.dart';
+import '../../core/smart/smart_difficulty_advisor.dart';
 import '../../models/app_context.dart';
 import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../../viewmodel/smart/smart_features_view_model.dart';
 import '../widgets/completion_likelihood_label.dart';
 import '../widgets/offline_notice.dart';
 import '../widgets/sponsored_badge.dart';
@@ -37,8 +39,13 @@ class _ExploreViewState extends State<ExploreView> {
   Future<void> _loadAll({bool force = false}) async {
     final questViewModel = context.read<QuestViewModel>();
     final profileViewModel = context.read<ProfileViewModel>();
+    final smartFeatures = context.read<SmartFeaturesViewModel?>();
     await Future.wait([questViewModel.load(), profileViewModel.load()]);
     if (!mounted) return;
+    // Smart available time: preselect what the user usually picks at this
+    // part of the day, before asking for recommendations.
+    final smartMinutes = smartFeatures?.smartMinutesToApply(questViewModel.selectedMinutes);
+    if (smartMinutes != null) questViewModel.applySmartMinutes(smartMinutes);
     questViewModel.showSavedRecommendationsIfOffline();
     await questViewModel.loadRecommendations(profileViewModel.preferences, forceContext: force);
   }
@@ -82,6 +89,10 @@ class _ExploreViewState extends State<ExploreView> {
               _SocialMoodFilter(
                 key: const ValueKey('social-mood'),
                 questViewModel: questViewModel,
+                profileViewModel: profileViewModel,
+              ),
+              _SmartDifficultyCard(
+                key: const ValueKey('smart-difficulty'),
                 profileViewModel: profileViewModel,
               ),
               if (questViewModel.currentMission != null) ...[
@@ -191,12 +202,14 @@ class _TimeAndScopeFilters extends StatelessWidget {
                 selected: selected,
                 onSelected: (_) {
                   questViewModel.setMinutes(minutes);
+                  context.read<SmartFeaturesViewModel?>()?.recordTimeChoice(minutes);
                   _reload();
                 },
               );
             },
           ),
         ),
+        const _SmartTimeHint(),
         const SizedBox(height: 10),
         // Wrap, not Row: the three chips (plus the selected one's checkmark)
         // are wider than a 360 dp phone and overflowed it.
@@ -430,6 +443,10 @@ class _RecommendedSection extends StatelessWidget {
           'Basado en tu tiempo, intereses y historial',
           style: Theme.of(context).textTheme.bodySmall,
         ),
+        if (_sourceLabel(questViewModel) case final label?) ...[
+          const SizedBox(height: 2),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+        ],
         if (questViewModel.completionLabelsFromCache) const _SavedDataNote(),
         if (questViewModel.recommendationsFromCache) ...[
           const SizedBox(height: 8),
@@ -477,6 +494,19 @@ class _RecommendedSection extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Where Smart Picks came from (mirror of the Kotlin app's source line).
+String? _sourceLabel(QuestViewModel questViewModel) {
+  final count = questViewModel.recommendations.length;
+  final misiones = count == 1 ? 'misión' : 'misiones';
+  return switch (questViewModel.recommendationsSource) {
+    null => null,
+    RecommendationSource.network => 'Fuente: Supabase (BQ5) · $count $misiones',
+    RecommendationSource.memory => 'Fuente: caché en memoria · $count $misiones',
+    RecommendationSource.staleMemory ||
+    RecommendationSource.saved => 'Fuente: guardadas (sin conexión) · $count $misiones',
+  };
 }
 
 class _RecommendationCard extends StatefulWidget {
@@ -925,6 +955,108 @@ class _LiveContextNote extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// "⚡ Elección inteligente: sueles tener ..." under the time chips.
+class _SmartTimeHint extends StatelessWidget {
+  const _SmartTimeHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = context.watch<SmartFeaturesViewModel?>()?.smartTimeHint;
+    if (hint == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        hint,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.amber),
+      ),
+    );
+  }
+}
+
+/// BQ13: "Dificultad inteligente" card, with "Cambiar a X" / "Mantener Y".
+/// Accepting saves the new preferred difficulty to the profile, which needs
+/// a connection.
+class _SmartDifficultyCard extends StatelessWidget {
+  final ProfileViewModel profileViewModel;
+
+  const _SmartDifficultyCard({super.key, required this.profileViewModel});
+
+  Future<void> _accept(BuildContext context, SmartFeaturesViewModel smart, DifficultySuggestion suggestion) async {
+    if (readIsOffline(context)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(OfflineMessages.savePreferences)),
+      );
+      return;
+    }
+    smart.trackSuggestionAccepted(suggestion);
+    final saved = await profileViewModel.updatePreferences(
+      profileViewModel.preferences.copyWith(preferredDifficulty: suggestion.suggested),
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          saved
+              ? 'Listo: tu dificultad ahora es ${difficultyLabelEs(suggestion.suggested)}.'
+              : profileViewModel.errorMessage ?? 'No se pudo guardar tu dificultad.',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final smart = context.watch<SmartFeaturesViewModel?>();
+    final suggestion = smart?.difficultySuggestion;
+    if (smart == null || suggestion == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.amber.withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'DIFICULTAD INTELIGENTE',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: AppColors.amber,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(suggestion.explanation, style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: Text('Cambiar a ${difficultyLabelEs(suggestion.suggested)}'),
+                  selected: true,
+                  selectedColor: AppColors.amber,
+                  onSelected: (_) => _accept(context, smart, suggestion),
+                ),
+                ChoiceChip(
+                  label: Text('Mantener ${difficultyLabelEs(suggestion.current)}'),
+                  selected: false,
+                  onSelected: (_) => smart.dismissDifficultySuggestion(),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

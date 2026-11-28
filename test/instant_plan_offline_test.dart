@@ -16,6 +16,7 @@ import 'package:sidequests/analytics/analytics_event_type.dart';
 import 'package:sidequests/analytics/analytics_tracker.dart';
 import 'package:sidequests/core/app_exception.dart';
 import 'package:sidequests/core/verification/step_verification_strategy.dart';
+import 'package:sidequests/data/cache/memory_cache.dart';
 import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/local/local_data_source.dart';
 import 'package:sidequests/data/remote/supabase_remote_data_source.dart';
@@ -355,8 +356,15 @@ void main() {
   late _SpyTracker tracker;
   late int nextId;
 
-  QuestRepository newRepository(LocalDataSource source) =>
-      QuestRepository(remote, source, newId: () => 'uuid-${++nextId}');
+  // These tests are about the device fallback: with a zero TTL every request
+  // goes to the network, and an earlier answer only comes back when it fails
+  // (the in-memory LRU has its own tests in recommendations_cache_test).
+  QuestRepository newRepository(LocalDataSource source) => QuestRepository(
+    remote,
+    source,
+    newId: () => 'uuid-${++nextId}',
+    recommendationsCache: MemoryCache(ttl: Duration.zero, maxEntries: 16),
+  );
 
   QuestViewModel newViewModel(QuestRepository questRepository) => QuestViewModel(
     questRepository,
