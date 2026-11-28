@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -21,10 +22,58 @@ import 'quest_detail_view.dart';
 /// `recommend_quests` RPC / BQ5), "Descubre más" (Retos en grupo), and the
 /// full filterable catalogue below.
 class ExploreView extends StatefulWidget {
-  const ExploreView({super.key});
+  /// Builds "Todas las misiones" as the old eager Column (every row built
+  /// and laid out on each rebuild). Only for measuring the micro-optimization
+  /// against its baseline; see [kExploreEagerList].
+  final bool eagerMissionList;
+
+  const ExploreView({super.key, this.eagerMissionList = kExploreEagerList});
 
   @override
   State<ExploreView> createState() => _ExploreViewState();
+}
+
+/// `--dart-define=EXPLORE_EAGER_LIST=true` puts back the eager mission list,
+/// to compare before/after in the same build on the phone. Off by default.
+const kExploreEagerList = bool.fromEnvironment('EXPLORE_EAGER_LIST');
+
+/// Debug/profile-only counters for the Explore micro-optimization. Every
+/// call site is behind `if (!kReleaseMode)`, a compile-time constant, so
+/// release builds drop them.
+abstract final class ExploreBuildStats {
+  /// ExploreView builds since the last [reset].
+  static int exploreBuilds = 0;
+
+  /// `_QuestRow` builds since the last [reset], scrolling included.
+  static int questRowBuilds = 0;
+
+  /// Rows built in the frame of the last ExploreView rebuild (its build
+  /// plus the layout that follows, where a lazy list builds its rows).
+  static int lastRebuildRows = 0;
+
+  static bool _frameScheduled = false;
+  static int _rowsAtBuild = 0;
+
+  static void reset() {
+    exploreBuilds = 0;
+    questRowBuilds = 0;
+    lastRebuildRows = 0;
+    _rowsAtBuild = 0;
+    _frameScheduled = false;
+  }
+
+  static void _onExploreBuild() {
+    exploreBuilds++;
+    if (_frameScheduled) return;
+    _frameScheduled = true;
+    _rowsAtBuild = questRowBuilds;
+    final rebuild = exploreBuilds;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _frameScheduled = false;
+      lastRebuildRows = questRowBuilds - _rowsAtBuild;
+      debugPrint('MicroOpt Explore: rebuild #$rebuild → quest rows built: $lastRebuildRows');
+    });
+  }
 }
 
 class _ExploreViewState extends State<ExploreView> {
@@ -50,69 +99,140 @@ class _ExploreViewState extends State<ExploreView> {
     return 'Buenas noches';
   }
 
+  /// Micro-optimization (Alejandro, Sprint 4): lazy "Todas las misiones".
+  ///
+  /// Problem: the body was a ListView whose last child was one Column with
+  /// every mission of [QuestViewModel.filteredCatalog]. Explore watches the
+  /// whole ViewModel, so each notify (a filter chip, a recommendations load,
+  /// the context) rebuilt and laid out ALL the rows, on screen or not: 200
+  /// missions meant 200 `_QuestRow`s (Card + ListTile + Texts) per rebuild,
+  /// to show about 5. And filteredCatalog, which filters and re-sorts the
+  /// catalogue each time it's read, was read 3 times per build.
+  ///
+  /// Change: the body is a CustomScrollView. The sections above stay one
+  /// SliverList of keyed boxes (same keys, so the banners appearing don't
+  /// recreate their State), and the missions are a SliverList.builder that
+  /// builds only the rows inside the viewport plus its cache extent; the
+  /// rest are built when scrolled to. filteredCatalog is read once per
+  /// build and passed down. No itemExtent/prototypeItem: a row is taller
+  /// when sponsored or when its title wraps.
+  ///
+  /// Not the same as Lucas's RepaintBoundary on the compass (that limits
+  /// what is *repainted* on each heading) nor Julián's missionSteps
+  /// notifier (that limits *which widgets* are notified of a step) or his
+  /// CompletionLikelihoodMemo (caching a result across builds). This one
+  /// limits *how many widgets are built and laid out* when Explore does
+  /// rebuild, and caches nothing between builds.
+  ///
+  /// `--dart-define=EXPLORE_EAGER_LIST=true` brings back the eager Column to
+  /// measure against; [ExploreBuildStats] counts rows per rebuild.
   @override
   Widget build(BuildContext context) {
+    if (!kReleaseMode) ExploreBuildStats._onExploreBuild();
     final questViewModel = context.watch<QuestViewModel>();
     final profileViewModel = context.watch<ProfileViewModel>();
+    // Once per build: every read filters and re-sorts the whole catalogue.
+    final missions = questViewModel.filteredCatalog;
+    final likelihoodByCategory = questViewModel.completionLikelihoodByCategory;
+
+    Widget missionRow(BuildContext context, Quest quest) => _QuestRow(
+      quest: quest,
+      completionLevel: questViewModel.completionLevelFor(quest, likelihoodByCategory),
+      onTap: () {
+        questViewModel.registerInteraction();
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest)));
+      },
+    );
+
+    final missionsHeader = _AllMissionsHeader(
+      questViewModel: questViewModel,
+      missions: missions,
+    );
+
+    // Keyed so a conditional insertion above (the "continue" banner
+    // appearing/disappearing) can't shift these to a new list slot and,
+    // since a sliver list reconciles unkeyed children positionally,
+    // silently dispose+recreate their State mid-interaction.
+    final sections = <Widget>[
+      ..._topSections(questViewModel, profileViewModel),
+      if (widget.eagerMissionList)
+        // The baseline: one box with every row, built and laid out whole.
+        Column(
+          key: const ValueKey('all-missions'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [missionsHeader, for (final quest in missions) missionRow(context, quest)],
+        )
+      else
+        KeyedSubtree(key: const ValueKey('all-missions'), child: missionsHeader),
+    ];
 
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _loadAll,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-            // Keyed so a conditional insertion above (the "continue" banner
-            // appearing/disappearing) can't shift these to a new list slot
-            // and, since ListView reconciles unkeyed children positionally,
-            // silently dispose+recreate their State mid-interaction.
-            children: [
-              _Header(
-                key: const ValueKey('header'),
-                greeting: _greeting,
-                displayName: profileViewModel.profile?.displayName,
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                sliver: SliverList.list(children: sections),
               ),
-              const SizedBox(height: 20),
-              _TimeAndScopeFilters(
-                key: const ValueKey('filters'),
-                questViewModel: questViewModel,
-                profileViewModel: profileViewModel,
-              ),
-              const SizedBox(height: 16),
-              _SocialMoodFilter(
-                key: const ValueKey('social-mood'),
-                questViewModel: questViewModel,
-                profileViewModel: profileViewModel,
-              ),
-              if (questViewModel.currentMission != null) ...[
-                const SizedBox(height: 16),
-                _ContinueBanner(
-                  key: const ValueKey('continue-banner'),
-                  userQuestId: questViewModel.currentMission!.questId,
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                sliver: SliverList.builder(
+                  itemCount: widget.eagerMissionList ? 0 : missions.length,
+                  itemBuilder: (context, index) => missionRow(context, missions[index]),
                 ),
-              ],
-              if (questViewModel.isAdaptingToContext) ...[
-                const SizedBox(height: 16),
-                _ContextAdaptationBanner(
-                  key: const ValueKey('context-adaptation-banner'),
-                  appContext: questViewModel.currentContext!,
-                ),
-              ],
-              const SizedBox(height: 20),
-              _RecommendedSection(
-                key: const ValueKey('recommended'),
-                questViewModel: questViewModel,
-                profileViewModel: profileViewModel,
               ),
-              const SizedBox(height: 24),
-              const _DiscoverMoreSection(key: ValueKey('discover-more')),
-              const SizedBox(height: 24),
-              _AllMissionsSection(key: const ValueKey('all-missions'), questViewModel: questViewModel),
             ],
           ),
         ),
       ),
     );
   }
+
+  /// Everything above "Todas las misiones", in order.
+  List<Widget> _topSections(QuestViewModel questViewModel, ProfileViewModel profileViewModel) => [
+    _Header(
+      key: const ValueKey('header'),
+      greeting: _greeting,
+      displayName: profileViewModel.profile?.displayName,
+    ),
+    const SizedBox(height: 20),
+    _TimeAndScopeFilters(
+      key: const ValueKey('filters'),
+      questViewModel: questViewModel,
+      profileViewModel: profileViewModel,
+    ),
+    const SizedBox(height: 16),
+    _SocialMoodFilter(
+      key: const ValueKey('social-mood'),
+      questViewModel: questViewModel,
+      profileViewModel: profileViewModel,
+    ),
+    if (questViewModel.currentMission != null) ...[
+      const SizedBox(height: 16),
+      _ContinueBanner(
+        key: const ValueKey('continue-banner'),
+        userQuestId: questViewModel.currentMission!.questId,
+      ),
+    ],
+    if (questViewModel.isAdaptingToContext) ...[
+      const SizedBox(height: 16),
+      _ContextAdaptationBanner(
+        key: const ValueKey('context-adaptation-banner'),
+        appContext: questViewModel.currentContext!,
+      ),
+    ],
+    const SizedBox(height: 20),
+    _RecommendedSection(
+      key: const ValueKey('recommended'),
+      questViewModel: questViewModel,
+      profileViewModel: profileViewModel,
+    ),
+    const SizedBox(height: 24),
+    const _DiscoverMoreSection(key: ValueKey('discover-more')),
+    const SizedBox(height: 24),
+  ];
 }
 
 class _Header extends StatelessWidget {
@@ -720,10 +840,16 @@ class _RecommendationCardState extends State<_RecommendationCard> {
   }
 }
 
-class _AllMissionsSection extends StatelessWidget {
+/// "Todas las misiones" down to its rows: category chips, title and the
+/// loading/error/empty/offline states. The rows themselves are built by
+/// [_ExploreViewState.build], lazily.
+class _AllMissionsHeader extends StatelessWidget {
   final QuestViewModel questViewModel;
 
-  const _AllMissionsSection({super.key, required this.questViewModel});
+  /// [QuestViewModel.filteredCatalog], read once by the caller.
+  final List<Quest> missions;
+
+  const _AllMissionsHeader({required this.questViewModel, required this.missions});
 
   @override
   Widget build(BuildContext context) {
@@ -741,7 +867,6 @@ class _AllMissionsSection extends StatelessWidget {
     }
 
     final categoryOptions = [null, 'sponsored', ...questViewModel.categories];
-    final likelihoodByCategory = questViewModel.completionLikelihoodByCategory;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -770,7 +895,7 @@ class _AllMissionsSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text('Todas las misiones', style: Theme.of(context).textTheme.titleLarge),
-        if (questViewModel.completionLabelsFromCache && questViewModel.filteredCatalog.isNotEmpty)
+        if (questViewModel.completionLabelsFromCache && missions.isNotEmpty)
           const _SavedDataNote(),
         const SizedBox(height: 8),
         if (questViewModel.catalogUnavailable)
@@ -781,23 +906,10 @@ class _AllMissionsSection extends StatelessWidget {
               'Conéctate y desliza hacia abajo para cargarlas.',
             ),
           )
-        else if (questViewModel.filteredCatalog.isEmpty)
+        else if (missions.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Text('No hay misiones que coincidan con estos filtros.'),
-          )
-        else
-          ...questViewModel.filteredCatalog.map(
-            (quest) => _QuestRow(
-              quest: quest,
-              completionLevel: questViewModel.completionLevelFor(quest, likelihoodByCategory),
-              onTap: () {
-                questViewModel.registerInteraction();
-                Navigator.of(
-                  context,
-                ).push(MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest)));
-              },
-            ),
           ),
       ],
     );
@@ -832,6 +944,7 @@ class _QuestRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!kReleaseMode) ExploreBuildStats.questRowBuilds++;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
