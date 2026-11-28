@@ -8,9 +8,11 @@ import 'package:provider/provider.dart';
 import '../analytics/analytics_tracker.dart';
 import '../data/services/shake_detector.dart';
 import '../viewmodel/context/context_status_view_model.dart';
+import '../viewmodel/offline/offline_pack_view_model.dart';
 import '../viewmodel/profile/profile_view_model.dart';
 import '../viewmodel/quests/quest_view_model.dart';
 import 'widgets/context_banner.dart';
+import 'widgets/offline_notice.dart';
 
 import 'profile/profile_view.dart';
 import 'quests/explore_view.dart';
@@ -71,6 +73,10 @@ class _HomeShellState extends State<HomeShell> {
     _updateShakeSubscription();
     _updateMissionVisibility();
 
+    // Offline pack: the manifest back, what's really cached checked, and
+    // (online) the pending quests prepared.
+    unawaited(context.read<OfflinePackViewModel?>()?.start(isOnline: !readIsOffline(context)));
+
     final questViewModel = context.read<QuestViewModel>();
     // Lives here, not in MissionTabView: the shell is mounted exactly once
     // (MissionTabView can also be pushed on top of itself), and the
@@ -115,6 +121,8 @@ class _HomeShellState extends State<HomeShell> {
     final questViewModel = context.read<QuestViewModel>();
     final profileViewModel = context.read<ProfileViewModel>();
     unawaited(context.read<AnalyticsTracker>().flushPending());
+    // Offline pack: the pending and failed quests are downloaded now.
+    unawaited(context.read<OfflinePackViewModel?>()?.retry(isOnline: true));
     try {
       await questViewModel.refreshAfterReconnect(profileViewModel.preferences);
     } catch (_) {
