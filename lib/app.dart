@@ -12,21 +12,25 @@ import 'core/workers/similar_quest_worker.dart';
 import 'data/cache/byte_lru_cache.dart';
 import 'data/context/context_manager.dart';
 import 'data/local/local_data_source.dart';
+import 'data/local/offline_pack_manifest_store.dart';
 import 'data/local/step_log_database.dart';
 import 'data/remote/network_guard.dart';
 import 'data/remote/supabase_remote_data_source.dart';
 import 'data/services/biometric_service.dart';
 import 'data/services/location_service.dart';
 import 'data/services/reverse_geocoding_service.dart';
+import 'data/offline/offline_pack_manager.dart';
 import 'data/services/weather_service.dart';
 import 'repository/auth_repository.dart';
 import 'repository/evidence_repository.dart';
+import 'repository/group_challenge_repository.dart';
 import 'repository/profile_repository.dart';
 import 'repository/quest_repository.dart';
 import 'repository/social_repository.dart';
 import 'view/auth/auth_gate.dart';
 import 'viewmodel/auth/auth_view_model.dart';
 import 'viewmodel/context/connectivity_view_model.dart';
+import 'viewmodel/offline/offline_pack_view_model.dart';
 import 'viewmodel/profile/stats_view_model.dart';
 import 'viewmodel/profile/profile_view_model.dart';
 import 'viewmodel/quests/quest_view_model.dart';
@@ -104,7 +108,20 @@ class SidequestsApp extends StatelessWidget {
           create: (_) => ReverseGeocodingService(localDataSource: localDataSource),
         ),
         Provider(
-          create: (_) => AuthRepository(
+          create: (_) => ProfileRepository(remoteDataSource, localDataSource, network: network),
+        ),
+        Provider(
+          create: (_) =>
+              QuestRepository(remoteDataSource, localDataSource, network: network, stepLog: stepLog),
+        ),
+        // Offline pack: its manifest + the steps pre-loaded through QuestRepository.
+        Provider(
+          create: (context) =>
+              OfflinePackManager(context.read<QuestRepository>(), OfflinePackManifestStore()),
+        ),
+        // After the offline pack: signing out clears its manifest too.
+        Provider(
+          create: (context) => AuthRepository(
             remoteDataSource,
             localDataSource,
             stepLog: stepLog,
@@ -115,10 +132,12 @@ class SidequestsApp extends StatelessWidget {
               evidenceThumbnailCache,
               evidencePhotoCache,
             ],
+            offlinePack: context.read<OfflinePackManager>(),
           ),
         ),
+        Provider(create: (_) => SocialRepository()),
         Provider(
-          create: (_) => ProfileRepository(remoteDataSource, localDataSource, network: network),
+          create: (_) => GroupChallengeRepository(remoteDataSource, localDataSource, network: network),
         ),
         Provider(
           create: (_) =>
@@ -146,6 +165,9 @@ class SidequestsApp extends StatelessWidget {
         // Above MaterialApp so every route, including login and the screens
         // pushed over HomeShell, can block what needs the internet.
         ChangeNotifierProvider(create: (_) => ConnectivityViewModel()),
+        ChangeNotifierProvider(
+          create: (context) => OfflinePackViewModel(context.read<OfflinePackManager>()),
+        ),
         // Below providers depend on a signed-in userId. Provider's `create`
         // is lazy (runs on first read), and these are only ever read from
         // inside HomeShell (reachable only once authenticated), so reading

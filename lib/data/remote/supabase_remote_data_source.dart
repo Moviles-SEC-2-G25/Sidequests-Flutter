@@ -159,6 +159,41 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
     return (rows as List).cast<Map<String, dynamic>>();
   }
 
+  // --- Group challenges (migration 011): two RPCs over a private schema. The
+  // server takes the user from auth.uid() and logs every create/join/
+  // progress it receives (BQ2), so the client never reports those. ---
+
+  /// `group_challenge_list`: the unexpired challenges this user is in
+  /// ([mine] true) or can join (false). At most 50, newest first.
+  Future<List<Map<String, dynamic>>> groupChallengeList({required bool mine}) async {
+    final rows = await _client.rpc('group_challenge_list', params: {'p_mine': mine});
+    return (rows as List).cast<Map>().map((row) => row.cast<String, dynamic>()).toList();
+  }
+
+  /// `group_challenge_act`: returns `{ok, message, challenge_id}`. Idempotent
+  /// per (user, [requestId]): sending the same id again returns the answer
+  /// saved the first time instead of applying it twice. Null arguments are
+  /// left out, as Kotlin does (the function defaults them to null).
+  Future<Map<String, dynamic>> groupChallengeAct({
+    required String action,
+    required String requestId,
+    String? challengeId,
+    String? questId,
+    int? progress,
+  }) async {
+    final result = await _client.rpc(
+      'group_challenge_act',
+      params: {
+        'p_action': action,
+        'p_request_id': requestId,
+        'p_challenge_id': ?challengeId,
+        'p_quest_id': ?questId,
+        'p_progress': ?progress,
+      },
+    );
+    return (result as Map).cast<String, dynamic>();
+  }
+
   Future<Map<String, dynamic>> upsertUserQuest(
     Map<String, dynamic> userQuest,
   ) => _client.from('user_quests').upsert(userQuest).select().single();

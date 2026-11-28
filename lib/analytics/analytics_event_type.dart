@@ -17,4 +17,12 @@ abstract final class AnalyticsEventType {
   static const shakeSurprise = 'shake_surprise';
   static const similarQuestOpened = 'similar_quest_opened';
   static const photoProofUploaded = 'photo_proof_uploaded';
+
+  /// BQ2: a group create/join/progress request got no answer from the server
+  /// (dropped connection, timeout), so the device can't tell whether it was
+  /// applied. metadata {operation, request_id}; the pipeline matches it to
+  /// `sidequests_group_private.operations`. The server logs every request it
+  /// does receive, so successes and server rejections are never sent.
+  static const groupChallengeClientUnconfirmed = 'group_challenge_client_unconfirmed';
+  static const bq11CommercialBlockCompleted = 'bq11_commercial_block_completed';
 }

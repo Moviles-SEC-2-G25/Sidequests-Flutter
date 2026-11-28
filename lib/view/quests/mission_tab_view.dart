@@ -30,6 +30,23 @@ class MissionTabView extends StatefulWidget {
 
 class _MissionTabViewState extends State<MissionTabView> {
   String? _loadedForQuestId;
+  QuestViewModel? _questViewModel;
+
+  /// Pushed (not the tab, which HomeShell reports): on screen while nothing
+  /// covers this route. BQ11 only measures while a Misión screen is showing.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.isTab) return;
+    _questViewModel = context.read<QuestViewModel>();
+    _questViewModel!.setMissionScreenVisible(this, ModalRoute.isCurrentOf(context) ?? true);
+  }
+
+  @override
+  void dispose() {
+    _questViewModel?.setMissionScreenVisible(this, false);
+    super.dispose();
+  }
 
   void _ensureStepsLoaded(QuestViewModel questViewModel) {
     final mission = questViewModel.currentMission;
@@ -170,7 +187,10 @@ class _MissionChecklist extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          if (isOffline) ...[
+          // A check-in saved for the current step says what happens with it
+          // ("se guardará cuando vuelvas a tener conexión"): saying instead
+          // that the step needs the internet would contradict it.
+          if (isOffline && !questViewModel.isCheckInSavedForCurrentStep) ...[
             const OfflineNotice(message: OfflineMessages.missionProgress),
             const SizedBox(height: 16),
           ],
@@ -202,6 +222,10 @@ class _MissionChecklist extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _WalkedStepsCard(mission: mission, questViewModel: questViewModel),
+            if (questViewModel.canShareBq11(mission, quest)) ...[
+              const SizedBox(height: 12),
+              _ZoneTimeSharingCard(questViewModel: questViewModel),
+            ],
             const SizedBox(height: 16),
             for (var i = 0; i < steps.length; i++)
               _StepTile(
@@ -335,6 +359,57 @@ class _WalkedStepsCard extends StatelessWidget {
               child: Text(actionLabel),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// BQ11 opt-in, off by default and per attempt.
+class _ZoneTimeSharingCard extends StatelessWidget {
+  final QuestViewModel questViewModel;
+
+  const _ZoneTimeSharingCard({required this.questViewModel});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final error = questViewModel.bq11SharingError;
+    // Material, not a decorated Container: the switch's ripple paints on it.
+    return Material(
+      color: Theme.of(context).cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 4, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              key: const Key('bq11SharingSwitch'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Compartir tiempo en la zona (anónimo)'),
+              subtitle: const Text(
+                'Opcional. Solo fines de semana en Bogotá y con esta pantalla abierta: '
+                'al completar se envía cuánto tiempo pasaste en una cuadra comercial '
+                'del piloto (si fueron más de 20 min), nunca tus coordenadas. '
+                'Apágalo antes de completar y no se envía nada.',
+              ),
+              value: questViewModel.isSharingBq11,
+              onChanged: questViewModel.setBq11Sharing,
+            ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(
+                  error,
+                  style: textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

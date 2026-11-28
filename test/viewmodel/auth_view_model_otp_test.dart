@@ -13,6 +13,7 @@ import 'package:sidequests/data/services/biometric_service.dart';
 import 'package:sidequests/data/services/location_service.dart';
 import 'package:sidequests/repository/auth_repository.dart';
 import 'package:sidequests/view/auth/otp_login_view.dart';
+import 'package:sidequests/view/widgets/offline_notice.dart';
 import 'package:sidequests/viewmodel/auth/auth_view_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthChangeEvent, AuthState, User;
 
@@ -407,6 +408,8 @@ void main() {
         await tester.pump();
 
         expect(find.text('Sin conexión. Conéctate para recibir tu código.'), findsOneWidget);
+        // Before any tap, and like LoginView's: an OfflineNotice.
+        expect(find.descendant(of: find.byType(OfflineNotice), matching: find.text(AuthViewModel.offlineSendMessage)), findsOneWidget);
         expect(filledButton(tester, 'Enviar código').onPressed, isNull);
       });
 
@@ -439,6 +442,7 @@ void main() {
 
         expect(repository.sentTo, isEmpty);
         expect(find.text('Sin conexión. Conéctate para recibir tu código.'), findsOneWidget);
+        expect(find.descendant(of: find.byType(OfflineNotice), matching: find.text(AuthViewModel.offlineSendMessage)), findsOneWidget);
         expect(find.widgetWithText(FilledButton, 'Enviar código'), findsOneWidget); // still on step 1
         expect(field(tester).text, 'ana@uniandes.edu.co');
         expect(find.textContaining('Reenviar código ('), findsNothing);
@@ -472,6 +476,7 @@ void main() {
         expect(repository.triedCodes, isEmpty);
         expect(field(tester).text, _validCode);
         expect(find.text('Sin conexión. Conéctate para verificar tu código.'), findsOneWidget);
+        expect(find.descendant(of: find.byType(OfflineNotice), matching: find.text(AuthViewModel.offlineVerifyMessage)), findsOneWidget);
         expect(filledButton(tester, 'Entrar').onPressed, isNull);
 
         await goOnline(tester);
