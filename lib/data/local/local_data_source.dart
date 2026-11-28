@@ -6,6 +6,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/smart/smart_history_codec.dart';
+
 /// Local cache: profile, preferences, quest catalog and steps, the user's
 /// attempts (and when they were last synced) and their photo proofs, active
 /// quest and progress, analytics
@@ -41,6 +43,9 @@ class LocalDataSource {
   static const _keyOnboardingComplete = 'onboarding_complete';
   static const _keyDarkMode = 'dark_mode';
   static const _keyAutoTheme = 'auto_theme';
+  static const _keySmartTimeChoices = 'smart_time_choices_';
+  static const _keySmartDifficultyOutcomes = 'smart_difficulty_outcomes_';
+  static const _keySmartDifficultyDismissedAt = 'smart_difficulty_dismissed_at_';
   static const _keyExploreFilters = 'explore_filters';
   static const _keyMissionNotifications = 'mission_notifications_enabled';
   static const _keyDailyReminders = 'daily_reminders_enabled';
@@ -71,6 +76,36 @@ class LocalDataSource {
   bool isAutoThemeEnabled() => _prefs.getBool(_keyAutoTheme) ?? false;
 
   Future<void> setAutoThemeEnabled(bool value) => _prefs.setBool(_keyAutoTheme, value);
+
+  /// Smart features' history (smart time, smart difficulty), per user id so
+  /// two accounts on the same phone never mix their data. Not cleared on
+  /// sign-out: it's keyed by account, and coming back restores it.
+  SmartHistory loadSmartHistory(String userId) => SmartHistory(
+    timeChoices: SmartHistoryCodec.decodeTimeChoices(
+      _prefs.getString('$_keySmartTimeChoices$userId'),
+    ),
+    difficultyOutcomes: SmartHistoryCodec.decodeOutcomes(
+      _prefs.getString('$_keySmartDifficultyOutcomes$userId'),
+    ),
+    difficultySuggestionDismissedAt: _prefs.getInt('$_keySmartDifficultyDismissedAt$userId'),
+  );
+
+  Future<void> saveSmartHistory(String userId, SmartHistory history) async {
+    await _prefs.setString(
+      '$_keySmartTimeChoices$userId',
+      SmartHistoryCodec.encodeTimeChoices(history.timeChoices),
+    );
+    await _prefs.setString(
+      '$_keySmartDifficultyOutcomes$userId',
+      SmartHistoryCodec.encodeOutcomes(history.difficultyOutcomes),
+    );
+    final dismissedAt = history.difficultySuggestionDismissedAt;
+    if (dismissedAt == null) {
+      await _prefs.remove('$_keySmartDifficultyDismissedAt$userId');
+    } else {
+      await _prefs.setInt('$_keySmartDifficultyDismissedAt$userId', dismissedAt);
+    }
+  }
 
   /// Explore's last filters; null until the user changes one.
   Map<String, dynamic>? getExploreFilters() {
