@@ -384,6 +384,9 @@ void main() {
     testWidgets('solo construye lo visible, y agitar sigue viendo todas las misiones', (tester) async {
       final harness = _Harness(_syntheticCatalog(200));
       await harness.pump(tester, eager: false);
+      // The catalogue starts below the fold (the Kotlin layout's header).
+      await tester.scrollUntilVisible(mission(0), 300, scrollable: scrollable());
+      await tester.pumpAndSettle();
 
       expect(mission(0), findsOneWidget);
       expect(mission(199), findsNothing); // not built until scrolled to

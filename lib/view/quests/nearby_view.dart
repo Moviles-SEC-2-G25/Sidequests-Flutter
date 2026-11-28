@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/app_theme.dart';
 import '../../core/distance.dart';
 import '../../models/quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
@@ -44,73 +43,67 @@ class _NearbyViewState extends State<NearbyView> {
     }
     withDistance.sort((a, b) => a.$2.compareTo(b.$2));
 
+    final textTheme = Theme.of(context).textTheme;
+    final primary = Theme.of(context).colorScheme.primary;
+    void openDetail(Quest quest) =>
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest)));
+
+    // Kotlin's NearbyScreen: header, radar, location button, "AVAILABLE · n"
+    // and plain cards, 12 dp apart.
+    final children = <Widget>[
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('LOCATION QUESTS', style: textTheme.labelMedium?.copyWith(color: primary, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text('Where are you headed today?', style: textTheme.headlineSmall),
+          const SizedBox(height: 4),
+          Text('${gpsQuests.length} places to explore', style: textTheme.bodySmall),
+        ],
+      ),
+      _RadarGraphic(color: primary),
+      if (questViewModel.userLatitude == null)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FilledButton(
+              onPressed: questViewModel.isLocatingUser ? null : questViewModel.requestUserLocation,
+              child: Text(
+                questViewModel.isLocatingUser ? 'Getting your location…' : 'Turn on location to see distances',
+              ),
+            ),
+            if (questViewModel.userLocationUnavailable) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Could not get your location. Check that location is on and Sidequests has permission.',
+                style: textTheme.bodySmall,
+              ),
+            ],
+          ],
+        ),
+      Text('AVAILABLE · ${gpsQuests.length}', style: textTheme.labelMedium),
+      if (gpsQuests.isEmpty)
+        questViewModel.isLoading
+            ? const Align(alignment: Alignment.centerLeft, child: CircularProgressIndicator())
+            : Text('No location quests are available right now.', style: textTheme.bodyLarge),
+      for (final (quest, distanceKm) in withDistance)
+        _NearbyCard(
+          quest: quest,
+          distanceLabel: '${distanceKm.toStringAsFixed(1)} km',
+          onTap: () => openDetail(quest),
+        ),
+      for (final quest in withoutDistance) _NearbyCard(quest: quest, onTap: () => openDetail(quest)),
+    ];
+
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: questViewModel.load,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-            children: [
-              Text(
-                'LOCATION QUESTS',
-                style: Theme.of(
-                  context,
-                ).textTheme.labelMedium?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 4),
-              Text('Where are you headed today?', style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 6),
-              Text(
-                '${gpsQuests.length} places waiting — confirmed with 📷 + 📍',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 24),
-              const _RadarGraphic(),
-              const SizedBox(height: 20),
-              if (questViewModel.userLatitude == null)
-                FilledButton(
-                  onPressed: questViewModel.isLocatingUser
-                      ? null
-                      : questViewModel.requestUserLocation,
-                  child: questViewModel.isLocatingUser
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Turn on location to see distances'),
-                ),
-              if (questViewModel.userLatitude == null && questViewModel.userLocationUnavailable) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Could not get your location. Check that GPS is on '
-                  'and that Sidequests has location permission.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-              const SizedBox(height: 20),
-              Text(
-                'AVAILABLE · ${gpsQuests.length}',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(letterSpacing: 0.5),
-              ),
-              const SizedBox(height: 10),
-              for (final (quest, distanceKm) in withDistance)
-                _NearbyCard(
-                  quest: quest,
-                  distanceLabel: '${distanceKm.toStringAsFixed(1)} km',
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest))),
-                ),
-              for (final quest in withoutDistance)
-                _NearbyCard(
-                  quest: quest,
-                  onTap: () => Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest))),
-                ),
-            ],
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            itemCount: children.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (_, index) => children[index],
           ),
         ),
       ),
@@ -126,44 +119,51 @@ class _NearbyViewState extends State<NearbyView> {
   }
 }
 
+/// Kotlin's radar: three thin rings (radius 90/65/40 dp, primary at 16 %)
+/// around a filled 10 dp dot, on a 180 dp tall canvas.
 class _RadarGraphic extends StatelessWidget {
-  const _RadarGraphic();
+  final Color color;
+
+  const _RadarGraphic({required this.color});
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 180,
-      child: Center(
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            for (final size in [180.0, 130.0, 80.0])
-              Container(
-                width: size,
-                height: size,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
-                ),
-              ),
-            Container(
-              width: 20,
-              height: 20,
-              decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
-              child: const Icon(Icons.location_on, size: 14, color: Colors.white),
-            ),
-          ],
-        ),
-      ),
+      width: double.infinity,
+      child: CustomPaint(painter: _RadarPainter(color)),
     );
   }
 }
 
+class _RadarPainter extends CustomPainter {
+  final Color color;
+
+  _RadarPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final ring = Paint()
+      ..color = color.withValues(alpha: .16)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    for (final radius in const [90.0, 65.0, 40.0]) {
+      canvas.drawCircle(center, radius, ring);
+    }
+    canvas.drawCircle(center, 10, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(_RadarPainter oldDelegate) => oldDelegate.color != color;
+}
+
+/// Kotlin's nearby row: a plain card with the emoji, title, place,
+/// "Difficulty · duration", a Sponsored pill and the distance on the right.
 class _NearbyCard extends StatelessWidget {
   final Quest quest;
 
-  /// Only set when a real distance is known; the location name always lives
-  /// under the title so long names can't squeeze the title column.
+  /// Only set when a real distance is known.
   final String? distanceLabel;
   final VoidCallback onTap;
 
@@ -171,65 +171,40 @@ class _NearbyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bodySmall = Theme.of(context).textTheme.bodySmall;
+    final textTheme = Theme.of(context).textTheme;
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              CircleAvatar(
-                backgroundColor: AppColors.primaryContainerLight,
-                child: Text(quest.emoji ?? '🎯'),
-              ),
+              Text(quest.emoji ?? '🎯', style: textTheme.titleLarge),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(quest.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: textTheme.titleSmall),
+                    const SizedBox(height: 4),
                     Text(
-                      quest.title,
-                      maxLines: 2,
+                      quest.locationName ?? 'Location not specified',
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
+                      style: textTheme.bodySmall,
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on_outlined, size: 14, color: AppColors.primary),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            quest.locationName ?? 'Location not specified',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: bodySmall,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      '${_difficultyLabel(quest.difficulty)} · ${quest.durationMinutes} min',
+                      style: textTheme.bodySmall,
                     ),
-                    const SizedBox(height: 2),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        Text(_difficultyLabel(quest.difficulty), style: bodySmall),
-                        Text('${quest.durationMinutes} min', style: bodySmall),
-                      ],
-                    ),
-                    if (quest.isSponsored) ...[
-                      const SizedBox(height: 6),
-                      const SponsoredBadge(),
-                    ],
+                    if (quest.isSponsored) ...[const SizedBox(height: 4), const SponsoredBadge()],
                   ],
                 ),
               ),
-              if (distanceLabel != null) ...[
-                const SizedBox(width: 8),
-                Text(distanceLabel!, style: bodySmall?.copyWith(fontWeight: FontWeight.w600)),
-              ],
+              const SizedBox(width: 12),
+              Text(distanceLabel ?? 'Distance unavailable', style: textTheme.labelSmall),
             ],
           ),
         ),

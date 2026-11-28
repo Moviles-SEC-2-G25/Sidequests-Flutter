@@ -6,6 +6,7 @@ import '../../repository/evidence_repository.dart';
 import '../../viewmodel/context/connectivity_view_model.dart';
 import '../../viewmodel/profile/attempt_evidence_view_model.dart';
 import '../widgets/offline_notice.dart';
+import '../widgets/sq_components.dart';
 
 /// "Evidencias de un intento" (Alejandro, Sprint 4), opened from a card of Mi
 /// bitácora: the photos taken in that attempt, grouped by step, each with
@@ -51,24 +52,60 @@ class _AttemptEvidenceViewState extends State<AttemptEvidenceView> {
     final viewModel = context.watch<AttemptEvidenceViewModel>();
     final textTheme = Theme.of(context).textTheme;
 
+    final scheme = Theme.of(context).colorScheme;
+    // Kotlin's AttemptEvidenceScreen header, compacted to one row: the
+    // bordered round back button, the section label, the quest and the date.
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(widget.attempt.questTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-            Text(
-              'Attempt on ${formatEvidenceDate(widget.attempt.date)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: textTheme.bodySmall,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Row(
+                children: [
+                  Material(
+                    color: scheme.surface,
+                    shape: CircleBorder(side: BorderSide(color: scheme.outline)),
+                    child: IconButton(
+                      tooltip: 'Back to Mission History',
+                      icon: const Icon(Icons.arrow_back, size: 20),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SqSectionLabel('ATTEMPT EVIDENCE', color: scheme.primary, letterSpacing: .8),
+                        Text(
+                          widget.attempt.questTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          'Attempt on ${formatEvidenceDate(widget.attempt.date)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
+            Expanded(child: _body(context, viewModel)),
           ],
         ),
       ),
-      body: SafeArea(
-        child: switch (viewModel.status) {
+    );
+  }
+
+  Widget _body(BuildContext context, AttemptEvidenceViewModel viewModel) {
+    return switch (viewModel.status) {
           EvidenceStatus.loading => const Center(child: CircularProgressIndicator()),
           EvidenceStatus.empty => _EvidenceMessage(
             icon: Icons.photo_library_outlined,
@@ -83,9 +120,7 @@ class _AttemptEvidenceViewState extends State<AttemptEvidenceView> {
             onAction: viewModel.load,
           ),
           EvidenceStatus.data => _EvidenceGrid(viewModel: viewModel),
-        },
-      ),
-    );
+        };
   }
 }
 
@@ -223,7 +258,7 @@ class _SaveAllPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.offline_pin_outlined, color: AppColors.primary, size: 18),
+              Icon(Icons.offline_pin_outlined, color: Theme.of(context).colorScheme.primary, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -244,7 +279,7 @@ class _SaveAllPanel extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               failed == 1 ? '1 photo could not be saved.' : '$failed photos could not be saved.',
-              style: textTheme.bodySmall?.copyWith(color: AppColors.error),
+              style: textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
             ),
           ],
           const SizedBox(height: 8),
@@ -291,7 +326,7 @@ class _EvidenceTile extends StatelessWidget {
       label: '$stepLabel, photo $number${status == null ? '' : ': $status'}',
       child: ExcludeSemantics(
         child: Material(
-          color: colorScheme.surfaceContainerHighest,
+          color: colorScheme.primaryContainer,
           borderRadius: BorderRadius.circular(12),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -309,14 +344,14 @@ class _EvidenceTile extends StatelessWidget {
                         fit: BoxFit.cover,
                         cacheWidth: cacheWidth > 0 ? cacheWidth : null,
                         gaplessPlayback: true,
-                        errorBuilder: (_, _, _) => Icon(Icons.broken_image_outlined, color: colorScheme.outline),
+                        errorBuilder: (_, _, _) => Icon(Icons.broken_image_outlined, color: colorScheme.onSurfaceVariant),
                       )
                     else if (viewModel.isThumbnailLoading(item.id))
                       const Center(
                         child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                       )
                     else
-                      Center(child: Icon(_placeholderIcon(availability), color: colorScheme.outline)),
+                      Center(child: Icon(_placeholderIcon(availability), color: colorScheme.onSurfaceVariant)),
                     if (availability == EvidenceAvailability.onPhone)
                       const Positioned(top: 6, right: 6, child: _SavedBadge()),
                     if (status != null && availability != EvidenceAvailability.onPhone)
@@ -635,7 +670,7 @@ class _EvidenceMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: Theme.of(context).colorScheme.outline),
+            Icon(icon, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 16),

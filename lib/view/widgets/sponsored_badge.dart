@@ -25,27 +25,22 @@ class SponsoredBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Kotlin's MetaPill on amber at 22–28 % (QuestCard / QuestDetail).
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: AppColors.amber, borderRadius: BorderRadius.circular(20)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.star_rounded, size: 12, color: AppColors.textPrimaryLight),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimaryLight,
-              ),
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.amber.withValues(alpha: showSponsorName ? .28 : .22),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
       ),
     );
   }

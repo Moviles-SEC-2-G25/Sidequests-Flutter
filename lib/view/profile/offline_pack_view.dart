@@ -9,6 +9,7 @@ import '../../viewmodel/offline/offline_pack_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import '../quests/quest_detail_view.dart';
 import '../widgets/offline_notice.dart';
+import '../widgets/sq_components.dart';
 
 /// "Paquete offline": the quests picked to keep, with their steps, for when
 /// the connection drops (Kotlin's OfflinePackScreen). Opened from Perfil.
@@ -36,61 +37,98 @@ class OfflinePackView extends StatelessWidget {
     final entries = pack.entries;
     final waiting = entries.any((e) => e.status != OfflinePackStatus.ready);
 
+    final scheme = Theme.of(context).colorScheme;
+    final sectionStyle = textTheme.labelMedium?.copyWith(color: scheme.primary);
+
+    // Kotlin's OfflinePackScreen: bold headline + summary with "Done", then
+    // YOUR OFFLINE PACK and the quests to add.
     return Scaffold(
-      appBar: AppBar(title: const Text('Offline pack')),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(summary(entries.length, pack.readyCount), style: textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              'Their details and steps stay saved on the phone for when you lose connection.',
-              style: textTheme.bodySmall,
-            ),
-            if (isOffline && waiting) ...[
-              const SizedBox(height: 12),
-              const OfflineNotice(message: OfflineMessages.offlinePackPending),
-            ],
-            if (pack.errorMessage != null) ...[
-              const SizedBox(height: 12),
-              Text(pack.errorMessage!, style: textTheme.bodySmall?.copyWith(color: AppColors.error)),
-            ],
-            const SizedBox(height: 16),
-            if (entries.isEmpty)
-              Text(
-                'No quests in your pack yet. Add the ones you want available offline.',
-                style: textTheme.bodyMedium,
-              )
-            else
-              for (final entry in entries)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _PackEntryCard(
-                    entry: entry,
-                    quest: questViewModel.questById(entry.questId),
-                    onRemove: () => pack.remove(entry.questId),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Offline Pack',
+                          style: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          summary(entries.length, pack.readyCount),
+                          style: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-            if (pack.hasPendingWork) ...[
-              const SizedBox(height: 6),
-              if (isOffline) ...[
-                const OfflineNotice(message: OfflineMessages.offlinePackRetry),
-                const SizedBox(height: 8),
-              ],
-              OutlinedButton.icon(
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
-                onPressed: isOffline ? null : () => pack.retry(isOnline: true),
+                  TextButton(onPressed: () => Navigator.of(context).maybePop(), child: const Text('Done')),
+                ],
               ),
-            ],
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              icon: const Icon(Icons.add),
-              label: const Text('Add quests'),
-              onPressed: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute<void>(builder: (_) => const _AddQuestsView())),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+                children: [
+                  Text(
+                    'Their details and steps stay saved on the phone for when you lose connection.',
+                    style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                  if (isOffline && waiting) ...[
+                    const SizedBox(height: 12),
+                    const OfflineNotice(message: OfflineMessages.offlinePackPending),
+                  ],
+                  if (pack.errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(pack.errorMessage!, style: textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error)),
+                  ],
+                  // Kotlin keeps the retry right under the notices, above the pack.
+                  if (pack.hasPendingWork) ...[
+                    const SizedBox(height: 10),
+                    if (isOffline) ...[
+                      const OfflineNotice(message: OfflineMessages.offlinePackRetry),
+                      const SizedBox(height: 8),
+                    ],
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                      onPressed: isOffline ? null : () => pack.retry(isOnline: true),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Text('YOUR OFFLINE PACK', style: sectionStyle),
+                  const SizedBox(height: 10),
+                  if (entries.isEmpty)
+                    Text(
+                      'No quests in your pack yet. Add the ones you want available offline.',
+                      style: textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                    )
+                  else
+                    for (final entry in entries)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _PackEntryCard(
+                          entry: entry,
+                          quest: questViewModel.questById(entry.questId),
+                          onRemove: () => pack.remove(entry.questId),
+                        ),
+                      ),
+                  const SizedBox(height: 10),
+                  Text('AVAILABLE QUESTS', style: sectionStyle),
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add quests'),
+                    onPressed: () => Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute<void>(builder: (_) => const _AddQuestsView())),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -112,17 +150,15 @@ class _PackEntryCard extends StatelessWidget {
     final quest = this.quest;
     final (IconData icon, Color color) = switch (entry.status) {
       OfflinePackStatus.ready => (Icons.offline_pin, AppColors.secondary),
-      OfflinePackStatus.pendingDownload => (Icons.schedule, Theme.of(context).colorScheme.outline),
-      OfflinePackStatus.downloading => (Icons.downloading, AppColors.primary),
-      OfflinePackStatus.failed => (Icons.error_outline, AppColors.error),
+      OfflinePackStatus.pendingDownload => (Icons.schedule, Theme.of(context).colorScheme.onSurfaceVariant),
+      OfflinePackStatus.downloading => (Icons.downloading, Theme.of(context).colorScheme.primary),
+      OfflinePackStatus.failed => (Icons.error_outline, Theme.of(context).colorScheme.error),
     };
 
+    // Kotlin's selected-quest card: surfaceVariant, 12 dp padding.
     return Material(
-      color: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: color.withValues(alpha: 0.35)),
-      ),
+      color: Theme.of(context).colorScheme.primaryContainer,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         // Its detail and steps, from the cache when there's no connection.
@@ -132,7 +168,7 @@ class _PackEntryCard extends StatelessWidget {
                 context,
               ).push(MaterialPageRoute<void>(builder: (_) => QuestDetailView(quest: quest))),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+          padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
           child: Row(
             children: [
               Text(quest?.emoji ?? '🗺️', style: const TextStyle(fontSize: 26)),
@@ -141,7 +177,10 @@ class _PackEntryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(quest?.title ?? 'Saved quest', style: textTheme.titleSmall),
+                    Text(
+                      quest?.title ?? 'Saved quest',
+                      style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                    ),
                     const SizedBox(height: 2),
                     Row(
                       children: [
@@ -156,14 +195,16 @@ class _PackEntryCard extends StatelessWidget {
                       ],
                     ),
                     if (entry.message != null)
-                      Text(entry.message!, style: textTheme.bodySmall),
+                      Text(
+                        entry.message!,
+                        style: textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
+                      ),
                   ],
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.remove_circle_outline),
-                tooltip: 'Remove from pack',
-                onPressed: onRemove,
+              Tooltip(
+                message: 'Remove from pack',
+                child: TextButton(onPressed: onRemove, child: const Text('Remove')),
               ),
             ],
           ),
@@ -191,7 +232,7 @@ class _AddQuestsView extends StatelessWidget {
       appBar: AppBar(title: const Text('Add quests')),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           children: [
             if (isOffline) ...[
               const OfflineNotice(message: OfflineMessages.offlinePackPending),
@@ -205,8 +246,12 @@ class _AddQuestsView extends StatelessWidget {
             else
               for (final quest in available)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  // Kotlin's available-quest card: plain card, "Add" pill.
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
                     children: [
                       Text(quest.emoji ?? '🗺️', style: const TextStyle(fontSize: 26)),
                       const SizedBox(width: 12),
@@ -214,7 +259,10 @@ class _AddQuestsView extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(quest.title, style: Theme.of(context).textTheme.titleSmall),
+                            Text(
+                              quest.title,
+                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                            ),
                             Text(
                               '${quest.durationMinutes} min · ${categoryLabelEs(quest.category)}',
                               style: Theme.of(context).textTheme.bodySmall,
@@ -223,17 +271,15 @@ class _AddQuestsView extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      FilledButton.tonal(
-                        // The app's buttons are full width (AppTheme); this
-                        // one sits next to the quest, so only as wide as its text.
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(0, 40),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                        ),
+                      FilledButton(
+                        // Only as wide as its text, next to the quest.
+                        style: sqPillButtonStyle(),
                         onPressed: () => pack.add(quest.id, isOnline: !readIsOffline(context)),
                         child: const Text('Add'),
                       ),
                     ],
+                  ),
+                    ),
                   ),
                 ),
           ],

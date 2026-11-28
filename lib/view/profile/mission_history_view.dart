@@ -12,6 +12,7 @@ import '../../viewmodel/profile/attempt_evidence_view_model.dart';
 import '../../viewmodel/profile/mission_history_view_model.dart';
 import '../quests/quest_detail_view.dart';
 import 'attempt_evidence_view.dart';
+import '../widgets/sq_components.dart';
 
 /// "Mi bitácora", opened from Perfil: every mission the user tried —
 /// completed (with the rating given), abandoned (with why) and in progress —
@@ -57,10 +58,27 @@ class _MissionHistoryViewState extends State<MissionHistoryView> {
   Widget build(BuildContext context) {
     final historyViewModel = context.watch<MissionHistoryViewModel>();
 
+    // Kotlin's MissionHistoryScreen header: a "←" text button + titleLarge.
     return Scaffold(
-      appBar: AppBar(title: const Text('My quest log')),
       body: SafeArea(
-        child: switch (historyViewModel.status) {
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SqBackHeader(
+              title: 'Mission History',
+              backLabel: '←',
+              titleStyle: Theme.of(context).textTheme.titleLarge,
+              onBack: () => Navigator.of(context).maybePop(),
+            ),
+            Expanded(child: _body(context, historyViewModel)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _body(BuildContext context, MissionHistoryViewModel historyViewModel) {
+    return switch (historyViewModel.status) {
           HistoryStatus.loading => const Center(child: CircularProgressIndicator()),
           HistoryStatus.error => _HistoryMessage(
             icon: Icons.cloud_off,
@@ -78,9 +96,7 @@ class _MissionHistoryViewState extends State<MissionHistoryView> {
             historyViewModel: historyViewModel,
             searchController: _searchController,
           ),
-        },
-      ),
-    );
+        };
   }
 }
 
@@ -314,7 +330,7 @@ class _EntryCard extends StatelessWidget {
                           Icon(
                             Icons.cloud_upload_outlined,
                             size: 14,
-                            color: Theme.of(context).colorScheme.outline,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                           const SizedBox(width: 4),
                           Flexible(child: Text('Pending sync', style: textTheme.bodySmall)),
@@ -347,7 +363,7 @@ class _EntryCard extends StatelessWidget {
               ),
               if (quest != null) ...[
                 const SizedBox(width: 4),
-                Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.outline),
+                Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ],
             ],
           ),
@@ -374,8 +390,8 @@ class _Outcome extends StatelessWidget {
     final (label, color) = entry.isCompleted
         ? ('Completed', AppColors.secondary)
         : entry.isAbandoned
-        ? ('Abandoned', AppColors.error)
-        : ('In progress', AppColors.primary);
+        ? ('Abandoned', Theme.of(context).colorScheme.error)
+        : ('In progress', Theme.of(context).colorScheme.primary);
 
     return Wrap(
       spacing: 8,
@@ -418,7 +434,7 @@ class _NoMatches extends StatelessWidget {
       decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
       child: Column(
         children: [
-          Icon(Icons.search_off, size: 32, color: Theme.of(context).colorScheme.outline),
+          Icon(Icons.search_off, size: 32, color: Theme.of(context).colorScheme.onSurfaceVariant),
           const SizedBox(height: 10),
           Text(
             'No quests match',
@@ -480,7 +496,7 @@ class _ConnectionBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.primary, size: 18),
+          Icon(icon, color: Theme.of(context).colorScheme.primary, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -525,7 +541,7 @@ class _HistoryMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: Theme.of(context).colorScheme.outline),
+            Icon(icon, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 16),

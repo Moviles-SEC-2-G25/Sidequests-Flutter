@@ -105,7 +105,7 @@ void main() {
     expect(isEnabled(tester, 'Mark next step'), isFalse);
     expect(isEnabled(tester, 'Join'), isFalse);
     expect(isEnabled(tester, 'Create challenge'), isFalse);
-    expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.refresh)).onPressed, isNull);
+    expect(isEnabled(tester, '↻ Refresh'), isFalse);
     expect(server.listCalls, isEmpty);
   });
 

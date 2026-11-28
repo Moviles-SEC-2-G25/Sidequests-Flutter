@@ -664,7 +664,7 @@ void main() {
 
       await pumpHistory(tester);
 
-      expect(find.text('My quest log'), findsOneWidget);
+      expect(find.text('Mission History'), findsOneWidget);
       expect(find.text('2 quests in your quest log'), findsOneWidget);
       expect(find.text('November 2026'), findsOneWidget);
       expect(find.text('1 completed · 30 min · 1.234 steps'), findsOneWidget);

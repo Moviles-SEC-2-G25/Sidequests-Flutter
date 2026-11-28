@@ -437,7 +437,7 @@ void main() {
       expect(tester.widget<FilledButton>(blocked).onPressed, isNull);
       // Abandoning waits on the device and syncs later: it stays available.
       expect(
-        tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Leave')).onPressed,
+        tester.widget<TextButton>(find.widgetWithText(TextButton, 'Exit')).onPressed,
         isNotNull,
       );
 

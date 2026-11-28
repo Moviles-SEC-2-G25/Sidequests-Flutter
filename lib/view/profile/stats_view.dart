@@ -7,6 +7,7 @@ import '../../core/number_format.dart';
 import '../../repository/quest_repository.dart';
 import '../../viewmodel/auth/auth_view_model.dart';
 import '../../viewmodel/profile/stats_view_model.dart';
+import '../widgets/sq_components.dart';
 import '../widgets/completion_likelihood_label.dart';
 
 /// "Mis estadísticas", opened from Perfil: completed missions, the user's
@@ -48,9 +49,20 @@ class _StatsViewState extends State<StatsView> {
     final statsViewModel = context.watch<StatsViewModel>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My stats')),
       body: SafeArea(
-        child: switch (statsViewModel.status) {
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SqBackHeader(title: 'My Statistics', onBack: () => Navigator.of(context).maybePop()),
+            Expanded(child: _body(context, statsViewModel)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _body(BuildContext context, StatsViewModel statsViewModel) {
+    return switch (statsViewModel.status) {
           StatsStatus.loading => const Center(child: CircularProgressIndicator()),
           StatsStatus.error => _StatsMessage(
             icon: Icons.cloud_off,
@@ -67,15 +79,17 @@ class _StatsViewState extends State<StatsView> {
           StatsStatus.data => RefreshIndicator(
             onRefresh: statsViewModel.load,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               children: [
                 if (statsViewModel.isFromCache) ...[
                   const _OfflineBanner(),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                 ],
                 _SummaryRow(statsViewModel: statsViewModel),
-                const SizedBox(height: 24),
-                Text('By category', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                _StepsCard(steps: statsViewModel.totalSteps),
+                const SizedBox(height: 12),
+                Text('Completion by category', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 4),
                 Text(
                   'How many of the quests you accept you finish, based on your history',
@@ -91,16 +105,12 @@ class _StatsViewState extends State<StatsView> {
                   )
                 else
                   ...statsViewModel.categoryStats.map((stat) => _CategoryRateRow(stat: stat)),
-                const SizedBox(height: 24),
-                _StepsCard(steps: statsViewModel.totalSteps),
-                const SizedBox(height: 24),
+                const SizedBox(height: 12),
                 _WalksSection(statsViewModel: statsViewModel),
               ],
             ),
           ),
-        },
-      ),
-    );
+        };
   }
 }
 
@@ -118,7 +128,7 @@ class _OfflineBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.cloud_off, color: AppColors.primary, size: 18),
+          Icon(Icons.cloud_off, color: Theme.of(context).colorScheme.primary, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -132,6 +142,7 @@ class _OfflineBanner extends StatelessWidget {
   }
 }
 
+/// Kotlin's "Quest activity" card: completed, attempted and the overall rate.
 class _SummaryRow extends StatelessWidget {
   final StatsViewModel statsViewModel;
 
@@ -140,37 +151,35 @@ class _SummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rate = statsViewModel.overallRate;
-    return Row(
-      children: [
-        Expanded(
-          child: _StatTile(
-            icon: Icons.bolt,
-            value: '${statsViewModel.completedCount}',
-            label: 'Completed',
+    final textTheme = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SizedBox(
+          width: double.infinity,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Quest activity', style: textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(
+                '${statsViewModel.completedCount} completed · ${statsViewModel.attemptCount} attempted',
+                style: textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                rate == null ? 'Overall rate: —' : 'Overall rate: ${(rate * 100).round()} %',
+                style: textTheme.bodyLarge,
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatTile(
-            icon: Icons.flag_outlined,
-            value: '${statsViewModel.attemptCount}',
-            label: 'Attempted',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatTile(
-            icon: Icons.insights,
-            value: rate == null ? '—' : '${(rate * 100).round()} %',
-            label: 'Overall rate',
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-/// Same look as Perfil's _StatCard so both screens read as one.
+/// A small figure in a plain card (the walks section's totals).
 class _StatTile extends StatelessWidget {
   final IconData icon;
   final String value;
@@ -180,19 +189,21 @@ class _StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: AppColors.amber),
-          const SizedBox(height: 6),
-          Text(value, style: Theme.of(context).textTheme.titleLarge),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-        ],
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: SizedBox(
+          width: double.infinity,
+          child: Column(
+            children: [
+              Icon(icon, color: AppColors.secondary),
+              const SizedBox(height: 6),
+              Text(value, style: Theme.of(context).textTheme.titleLarge),
+              Text(label, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -206,33 +217,40 @@ class _CategoryRateRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    // Kotlin's category card: plain, 16 dp corners and padding.
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text(categoryLabelEs(stat.category), style: textTheme.titleSmall)),
-              Text(
-                '${stat.completed}/${stat.attempts} · ${(stat.rate * 100).round()} %',
-                style: textTheme.bodySmall,
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: stat.rate,
-              minHeight: 8,
-              color: completionLevelColor(stat.level),
-              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.only(top: 12),
+      child: Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Text(categoryLabelEs(stat.category), style: textTheme.titleSmall)),
+                    Text(
+                      '${stat.completed}/${stat.attempts} · ${(stat.rate * 100).round()} %',
+                      style: textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: stat.rate,
+                    minHeight: 8,
+                    color: completionLevelColor(stat.level),
+                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                CompletionLikelihoodLabel(level: stat.level),
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-          CompletionLikelihoodLabel(level: stat.level),
-        ],
+        ),
       ),
     );
   }
@@ -249,31 +267,29 @@ class _StepsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.directions_walk, color: AppColors.secondary, size: 32),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(steps == null ? '—' : formatThousands(steps!), style: textTheme.titleLarge),
-                Text('Steps walked on quests', style: textTheme.bodySmall),
-                if (steps == null)
-                  Text(
-                    'Counted by the pedometer while you do a quest.',
-                    style: textTheme.bodySmall,
-                  ),
-              ],
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const Icon(Icons.directions_walk, color: AppColors.secondary, size: 32),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(steps == null ? '—' : formatThousands(steps!), style: textTheme.titleLarge),
+                  Text('Steps walked on quests', style: textTheme.bodySmall),
+                  if (steps == null)
+                    Text(
+                      'Counted by the pedometer while you do a quest.',
+                      style: textTheme.bodySmall,
+                    ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -379,7 +395,7 @@ class _StatsMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: Theme.of(context).colorScheme.outline),
+            Icon(icon, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(
               message,

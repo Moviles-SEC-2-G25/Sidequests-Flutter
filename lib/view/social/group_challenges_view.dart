@@ -62,25 +62,35 @@ class _GroupChallengesViewState extends State<GroupChallengesView> {
     final textTheme = Theme.of(context).textTheme;
     final creatable = viewModel.creatableQuests;
 
+    // Kotlin's GroupChallengesScreen: "← Back" and "↻ Refresh" text buttons,
+    // then the bold headline and its tagline.
     return Scaffold(
-      appBar: AppBar(
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: viewModel.canRefresh ? viewModel.refresh : null,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: viewModel.refresh,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
             children: [
-              Text('Group challenges', style: textTheme.headlineSmall),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(onPressed: () => Navigator.of(context).maybePop(), child: const Text('← Back')),
+                  Tooltip(
+                    message: 'Refresh',
+                    child: TextButton(
+                      onPressed: viewModel.canRefresh ? viewModel.refresh : null,
+                      child: const Text('↻ Refresh'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text('Group challenges', style: textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              Text('Small adventures, better together.', style: textTheme.bodyMedium),
+              Text(
+                'Small adventures, better together.',
+                style: textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
               const SizedBox(height: 16),
               if (viewModel.hasMine) ...[
                 Row(
@@ -246,7 +256,7 @@ class _MyChallengeCard extends StatelessWidget {
             Expanded(child: Text('Your progress', style: textTheme.titleSmall)),
             Text(
               '$percent%',
-              style: textTheme.titleSmall?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w700),
+              style: textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -273,7 +283,7 @@ class _MyChallengeCard extends StatelessWidget {
                 Text(
                   'NEXT STEP · ${challenge.progress + 1}',
                   style: textTheme.labelSmall?.copyWith(
-                    color: AppColors.primary,
+                    color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                   ),
@@ -515,7 +525,7 @@ class _Metric extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(icon, style: textTheme.titleLarge?.copyWith(color: AppColors.primary)),
+          Text(icon, style: textTheme.titleLarge?.copyWith(color: Theme.of(context).colorScheme.primary)),
           const SizedBox(height: 4),
           Text('$value', style: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
           Text(label, style: textTheme.labelMedium),
@@ -535,7 +545,7 @@ class _Pill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: Theme.of(context).colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(label, style: Theme.of(context).textTheme.labelSmall),
@@ -608,13 +618,13 @@ class _Notice extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: Theme.of(context).colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: Theme.of(context).colorScheme.outline),
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
           const SizedBox(width: 8),
           Expanded(child: Text(text, style: Theme.of(context).textTheme.bodySmall)),
           if (actionLabel != null)

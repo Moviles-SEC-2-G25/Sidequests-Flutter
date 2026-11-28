@@ -3,23 +3,24 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/category_labels.dart';
-import '../../data/local/local_data_source.dart';
 import '../../models/user_preferences.dart';
 import '../../viewmodel/auth/auth_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import '../../viewmodel/theme_view_model.dart';
 import '../widgets/offline_notice.dart';
+import '../widgets/sq_components.dart';
 import 'change_password_dialog.dart';
 import 'edit_preferences_view.dart';
 import 'mission_history_view.dart';
 import 'offline_pack_view.dart';
 import 'stats_view.dart';
 
-/// Profile: header + stats, friends (honest stub — no backend table),
-/// rewards/badges (computed live from real `user_quests`, no rewards
-/// table exists), preferences, recent completions, published photos
-/// (permanently empty — no Storage bucket yet) and settings.
+/// Profile, laid out like the Kotlin app's ProfileScreen: header with the
+/// theme toggle, accent stats, theme, interests, difficulty, social vibe,
+/// account, biometric unlock, offline access, mission history, badges and
+/// sign out — 16 dp apart. Preferences are changed in EditPreferencesView
+/// (they're saved on the server), so tapping a preference chip opens it.
 class ProfileView extends StatefulWidget {
   const ProfileView({super.key});
 
@@ -28,15 +29,13 @@ class ProfileView extends StatefulWidget {
 }
 
 class _ProfileViewState extends State<ProfileView> {
-  int _friendsTab = 0;
-  int _rewardsTab = 0;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProfileViewModel>().load();
       context.read<QuestViewModel>().load();
+      context.read<AuthViewModel>().loadBiometricAvailability();
     });
   }
 
@@ -49,78 +48,44 @@ class _ProfileViewState extends State<ProfileView> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final sections = <Widget>[
+      _ProfileHeader(profileViewModel: profileViewModel),
+      _StatsRow(questViewModel: questViewModel),
+      const _ThemeSection(),
+      _PreferencesSection(preferences: profileViewModel.preferences),
+      _AccountSection(profileViewModel: profileViewModel),
+      const _BiometricSection(),
+      const _OfflineAccessSection(),
+      _LinkRow(
+        title: 'Mission History',
+        action: 'View history',
+        onTap: () => Navigator.of(context).push(MissionHistoryView.route()),
+      ),
+      _BadgesSection(questViewModel: questViewModel),
+      const _SignOutButton(),
+    ];
+
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-          children: [
-            _ProfileHeader(profileViewModel: profileViewModel),
-            const SizedBox(height: 20),
-            _StatsRow(questViewModel: questViewModel),
-            const SizedBox(height: 12),
-            // The three cards above are the summary; this opens the detail.
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.insights),
-                label: const Text('View my stats'),
-                onPressed: () => Navigator.of(context).push(StatsView.route()),
-              ),
-            ),
-            const SizedBox(height: 24),
-            _FriendsSection(
-              tabIndex: _friendsTab,
-              onTabChanged: (i) => setState(() => _friendsTab = i),
-            ),
-            const SizedBox(height: 24),
-            _RewardsSection(
-              tabIndex: _rewardsTab,
-              onTabChanged: (i) => setState(() => _rewardsTab = i),
-              questViewModel: questViewModel,
-            ),
-            const SizedBox(height: 24),
-            _PreferencesSection(preferences: profileViewModel.preferences),
-            const SizedBox(height: 24),
-            _BadgesGrid(questViewModel: questViewModel),
-            const SizedBox(height: 24),
-            _RecentCompletions(questViewModel: questViewModel),
-            const SizedBox(height: 24),
-            const _PublishedPhotosSection(),
-            const SizedBox(height: 24),
-            _SettingsSection(profileViewModel: profileViewModel),
-            const SizedBox(height: 24),
-            const _OfflineAccessSection(),
-          ],
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          itemCount: sections.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 16),
+          itemBuilder: (_, index) => sections[index],
         ),
       ),
     );
   }
 }
 
-/// Entry to the offline pack (as in Kotlin's profile).
-class _OfflineAccessSection extends StatelessWidget {
-  const _OfflineAccessSection();
+/// Kotlin's faded uppercase section label ("THEME", "ACCOUNT"…).
+class _Label extends StatelessWidget {
+  final String text;
+
+  const _Label(this.text);
 
   @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('OFFLINE ACCESS', style: textTheme.labelSmall?.copyWith(letterSpacing: 0.5)),
-        const SizedBox(height: 4),
-        Text(
-          'Keep your chosen quests and their steps available when you lose connection.',
-          style: textTheme.bodySmall,
-        ),
-        TextButton(
-          style: TextButton.styleFrom(padding: EdgeInsets.zero),
-          onPressed: () => Navigator.of(context).push(OfflinePackView.route()),
-          child: const Text('Manage offline pack →'),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => SqSectionLabel(text);
 }
 
 class _ProfileHeader extends StatelessWidget {
@@ -130,41 +95,177 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = profileViewModel.profile?.displayName ?? 'Explorer';
+    final scheme = Theme.of(context).colorScheme;
+    final themeViewModel = context.watch<ThemeViewModel>();
+    final displayName = profileViewModel.profile?.displayName?.trim();
+    final name = (displayName?.isNotEmpty ?? false) ? displayName! : 'Explorer';
     final emailLocalPart = profileViewModel.email?.split('@').first;
-    final handle = emailLocalPart != null ? '@$emailLocalPart' : '';
-    final initials = name.isNotEmpty ? name[0].toUpperCase() : '🙂';
 
     return Row(
       children: [
-        CircleAvatar(
-          radius: 32,
-          backgroundColor: AppColors.primaryContainerLight,
-          child: Text(initials, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+        Container(
+          width: 64,
+          height: 64,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: scheme.primaryContainer),
+          child: Text(
+            (displayName?.isNotEmpty ?? false) ? displayName![0].toUpperCase() : '🧭',
+            style: const TextStyle(fontSize: 26),
+          ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(name, style: Theme.of(context).textTheme.titleLarge),
-              if (handle.isNotEmpty) Text(handle, style: Theme.of(context).textTheme.bodySmall),
+              if (emailLocalPart != null)
+                Text(
+                  '@$emailLocalPart',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: scheme.onSurface.withValues(alpha: .55),
+                  ),
+                ),
             ],
           ),
         ),
-        IconButton(
-          icon: const Icon(Icons.lock_reset),
-          tooltip: 'Change password',
-          onPressed: () => _changePassword(context),
-        ),
-        IconButton(
-          icon: const Icon(Icons.logout),
-          tooltip: 'Log out',
-          onPressed: () => _signOut(context),
+        SqCircleButton(
+          glyph: themeViewModel.isDarkMode ? '☀️' : '🌙',
+          tooltip: themeViewModel.isDarkMode ? 'Light mode' : 'Dark mode',
+          onTap: () => themeViewModel.setDarkMode(!themeViewModel.isDarkMode),
         ),
       ],
     );
   }
+}
+
+/// Kotlin's AccentStat row and "View my stats".
+class _StatsRow extends StatelessWidget {
+  final QuestViewModel questViewModel;
+
+  const _StatsRow({required this.questViewModel});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 9,
+          runSpacing: 8,
+          children: [
+            SqAccentStat(
+              label: 'Completed',
+              value: '${questViewModel.completedCount}',
+              emoji: '⚡',
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            SqAccentStat(label: 'Attempted', value: '${questViewModel.userQuests.length}', emoji: '✓'),
+            SqAccentStat(
+              label: 'Day streak',
+              value: '${questViewModel.currentStreakDays}',
+              emoji: '🔥',
+              color: AppColors.amber,
+            ),
+          ],
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).push(StatsView.route()),
+          child: const Text('View my stats'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ThemeSection extends StatelessWidget {
+  const _ThemeSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final themeViewModel = context.watch<ThemeViewModel>();
+    final faded = Theme.of(context).colorScheme.onSurface.withValues(alpha: .55);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _Label('THEME'),
+        const SizedBox(height: 9),
+        Text(
+          themeViewModel.isDarkMode
+              ? 'Dark mode is on. Tap the sun to switch back to light.'
+              : 'Tap the moon/sun to choose the theme manually.',
+          style: TextStyle(fontSize: 12, color: faded),
+        ),
+      ],
+    );
+  }
+}
+
+/// Kotlin's YOUR INTERESTS / DIFFICULTY / SOCIAL VIBE chip groups.
+class _PreferencesSection extends StatelessWidget {
+  final UserPreferences preferences;
+
+  const _PreferencesSection({required this.preferences});
+
+  static String _capitalize(String value) => value.isEmpty ? value : value[0].toUpperCase() + value.substring(1);
+
+  @override
+  Widget build(BuildContext context) {
+    void edit(bool _) =>
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EditPreferencesView()));
+
+    Widget group(String label, List<Widget> chips, {double gap = 9}) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Label(label),
+        SizedBox(height: gap),
+        Wrap(spacing: 8, runSpacing: 8, children: chips),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        group('YOUR INTERESTS', gap: 10, [
+          for (final interest in kInterestOptions)
+            SqChoiceChip(
+              label: categoryLabelEs(interest),
+              selected: preferences.interests.contains(interest),
+              onSelected: edit,
+            ),
+        ]),
+        const SizedBox(height: 16),
+        group('DIFFICULTY', [
+          for (final difficulty in const ['easy', 'medium', 'hard'])
+            SqChoiceChip(
+              label: _capitalize(difficulty),
+              selected: preferences.preferredDifficulty == difficulty,
+              onSelected: edit,
+            ),
+        ]),
+        const SizedBox(height: 16),
+        group('SOCIAL VIBE', [
+          for (final level in const ['solo', 'social', 'group'])
+            SqChoiceChip(
+              label: _capitalize(level),
+              selected: preferences.socialLevel == level,
+              selectedColor: AppColors.secondary,
+              onSelected: edit,
+            ),
+        ]),
+        TextButton(
+          onPressed: () => edit(true),
+          child: const Text('Edit preferences'),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountSection extends StatelessWidget {
+  final ProfileViewModel profileViewModel;
+
+  const _AccountSection({required this.profileViewModel});
 
   /// Needs the server: offline it says so instead of opening a form that
   /// can only fail.
@@ -177,6 +278,184 @@ class _ProfileHeader extends StatelessWidget {
     }
     showChangePasswordDialog(context);
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = profileViewModel.profile;
+    final faded = Theme.of(context).colorScheme.onSurface.withValues(alpha: .65);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _Label('ACCOUNT'),
+        Text(
+          profileViewModel.email ?? 'Authenticated user',
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: faded),
+        ),
+        if (profile?.createdAt != null)
+          Text(
+            'Member since ${_formatMonthYear(profile!.createdAt!)}',
+            style: TextStyle(fontSize: 12, color: faded),
+          ),
+        const SizedBox(height: 8),
+        FilledButton(onPressed: () => _changePassword(context), child: const Text('Change password')),
+      ],
+    );
+  }
+}
+
+/// Kotlin's "Biometric unlock" block. Sensor and local flag only: works the
+/// same without a connection.
+class _BiometricSection extends StatelessWidget {
+  const _BiometricSection();
+
+  Future<void> _toggle(BuildContext context, bool value) async {
+    final authViewModel = context.read<AuthViewModel>();
+    if (!value) return authViewModel.disableBiometric();
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await authViewModel.enableBiometric();
+    if (!confirmed) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not verify your fingerprint. Unlock was not enabled.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authViewModel = context.watch<AuthViewModel>();
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Biometric unlock', style: textTheme.titleMedium),
+        if (authViewModel.isBiometricAvailable)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Unlock with fingerprint'),
+            subtitle: Text(
+              authViewModel.biometricEnabled
+                  ? 'Enabled for this account on this device.'
+                  : 'Use biometrics to open your saved session.',
+              style: textTheme.bodySmall,
+            ),
+            value: authViewModel.biometricEnabled,
+            onChanged: (value) => _toggle(context, value),
+          )
+        else
+          Text('Set up a supported biometric in your device settings.', style: textTheme.bodySmall),
+      ],
+    );
+  }
+}
+
+/// Entry to the offline pack (Kotlin's OFFLINE ACCESS).
+class _OfflineAccessSection extends StatelessWidget {
+  const _OfflineAccessSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final faded = Theme.of(context).colorScheme.onSurface.withValues(alpha: .65);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _Label('OFFLINE ACCESS'),
+        const SizedBox(height: 6),
+        Text(
+          'Keep selected quests and their steps available when you lose your connection.',
+          style: TextStyle(fontSize: 12, color: faded),
+        ),
+        const SizedBox(height: 6),
+        TextButton(
+          onPressed: () => Navigator.of(context).push(OfflinePackView.route()),
+          child: const Text('Manage Offline Pack  →'),
+        ),
+      ],
+    );
+  }
+}
+
+/// "Mission History · View history" (and other title + action rows).
+class _LinkRow extends StatelessWidget {
+  final String title;
+  final String action;
+  final VoidCallback onTap;
+
+  const _LinkRow({required this.title, required this.action, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+        TextButton(onPressed: onTap, child: Text(action)),
+      ],
+    );
+  }
+}
+
+/// Kotlin's three BADGES cards, tinted by their accent. Whether each one is
+/// earned is computed from the real completion history; locked ones fade.
+class _BadgesSection extends StatelessWidget {
+  final QuestViewModel questViewModel;
+
+  const _BadgesSection({required this.questViewModel});
+
+  @override
+  Widget build(BuildContext context) {
+    final badges = [
+      ('⚡', 'First Quest', AppColors.primary, questViewModel.badgeFirstMission),
+      ('🧭', 'Explorer', AppColors.secondary, questViewModel.badgeExplorer),
+      ('🔥', '7-Day Streak', AppColors.amber, questViewModel.badgeSevenDayStreak),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _Label('BADGES'),
+        const SizedBox(height: 16),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (index, (emoji, label, color, earned)) in badges.indexed) ...[
+                if (index > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: Opacity(
+                    opacity: earned ? 1 : .45,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: .12),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(emoji, style: const TextStyle(fontSize: 26)),
+                          Text(
+                            label,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+                          ),
+                          if (!earned) ...[
+                            const SizedBox(height: 2),
+                            const Icon(Icons.lock_outline, size: 12),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Kotlin's red "Sign out" PrimaryButton.
+class _SignOutButton extends StatelessWidget {
+  const _SignOutButton();
 
   /// Signing out works offline, but the way back in doesn't, and what's still
   /// waiting to sync is cleared with the rest of the account's data: offline,
@@ -209,694 +488,20 @@ class _ProfileHeader extends StatelessWidget {
     }
     await authViewModel.signOut();
   }
-}
-
-class _StatsRow extends StatelessWidget {
-  final QuestViewModel questViewModel;
-
-  const _StatsRow({required this.questViewModel});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _StatCard(
-            icon: Icons.bolt,
-            value: '${questViewModel.completedCount}',
-            label: 'Completed',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.local_fire_department,
-            value: '${questViewModel.currentStreakDays}',
-            label: 'Streak',
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.menu_book,
-            value: '${questViewModel.completedCategories.length}',
-            label: 'Categories',
-          ),
-        ),
-      ],
+    return FilledButton(
+      style: sqPrimaryButtonStyle(Theme.of(context).colorScheme.error),
+      onPressed: () => _signOut(context),
+      child: const Text('Sign out'),
     );
   }
 }
 
-class _StatCard extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final String label;
-
-  const _StatCard({required this.icon, required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        children: [
-          Icon(icon, color: AppColors.amber),
-          const SizedBox(height: 6),
-          Text(value, style: Theme.of(context).textTheme.titleLarge),
-          Text(label, style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
-    );
-  }
-}
-
-/// Friends UI matching the Figma tab structure, honestly stubbed:
-/// Sidequests-Backend has no `friends`/friend-request tables.
-class _FriendsSection extends StatelessWidget {
-  final int tabIndex;
-  final ValueChanged<int> onTabChanged;
-
-  const _FriendsSection({required this.tabIndex, required this.onTabChanged});
-
-  static const _tabs = ['Friends', 'Requests', 'Add'];
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Friends', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 10),
-        Row(
-          children: List.generate(_tabs.length, (i) {
-            return Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(right: i == _tabs.length - 1 ? 0 : 6),
-                child: ChoiceChip(
-                  label: Text(_tabs[i]),
-                  selected: tabIndex == i,
-                  onSelected: (_) => onTabChanged(i),
-                ),
-              ),
-            );
-          }),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
-          child: Column(
-            children: [
-              const Icon(Icons.group_outlined, color: AppColors.primary, size: 32),
-              const SizedBox(height: 8),
-              Text(
-                'Friends are not available yet',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'The shared backend does not have friends or requests tables yet.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Streak/mission milestones computed live from real `user_quests` data —
-/// there is no rewards/badges table in the backend, so nothing here is
-/// fetched from a "rewards" endpoint; it's derived client-side from
-/// completion history already loaded by QuestViewModel.
-class _RewardsSection extends StatelessWidget {
-  final int tabIndex;
-  final ValueChanged<int> onTabChanged;
-  final QuestViewModel questViewModel;
-
-  const _RewardsSection({
-    required this.tabIndex,
-    required this.onTabChanged,
-    required this.questViewModel,
-  });
-
-  static const _streakMilestones = [
-    (3, 'First warm-up', '3 days in a row'),
-    (7, 'Week on fire', '7 days in a row'),
-    (14, 'Two-week consistency', '14 days in a row'),
-    (30, 'Explorer of the month', '30 days in a row'),
-  ];
-
-  static const _missionMilestones = [
-    (1, 'First steps', 'Complete 1 quest'),
-    (5, 'On the move', 'Complete 5 quests'),
-    (15, 'Regular explorer', 'Complete 15 quests'),
-    (30, 'Local legend', 'Complete 30 quests'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final streak = questViewModel.currentStreakDays;
-    final completed = questViewModel.completedCount;
-    final earnedCount = tabIndex == 0
-        ? _streakMilestones.where((m) => streak >= m.$1).length
-        : _missionMilestones.where((m) => completed >= m.$1).length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text('Rewards', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(width: 8),
-            _Badge(text: '$earnedCount earned', color: AppColors.amber, textColor: Colors.white),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: ChoiceChip(
-                label: const Text('🔥 Streaks'),
-                selected: tabIndex == 0,
-                onSelected: (_) => onTabChanged(0),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: ChoiceChip(
-                label: const Text('⚡ Quests'),
-                selected: tabIndex == 1,
-                onSelected: (_) => onTabChanged(1),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (tabIndex == 0)
-          ..._streakMilestones.map(
-            (m) => _MilestoneCard(
-              threshold: m.$1,
-              title: m.$2,
-              subtitle: m.$3,
-              current: streak,
-              unitLabel: 'days',
-            ),
-          )
-        else
-          ..._missionMilestones.map(
-            (m) => _MilestoneCard(
-              threshold: m.$1,
-              title: m.$2,
-              subtitle: m.$3,
-              current: completed,
-              unitLabel: 'quests',
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _MilestoneCard extends StatelessWidget {
-  final int threshold;
-  final String title;
-  final String subtitle;
-  final int current;
-  final String unitLabel;
-
-  const _MilestoneCard({
-    required this.threshold,
-    required this.title,
-    required this.subtitle,
-    required this.current,
-    required this.unitLabel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final earned = current >= threshold;
-    final progress = (current / threshold).clamp(0, 1).toDouble();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: earned ? AppColors.amber.withValues(alpha: 0.15) : Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: earned
-                  ? AppColors.amber
-                  : Theme.of(context).colorScheme.outline.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.local_fire_department,
-              color: earned ? Colors.white : Theme.of(context).colorScheme.outline,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    // Flexible: a long title next to "GANADO" overflowed a small phone.
-                    Flexible(child: Text(title, style: Theme.of(context).textTheme.titleSmall)),
-                    if (earned) ...[
-                      const SizedBox(width: 8),
-                      _Badge(text: 'EARNED', color: AppColors.amber, textColor: Colors.white),
-                    ],
-                  ],
-                ),
-                Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    backgroundColor: AppColors.primaryContainerLight,
-                    color: earned ? AppColors.amber : AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${current.clamp(0, threshold)} / $threshold $unitLabel',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PreferencesSection extends StatelessWidget {
-  final UserPreferences preferences;
-
-  const _PreferencesSection({required this.preferences});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Flexible(child: Text('My preferences', style: Theme.of(context).textTheme.titleLarge)),
-            TextButton(
-              onPressed: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const EditPreferencesView())),
-              child: const Text('Edit'),
-            ),
-          ],
-        ),
-        Text(
-          'INTERESTS',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 0.5),
-        ),
-        const SizedBox(height: 8),
-        if (preferences.interests.isEmpty)
-          Text(
-            "You haven't chosen any interests yet.",
-            style: Theme.of(context).textTheme.bodySmall,
-          )
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: preferences.interests
-                .map((interest) => Chip(label: Text(categoryLabelEs(interest))))
-                .toList(),
-          ),
-      ],
-    );
-  }
-}
-
-/// Computed from `user_quests` + the quest catalogue — no badges table
-/// exists, so "earned" is a real boolean derived from completion history.
-class _BadgesGrid extends StatelessWidget {
-  final QuestViewModel questViewModel;
-
-  const _BadgesGrid({required this.questViewModel});
-
-  @override
-  Widget build(BuildContext context) {
-    final badges = [
-      ('⚡', 'First quest', questViewModel.badgeFirstMission),
-      ('🧭', 'Explorer', questViewModel.badgeExplorer),
-      ('☕', 'Gourmet', questViewModel.badgeGourmet),
-      ('🎨', 'Art lover', questViewModel.badgeArtLover),
-      ('🔥', '7-day streak', questViewModel.badgeSevenDayStreak),
-      ('📚', 'Bookworm', questViewModel.badgeBookworm),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Badges', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 10),
-        // Rows as tall as their tallest badge, not a fixed aspect ratio: a
-        // two-line label ("Ratón de biblioteca") overflowed it on a 360 dp phone.
-        _BadgeRows(
-          children: badges.map((badge) {
-            final (emoji, label, earned) = badge;
-            return Container(
-              constraints: const BoxConstraints(minHeight: 104),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: earned
-                    ? Theme.of(context).cardColor
-                    : Theme.of(context).cardColor.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Opacity(
-                    opacity: earned ? 1 : 0.35,
-                    child: Text(emoji, style: const TextStyle(fontSize: 24)),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: earned ? null : Theme.of(context).colorScheme.outline,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Icon(
-                    earned ? Icons.check_circle : Icons.lock_outline,
-                    size: 14,
-                    color: earned ? AppColors.secondary : Theme.of(context).colorScheme.outline,
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-}
-
-/// Three badges per row, each row as tall as its tallest badge.
-class _BadgeRows extends StatelessWidget {
-  static const _perRow = 3;
-  static const _gap = 10.0;
-
-  final List<Widget> children;
-
-  const _BadgeRows({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (var start = 0; start < children.length; start += _perRow) ...[
-          if (start > 0) const SizedBox(height: _gap),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = start; i < start + _perRow; i++) ...[
-                  if (i > start) const SizedBox(width: _gap),
-                  Expanded(child: i < children.length ? children[i] : const SizedBox()),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _RecentCompletions extends StatelessWidget {
-  final QuestViewModel questViewModel;
-
-  const _RecentCompletions({required this.questViewModel});
-
-  @override
-  Widget build(BuildContext context) {
-    final recent = questViewModel.completedQuests.take(5).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Only the last five fit here; the bitácora has every attempt,
-        // abandoned ones included, so it's offered even before a completion.
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Flexible(
-              child: Text('Recently completed', style: Theme.of(context).textTheme.titleLarge),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).push(MissionHistoryView.route()),
-              child: const Text('View quest log'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (recent.isEmpty)
-          Text(
-            "You haven't completed any quests yet.",
-            style: Theme.of(context).textTheme.bodySmall,
-          )
-        else
-          ...recent.map((userQuest) {
-            final quest = questViewModel.questById(userQuest.questId);
-            final date = userQuest.completedAt;
-            return Card(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                leading: Text(quest?.emoji ?? '🎯', style: const TextStyle(fontSize: 20)),
-                title: Text(quest?.title ?? userQuest.questId),
-                subtitle: Text(
-                  [
-                    if (date != null) _formatShortDate(date),
-                    if (quest != null) categoryLabelEs(quest.category),
-                    if (quest != null) '${quest.durationMinutes} min',
-                  ].join(' · '),
-                ),
-                trailing: const Icon(Icons.check_circle, color: AppColors.secondary),
-              ),
-            );
-          }),
-      ],
-    );
-  }
-}
-
-/// Always empty: Sidequests-Backend has no Storage bucket yet, so a
-/// completed quest's photo can never actually be shared here.
-class _PublishedPhotosSection extends StatelessWidget {
-  const _PublishedPhotosSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Published photos', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 10),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(28),
-          decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(16)),
-          child: Column(
-            children: [
-              Icon(Icons.camera_alt_outlined, size: 32, color: Theme.of(context).colorScheme.outline),
-              const SizedBox(height: 10),
-              Text("You haven't published any photos yet", style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 4),
-              Text(
-                'When you complete a quest, turn on "Share on Social" for it to show up here.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SettingsSection extends StatefulWidget {
-  final ProfileViewModel profileViewModel;
-
-  const _SettingsSection({required this.profileViewModel});
-
-  @override
-  State<_SettingsSection> createState() => _SettingsSectionState();
-}
-
-class _SettingsSectionState extends State<_SettingsSection> {
-  late bool _missionNotifications;
-  late bool _dailyReminders;
-
-  @override
-  void initState() {
-    super.initState();
-    final localDataSource = context.read<LocalDataSource>();
-    _missionNotifications = localDataSource.missionNotificationsEnabled();
-    _dailyReminders = localDataSource.dailyRemindersEnabled();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => context.read<AuthViewModel>().loadBiometricAvailability(),
-    );
-  }
-
-  /// Sensor and local flag only: works the same without a connection.
-  Future<void> _toggleBiometric(bool value) async {
-    final authViewModel = context.read<AuthViewModel>();
-    if (!value) return authViewModel.disableBiometric();
-    final confirmed = await authViewModel.enableBiometric();
-    if (!confirmed && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not verify your fingerprint. Unlock was not enabled.')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final themeViewModel = context.watch<ThemeViewModel>();
-    final localDataSource = context.read<LocalDataSource>();
-    final profile = widget.profileViewModel.profile;
-    final authViewModel = context.watch<AuthViewModel>();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Settings', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 4),
-        _SettingSwitch(
-          title: 'Dark mode',
-          subtitle: 'Easier on the eyes',
-          value: themeViewModel.isDarkMode,
-          onChanged: themeViewModel.setDarkMode,
-        ),
-        _SettingSwitch(
-          title: 'Quest notifications',
-          subtitle: 'Alerts for nearby quests — no real push yet (FCM pending)',
-          value: _missionNotifications,
-          onChanged: (value) {
-            setState(() => _missionNotifications = value);
-            localDataSource.setMissionNotificationsEnabled(value);
-          },
-        ),
-        _SettingSwitch(
-          title: 'Daily reminders',
-          subtitle: 'A friendly reminder — no real push yet (FCM pending)',
-          value: _dailyReminders,
-          onChanged: (value) {
-            setState(() => _dailyReminders = value);
-            localDataSource.setDailyRemindersEnabled(value);
-          },
-        ),
-        if (authViewModel.isBiometricAvailable)
-          _SettingSwitch(
-            title: 'Unlock with fingerprint',
-            subtitle: 'Asks for your fingerprint when you open the app',
-            value: authViewModel.biometricEnabled,
-            onChanged: _toggleBiometric,
-          ),
-        const SizedBox(height: 4),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Email'),
-          // Bounded: a long address used up the whole tile (a layout error).
-          trailing: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.55),
-            child: Text(
-              widget.profileViewModel.email ?? '—',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Member since'),
-          trailing: Text(
-            profile?.createdAt != null ? _formatMonthYear(profile!.createdAt!) : '—',
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SettingSwitch extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _SettingSwitch({
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SwitchListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(title),
-      subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
-      value: value,
-      onChanged: onChanged,
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  final String text;
-  final Color color;
-  final Color? textColor;
-
-  const _Badge({required this.text, required this.color, this.textColor});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
-      child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: textColor)),
-    );
-  }
-}
-
-const _monthNamesEs = [
+const _monthNames = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-const _monthAbbrEs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-String _formatMonthYear(DateTime date) => '${_monthNamesEs[date.month - 1]} ${date.year}';
-
-String _formatShortDate(DateTime date) => '${_monthAbbrEs[date.month - 1]} ${date.day}';
+String _formatMonthYear(DateTime date) => '${_monthNames[date.month - 1]} ${date.year}';
