@@ -88,6 +88,17 @@ class QuestRepository {
   /// Whether [getSteps] can answer for [questId] without a connection.
   bool hasCachedSteps(String questId) => _localDataSource.getQuestSteps(questId) != null;
 
+  /// The catalogue saved on the device (the last one [getCatalog] got), with
+  /// no request. The offline pack checks its quests are in it.
+  List<Quest> getCachedCatalog() => _localDataSource.getQuestCatalog().map(Quest.fromJson).toList();
+
+  /// The steps of [questId] saved on the device, in step_order, with no
+  /// request; null when they were never saved.
+  List<QuestStep>? getCachedSteps(String questId) {
+    final rows = _localDataSource.getQuestSteps(questId);
+    return rows == null ? null : _sortedSteps(rows);
+  }
+
   /// Caching strategy: the detail view, the Misión tab and the prefetch of
   /// recommended missions all ask for the same steps again and again, so a
   /// server answer is kept in memory for [stepsCacheTtl] and repeat reads skip

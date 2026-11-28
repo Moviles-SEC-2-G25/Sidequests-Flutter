@@ -24,4 +24,5 @@ abstract final class AnalyticsEventType {
   /// `sidequests_group_private.operations`. The server logs every request it
   /// does receive, so successes and server rejections are never sent.
   static const groupChallengeClientUnconfirmed = 'group_challenge_client_unconfirmed';
+  static const bq11CommercialBlockCompleted = 'bq11_commercial_block_completed';
 }

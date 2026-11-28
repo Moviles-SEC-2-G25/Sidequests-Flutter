@@ -13,6 +13,7 @@ import '../widgets/offline_notice.dart';
 import 'change_password_dialog.dart';
 import 'edit_preferences_view.dart';
 import 'mission_history_view.dart';
+import 'offline_pack_view.dart';
 import 'stats_view.dart';
 
 /// Profile: header + stats, friends (honest stub — no backend table),
@@ -87,9 +88,37 @@ class _ProfileViewState extends State<ProfileView> {
             const _PublishedPhotosSection(),
             const SizedBox(height: 24),
             _SettingsSection(profileViewModel: profileViewModel),
+            const SizedBox(height: 24),
+            const _OfflineAccessSection(),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Entry to the offline pack (as in Kotlin's profile).
+class _OfflineAccessSection extends StatelessWidget {
+  const _OfflineAccessSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('ACCESO OFFLINE', style: textTheme.labelSmall?.copyWith(letterSpacing: 0.5)),
+        const SizedBox(height: 4),
+        Text(
+          'Ten disponibles las misiones elegidas y sus pasos cuando pierdas la conexión.',
+          style: textTheme.bodySmall,
+        ),
+        TextButton(
+          style: TextButton.styleFrom(padding: EdgeInsets.zero),
+          onPressed: () => Navigator.of(context).push(OfflinePackView.route()),
+          child: const Text('Gestionar paquete offline →'),
+        ),
+      ],
     );
   }
 }

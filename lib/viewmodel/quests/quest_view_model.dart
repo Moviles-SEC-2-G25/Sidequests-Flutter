@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../analytics/analytics_event_type.dart';
 import '../../analytics/analytics_tracker.dart';
 import '../../core/app_exception.dart';
 import '../../core/bq10_context.dart';
+import '../../core/bq11/block_dwell_meter.dart';
 import '../../core/bq6_evidence.dart';
 import '../../core/completion_likelihood.dart';
 import '../../core/quest_alternative_recommender.dart';
@@ -15,7 +17,9 @@ import '../../core/verification/verification_strategies.dart';
 import '../../core/workers/similar_quest_worker.dart';
 import '../../data/context/context_manager.dart';
 import '../../data/remote/network_guard.dart';
+import '../../data/services/bq11_fix_reader.dart';
 import '../../data/services/location_check_in_service.dart';
+import '../../data/services/location_service.dart';
 import '../../data/services/photo_capture_service.dart';
 import '../../data/services/step_counter_service.dart';
 import '../../models/abandonment_reason.dart';
@@ -39,6 +43,20 @@ const List<int> kAvailableMinuteOptions = [10, 20, 30, 45, 60];
 /// runs. An abandoned attempt is closed, as in Kotlin: starting that quest again
 /// is a new attempt.
 const _activeMissionStatuses = {'accepted', 'in_progress'};
+
+/// BQ11: one fresh fix this often while sharing, as Kotlin does. Under the
+/// meter's 35 s gap, so one missed reading doesn't cut the interval.
+const kBq11SampleInterval = Duration(seconds: 15);
+
+/// Why sharing couldn't be turned on (Kotlin's message, in Spanish).
+/// A monotonic clock (unaffected by changes to the phone's time).
+Duration Function() _startMonotonicClock() {
+  final stopwatch = Stopwatch()..start();
+  return () => stopwatch.elapsed;
+}
+
+const kBq11NeedsPreciseLocation =
+    'Se necesita ubicación precisa para compartir. Puedes seguir la misión sin esto.';
 
 /// Minimum time between two automatic check-in attempts on the same step,
 /// so a failing update (offline) isn't retried on every GPS fix.
@@ -251,6 +269,24 @@ class QuestViewModel extends ChangeNotifier {
   /// Session-owned (app.dart), so signing out empties it.
   final CompletionLikelihoodMemo _completionLikelihoodMemo;
 
+  // --- BQ11: time in a pilot commercial block on a Bogotá weekend, shared
+  // only if the user turns it on for this attempt. Measured in memory; only
+  // the block summary is sent, after the completion is saved. ---
+  final BlockDwellMeter _bq11Meter = BlockDwellMeter();
+  final Bq11FixReader _bq11ReadFix;
+  final Future<LocationAccess> Function() _bq11RequestAccess;
+  final Timer Function(Duration, void Function(Timer)) _bq11PeriodicTimer;
+  final Duration Function() _bq11Elapsed;
+  final String Function() _newEventId;
+  Timer? _bq11Timer;
+  bool _isReadingBq11Fix = false;
+
+  /// The Misión screens on screen right now (the tab, a pushed Misión).
+  final Set<Object> _visibleMissionScreens = {};
+
+  /// Why the last attempt to turn sharing on failed; null otherwise.
+  String? bq11SharingError;
+
   QuestViewModel(
     this._questRepository,
     this._contextManager,
@@ -265,7 +301,17 @@ class QuestViewModel extends ChangeNotifier {
     DateTime Function()? now,
     QuestAlternativesRunner questAlternativesRunner = _computeAlternativesInBackground,
     CompletionLikelihoodMemo? completionLikelihoodMemo,
+    Bq11FixReader? bq11FixReader,
+    Future<LocationAccess> Function()? bq11RequestAccess,
+    Timer Function(Duration, void Function(Timer))? bq11PeriodicTimer,
+    Duration Function()? bq11Elapsed,
+    String Function()? newEventId,
   }) : _now = now ?? DateTime.now,
+       _bq11ReadFix = bq11FixReader ?? readBq11Fix,
+       _bq11RequestAccess = bq11RequestAccess ?? LocationService().ensureAccess,
+       _bq11PeriodicTimer = bq11PeriodicTimer ?? Timer.periodic,
+       _bq11Elapsed = bq11Elapsed ?? _startMonotonicClock(),
+       _newEventId = newEventId ?? const Uuid().v4,
        _completionLikelihoodMemo = completionLikelihoodMemo ?? CompletionLikelihoodMemo(),
        _runQuestAlternatives = questAlternativesRunner,
        _lastJourneyEndedAt = (now ?? DateTime.now)(),
@@ -346,6 +392,7 @@ class QuestViewModel extends ChangeNotifier {
     } finally {
       isLoading = false;
       _syncCheckIn();
+      _syncBq11();
       notifyListeners();
     }
     await _applySavedCheckIn();
@@ -768,6 +815,9 @@ class QuestViewModel extends ChangeNotifier {
         updated = await _questRepository.completeQuest(
           userQuest.copyWithProgress(completedSteps: nextCompleted),
         );
+        // Saved on the server: the BQ11 measurement can be reported now. Before
+        // _replaceUserQuest, which would discard it (the mission is no longer active).
+        _reportBq11(updated);
         final quest = questById(userQuest.questId);
         _analyticsTracker.track(
           AnalyticsEventType.questCompleted,
@@ -1288,6 +1338,132 @@ class QuestViewModel extends ChangeNotifier {
       !_isCompletingStep &&
       strategyFor(step.verificationType).allowsManualCompletion(quest, _currentStepEvidence());
 
+  // --- BQ11 (Weekend commercial blocks): opt-in per attempt, for a physical
+  // individual quest. Kotlin's contract: see lib/core/bq11/. ---
+
+  /// The quests BQ11 measures: physical (gps) and not a group challenge.
+  bool canShareBq11(UserQuest mission, Quest quest) =>
+      quest.locationMode == 'gps' &&
+      !quest.isGroup &&
+      _activeMissionStatuses.contains(mission.status);
+
+  /// Sharing is on for the mission on screen.
+  bool get isSharingBq11 {
+    final mission = currentMission;
+    return mission != null && _bq11Meter.attemptId == mission.id;
+  }
+
+  /// The switch. On: asks for precise location first. Off: the measurement is
+  /// discarded, so nothing is sent for this attempt.
+  Future<void> setBq11Sharing(bool enabled) async {
+    final mission = currentMission;
+    final quest = mission == null ? null : questById(mission.questId);
+    bq11SharingError = null;
+    if (!enabled || mission == null || quest == null || !canShareBq11(mission, quest)) {
+      _bq11Meter.select(null);
+      _syncBq11();
+      notifyListeners();
+      return;
+    }
+    final access = await _bq11RequestAccess();
+    if (currentMission?.id != mission.id) return; // the mission changed meanwhile
+    if (access != LocationAccess.granted) {
+      bq11SharingError = kBq11NeedsPreciseLocation;
+    } else {
+      _bq11Meter.select(mission.id);
+    }
+    _syncBq11();
+    notifyListeners();
+  }
+
+  /// HomeShell (the Misión tab selected, nothing on top) and a pushed Misión
+  /// screen say whether they're on screen: BQ11 only measures while one is.
+  void setMissionScreenVisible(Object screen, bool isVisible) {
+    final changed = isVisible ? _visibleMissionScreens.add(screen) : _visibleMissionScreens.remove(screen);
+    if (changed) _syncBq11();
+  }
+
+  /// Keeps the sampling timer and the meter in line with the mission, the
+  /// screen and the app. Never notifies: callers do.
+  void _syncBq11() {
+    final attemptId = _bq11Meter.attemptId;
+    if (attemptId != null && currentMission?.id != attemptId) {
+      _bq11Meter.select(null); // completed elsewhere, abandoned, or another account
+    }
+    final shouldSample =
+        _bq11Meter.attemptId != null && _isForeground && _visibleMissionScreens.isNotEmpty;
+    _bq11Meter.setVisible(shouldSample);
+    if (!shouldSample) {
+      _bq11Timer?.cancel();
+      _bq11Timer = null;
+    } else if (_bq11Timer == null) {
+      _bq11Timer = _bq11PeriodicTimer(kBq11SampleInterval, (_) => unawaited(_sampleBq11()));
+      unawaited(_sampleBq11());
+    }
+  }
+
+  Future<void> _sampleBq11() async {
+    final attemptId = _bq11Meter.attemptId;
+    if (attemptId == null || _isReadingBq11Fix) return;
+    // Kotlin reads only on a Bogotá weekend: no GPS the rest of the week.
+    if (bogotaWeekendStart(_now()) == null) {
+      _bq11Meter.pause();
+      return;
+    }
+    _isReadingBq11Fix = true;
+    Bq11Fix? fix;
+    try {
+      fix = await _bq11ReadFix();
+    } catch (_) {
+      fix = null;
+    } finally {
+      _isReadingBq11Fix = false;
+    }
+    if (_bq11Timer == null || _bq11Meter.attemptId != attemptId) return; // stopped meanwhile
+    if (fix == null) {
+      _bq11Meter.pause();
+      return;
+    }
+    _bq11Meter.recordFix(
+      attemptId: attemptId,
+      latitude: fix.latitude,
+      longitude: fix.longitude,
+      accuracyMeters: fix.accuracyMeters,
+      fixTime: fix.fixTime,
+      receivedAt: _now(),
+      elapsed: _bq11Elapsed(),
+      isMocked: fix.isMocked,
+    );
+  }
+
+  /// [completed] was just saved on the server: one event per block over the
+  /// threshold, timed by the server's completed_at. Without coordinates; offline
+  /// it waits in the analytics queue with that time.
+  void _reportBq11(UserQuest completed) {
+    if (_bq11Meter.attemptId != completed.id) return;
+    final dwells = _bq11Meter.finish(
+      attemptId: completed.id,
+      completedAt: completed.completedAt ?? _now(),
+    );
+    for (final dwell in dwells) {
+      final eventId = _newEventId();
+      _analyticsTracker.trackDetailed(
+        AnalyticsEventType.bq11CommercialBlockCompleted,
+        questId: completed.questId,
+        withCoordinates: false,
+        metadataForDistance: (_) => {
+          'event_id': eventId,
+          'schema_version': 1,
+          'platform': 'flutter',
+          'attempt_id': completed.id,
+          'block_id': dwell.blockId,
+          'weekend_start': formatWeekendStart(dwell.weekendStart),
+          'observed_ms': dwell.observedMs,
+        },
+      );
+    }
+  }
+
   /// HomeShell: the GPS only runs while the app is in the foreground.
   /// Coming back is also a good moment to retry pending photo uploads and a
   /// saved check-in (a failed request isn't always a connectivity change), and
@@ -1296,6 +1472,7 @@ class QuestViewModel extends ChangeNotifier {
     if (_isForeground == isForeground) return;
     _isForeground = isForeground;
     _syncCheckIn();
+    _syncBq11();
     if (isForeground) {
       unawaited(retryPendingPhotoUploads());
       unawaited(_applySavedCheckIn());
@@ -1729,6 +1906,7 @@ class QuestViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    _bq11Timer?.cancel();
     // Kills the "Te podría gustar" worker isolate and closes its ports.
     _similarQuestRunner.close();
     _stepCounterSubscription.cancel();
@@ -1743,6 +1921,7 @@ class QuestViewModel extends ChangeNotifier {
   void _replaceUserQuest(UserQuest updated) {
     userQuests = [updated, ...userQuests.where((uq) => uq.id != updated.id)];
     _syncCheckIn();
+    _syncBq11();
     notifyListeners();
   }
 

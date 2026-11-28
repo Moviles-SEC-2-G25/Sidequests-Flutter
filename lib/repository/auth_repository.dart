@@ -7,6 +7,7 @@ import '../core/app_exception.dart';
 import '../core/memo.dart';
 import '../data/local/local_data_source.dart';
 import '../data/local/step_log_database.dart';
+import '../data/offline/offline_pack_manager.dart';
 import '../data/remote/network_guard.dart';
 import '../data/remote/supabase_remote_data_source.dart';
 
@@ -27,13 +28,18 @@ class AuthRepository {
   /// In-memory caches of this account's data, emptied with the rest.
   final List<SessionCache> _sessionCaches;
 
+  /// The offline pack's manifest is this account's choice too.
+  final OfflinePackManager? _offlinePack;
+
   AuthRepository(
     this._remoteDataSource,
     this._localDataSource, {
     StepLogDatabase? stepLog,
     List<SessionCache> sessionCaches = const [],
+    OfflinePackManager? offlinePack,
   }) : _stepLog = stepLog,
-       _sessionCaches = sessionCaches;
+       _sessionCaches = sessionCaches,
+       _offlinePack = offlinePack;
 
   User? get currentUser => _remoteDataSource.currentSession?.user;
 
@@ -116,8 +122,18 @@ class AuthRepository {
   /// cleanup, so the next account doesn't inherit this one's data or queues.
   Future<void> clearLocalData() async {
     await _localDataSource.clear();
+    await _clearOfflinePack();
     _clearSessionCaches();
     await _clearStepLog();
+  }
+
+  /// Never keeps anyone signed in: the store already swallows file errors.
+  Future<void> _clearOfflinePack() async {
+    try {
+      await _offlinePack?.clear();
+    } catch (error) {
+      debugPrint('Offline pack: not cleared ($error)');
+    }
   }
 
   void _clearSessionCaches() {
@@ -147,6 +163,7 @@ class AuthRepository {
       // The token isn't revoked on the server; it just expires on its own.
     }
     await _localDataSource.clear();
+    await _clearOfflinePack();
     _clearSessionCaches();
     await _clearStepLog();
   }

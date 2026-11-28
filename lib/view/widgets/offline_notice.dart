@@ -25,6 +25,10 @@ abstract final class OfflineMessages {
       'Tu avance está guardado.';
   static const photoUpload = 'Tu foto está guardada en el teléfono y se subirá cuando vuelvas a tener conexión.';
   static const savePreferences = 'Sin conexión: necesitas internet para guardar tus preferencias.';
+  static const offlinePackPending =
+      'Sin conexión: la misión se descargará cuando vuelvas a tener internet.';
+  static const offlinePackRetry =
+      'Sin conexión: podrás reintentar las descargas cuando vuelvas a tener internet.';
 
   /// Retos en grupo: the lists on screen are the ones saved on the phone;
   /// create, join and steps need the server (they're never queued).

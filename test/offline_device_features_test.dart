@@ -15,6 +15,8 @@ import 'package:sidequests/analytics/analytics_tracker.dart';
 import 'package:sidequests/core/verification/step_verification_strategy.dart';
 import 'package:sidequests/data/context/context_manager.dart';
 import 'package:sidequests/data/local/local_data_source.dart';
+import 'package:sidequests/data/local/offline_pack_manifest_store.dart';
+import 'package:sidequests/data/offline/offline_pack_manager.dart';
 import 'package:sidequests/data/remote/supabase_remote_data_source.dart';
 import 'package:sidequests/data/services/battery_monitor.dart';
 import 'package:sidequests/data/services/biometric_service.dart';
@@ -33,6 +35,7 @@ import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/repository/social_repository.dart';
 import 'package:sidequests/view/home_shell.dart';
 import 'package:sidequests/viewmodel/auth/auth_view_model.dart';
+import 'package:sidequests/viewmodel/offline/offline_pack_view_model.dart';
 import 'package:sidequests/viewmodel/profile/profile_view_model.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 import 'package:sidequests/viewmodel/social/social_view_model.dart';
@@ -337,6 +340,21 @@ class _FakeCamera extends PhotoCaptureService {
   Future<Uint8List?> retrieveLost() async => null;
 }
 
+/// Records what HomeShell asks of the offline pack.
+class _SpyOfflinePack extends OfflinePackViewModel {
+  int starts = 0;
+  final List<bool> retries = [];
+
+  _SpyOfflinePack(QuestRepository repository)
+    : super(OfflinePackManager(repository, OfflinePackManifestStore(isWeb: true)));
+
+  @override
+  Future<void> start({required bool isOnline}) async => starts++;
+
+  @override
+  Future<void> retry({required bool isOnline}) async => retries.add(isOnline);
+}
+
 void main() {
   const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
 
@@ -611,8 +629,9 @@ void main() {
       Future<void> pumpShell(
         WidgetTester tester,
         QuestViewModel viewModel,
-        LocalDataSource local,
-      ) async {
+        LocalDataSource local, {
+        OfflinePackViewModel? offlinePack,
+      }) async {
         final authRepository = AuthRepository(remote, local);
         await tester.pumpWidget(
           MultiProvider(
@@ -637,6 +656,8 @@ void main() {
                 ),
               ),
               ChangeNotifierProvider(create: (_) => SocialViewModel(SocialRepository())),
+              if (offlinePack != null)
+                ChangeNotifierProvider<OfflinePackViewModel>.value(value: offlinePack),
             ],
             child: MaterialApp(
               home: HomeShell(
@@ -649,6 +670,26 @@ void main() {
           ),
         );
       }
+
+      testWidgets('offline pack: restored when the shell opens, retried on reconnection',
+          (tester) async {
+        final connectivity = mockPluginsOffline();
+        final local = _MemoryLocal();
+        repository = QuestRepository(remote, local);
+        final pack = _SpyOfflinePack(repository);
+
+        await pumpShell(tester, newViewModel(), local, offlinePack: pack);
+        await tester.pumpAndSettle();
+        expect(pack.starts, 1);
+        expect(pack.retries, isEmpty);
+
+        connectivity().success(['wifi']);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 3)); // the connection held
+        await tester.pumpAndSettle();
+
+        expect(pack.retries, [true]);
+      });
 
       testWidgets('a restored pending photo goes up alone, with no tap', (tester) async {
         final connectivity = mockPluginsOffline();
