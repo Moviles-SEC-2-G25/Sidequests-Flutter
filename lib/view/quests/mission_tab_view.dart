@@ -303,14 +303,10 @@ class _WalkedStepsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final isThisMission = questViewModel.stepTrackedUserQuestId == mission.id;
-    final steps = questViewModel.missionSteps;
 
-    final (String title, String? subtitle, String? actionLabel) = switch (questViewModel.stepStatus) {
-      StepCounterStatus.counting when isThisMission => (
-        steps == null ? 'Esperando tus primeros pasos…' : '${formatThousands(steps)} pasos caminados',
-        null,
-        null,
-      ),
+    // title null = counting: the live number, from missionStepsListenable.
+    final (String? title, String? subtitle, String? actionLabel) = switch (questViewModel.stepStatus) {
+      StepCounterStatus.counting when isThisMission => (null, null, null),
       StepCounterStatus.permissionDenied => (
         'Pasos caminados',
         'Activa "Actividad física" para contarlos durante la misión.',
@@ -348,7 +344,20 @@ class _WalkedStepsCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: isCounting ? textTheme.titleMedium : textTheme.titleSmall),
+                if (title != null)
+                  Text(title, style: textTheme.titleSmall)
+                else
+                  // Only this text rebuilds with each step; the ViewModel
+                  // doesn't notify for them (micro-optimization).
+                  ValueListenableBuilder<int?>(
+                    valueListenable: questViewModel.missionStepsListenable,
+                    builder: (context, steps, _) => Text(
+                      steps == null
+                          ? 'Esperando tus primeros pasos…'
+                          : '${formatThousands(steps)} pasos caminados',
+                      style: textTheme.titleMedium,
+                    ),
+                  ),
                 if (subtitle != null) Text(subtitle, style: textTheme.bodySmall),
               ],
             ),
