@@ -86,7 +86,7 @@ class _FakeAuthRepository implements AuthRepository {
     await verifyGate?.future;
     if (verifyError != null) throw verifyError!;
     if (code != _validCode) {
-      throw const AppException('El código no es correcto o ya venció. Pide uno nuevo.');
+      throw const AppException('The code is incorrect or has expired. Request a new one.');
     }
     authenticated = true;
     _changes.add(const AuthState(AuthChangeEvent.signedIn, null));
@@ -125,7 +125,7 @@ void main() {
 
       expect(sent, isFalse);
       expect(repository.sentTo, isEmpty);
-      expect(viewModel.otpErrorMessage, 'Sin conexión. Conéctate para recibir tu código.');
+      expect(viewModel.otpErrorMessage, 'Offline. Connect to receive your code.');
       expect(viewModel.otpFailedForConnection, isTrue);
       expect(viewModel.isSendingCode, isFalse);
     });
@@ -137,7 +137,7 @@ void main() {
 
       expect(success, isFalse);
       expect(repository.triedCodes, isEmpty);
-      expect(viewModel.otpErrorMessage, 'Sin conexión. Conéctate para verificar tu código.');
+      expect(viewModel.otpErrorMessage, 'Offline. Connect to verify your code.');
       expect(viewModel.otpFailedForConnection, isTrue);
       expect(viewModel.isVerifyingCode, isFalse);
       expect(viewModel.status, AuthStatus.unauthenticated);
@@ -145,7 +145,7 @@ void main() {
     });
 
     test('"online" but the request fails: counts as connection, unlike a wrong code', () async {
-      repository.verifyError = const AppException('Sin conexión. Inténtalo de nuevo.', isRetryable: true);
+      repository.verifyError = const AppException('Offline. Try again.', isRetryable: true);
       await viewModel.verifyLoginCode(email: 'ana@uniandes.edu.co', code: _validCode);
       expect(repository.triedCodes, [_validCode]);
       expect(viewModel.otpFailedForConnection, isTrue);
@@ -156,11 +156,11 @@ void main() {
     });
 
     test('a retryable send failure counts as connection; a rejected one does not', () async {
-      repository.sendError = const AppException('Sin conexión. Inténtalo de nuevo.', isRetryable: true);
+      repository.sendError = const AppException('Offline. Try again.', isRetryable: true);
       await viewModel.sendLoginCode('ana@uniandes.edu.co');
       expect(viewModel.otpFailedForConnection, isTrue);
 
-      repository.sendError = const AppException('No hay una cuenta con ese correo. Regístrate primero.');
+      repository.sendError = const AppException('There is no account with that email. Sign up first.');
       await viewModel.sendLoginCode('ana@uniandes.edu.co');
       expect(viewModel.otpFailedForConnection, isFalse);
     });
@@ -188,7 +188,7 @@ void main() {
       isOffline = false;
       await viewModel.verifyLoginCode(email: 'ana@uniandes.edu.co', code: '000000');
       viewModel.clearOtpConnectionError();
-      expect(viewModel.otpErrorMessage, contains('Pide uno nuevo'));
+      expect(viewModel.otpErrorMessage, contains('Request a new one'));
     });
   });
 
@@ -202,12 +202,12 @@ void main() {
     });
 
     test('a failed send shows its error on the code screen, not on LoginView', () async {
-      repository.sendError = const AppException('No hay una cuenta con ese correo. Regístrate primero.');
+      repository.sendError = const AppException('There is no account with that email. Sign up first.');
 
       final sent = await viewModel.sendLoginCode('nadie@uniandes.edu.co');
 
       expect(sent, isFalse);
-      expect(viewModel.otpErrorMessage, contains('Regístrate'));
+      expect(viewModel.otpErrorMessage, contains('Sign up'));
       expect(viewModel.errorMessage, isNull);
     });
 
@@ -224,7 +224,7 @@ void main() {
 
       expect(success, isFalse);
       expect(viewModel.status, AuthStatus.unauthenticated);
-      expect(viewModel.otpErrorMessage, contains('Pide uno nuevo'));
+      expect(viewModel.otpErrorMessage, contains('Request a new one'));
       expect(viewModel.errorMessage, isNull);
     });
 
@@ -259,7 +259,7 @@ void main() {
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const OtpLoginView()),
                       ),
-                      child: const Text('Entrar con código'),
+                      child: const Text('Log in with a code'),
                     ),
                   ],
                 ),
@@ -268,14 +268,14 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Entrar con código'));
+      await tester.tap(find.text('Log in with a code'));
       await tester.pumpAndSettle();
     }
 
     Future<void> goToCodeStep(WidgetTester tester) async {
       await tester.enterText(find.byType(TextField), '  Ana@Uniandes.edu.co ');
       await tester.pump();
-      await tester.tap(find.widgetWithText(FilledButton, 'Enviar código'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Send code'));
       await tester.pump();
       await tester.pump();
     }
@@ -283,17 +283,17 @@ void main() {
     FilledButton filledButton(WidgetTester tester, String label) =>
         tester.widget<FilledButton>(find.widgetWithText(FilledButton, label));
 
-    testWidgets('"Enviar código" stays disabled until the email looks valid', (tester) async {
+    testWidgets('"Send code" stays disabled until the email looks valid', (tester) async {
       await pumpOtpScreen(tester);
-      expect(filledButton(tester, 'Enviar código').onPressed, isNull);
+      expect(filledButton(tester, 'Send code').onPressed, isNull);
 
       await tester.enterText(find.byType(TextField), 'ana@');
       await tester.pump();
-      expect(filledButton(tester, 'Enviar código').onPressed, isNull);
+      expect(filledButton(tester, 'Send code').onPressed, isNull);
 
       await tester.enterText(find.byType(TextField), 'ana@uniandes.edu.co');
       await tester.pump();
-      expect(filledButton(tester, 'Enviar código').onPressed, isNotNull);
+      expect(filledButton(tester, 'Send code').onPressed, isNotNull);
     });
 
     testWidgets('sending moves to the code step, with the email trimmed and lowercased', (tester) async {
@@ -303,28 +303,28 @@ void main() {
 
       expect(repository.sentTo, ['ana@uniandes.edu.co']);
       expect(find.text('ana@uniandes.edu.co'), findsOneWidget);
-      expect(find.text('Código'), findsOneWidget);
+      expect(find.text('Code'), findsOneWidget);
     });
 
     testWidgets('resend waits 60 s, counting down, then sends again', (tester) async {
       await pumpOtpScreen(tester);
       await goToCodeStep(tester);
 
-      final resend = find.widgetWithText(TextButton, 'Reenviar código (1:00)');
+      final resend = find.widgetWithText(TextButton, 'Resend code (1:00)');
       expect(tester.widget<TextButton>(resend).onPressed, isNull);
 
       await tester.pump(const Duration(seconds: 15));
-      expect(find.text('Reenviar código (0:45)'), findsOneWidget);
+      expect(find.text('Resend code (0:45)'), findsOneWidget);
 
       await tester.pump(const Duration(seconds: 45));
-      final ready = find.widgetWithText(TextButton, 'Reenviar código');
+      final ready = find.widgetWithText(TextButton, 'Resend code');
       expect(tester.widget<TextButton>(ready).onPressed, isNotNull);
 
       await tester.tap(ready);
       await tester.pump();
       await tester.pump();
       expect(repository.sentTo, hasLength(2));
-      expect(find.text('Reenviar código (1:00)'), findsOneWidget); // countdown restarts
+      expect(find.text('Resend code (1:00)'), findsOneWidget); // countdown restarts
     });
 
     testWidgets('the code field only takes digits, up to 6', (tester) async {
@@ -360,29 +360,29 @@ void main() {
       await tester.enterText(find.byType(TextField), '000000');
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Pide uno nuevo'), findsOneWidget);
+      expect(find.textContaining('Request a new one'), findsOneWidget);
       expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, isEmpty);
       expect(find.byType(OtpLoginView), findsOneWidget);
     });
 
-    testWidgets('"Cambiar correo" goes back to the email step', (tester) async {
+    testWidgets('"Change email" goes back to the email step', (tester) async {
       await pumpOtpScreen(tester);
       await goToCodeStep(tester);
 
-      await tester.tap(find.text('Cambiar correo'));
+      await tester.tap(find.text('Change email'));
       await tester.pump();
 
-      expect(find.widgetWithText(FilledButton, 'Enviar código'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Send code'), findsOneWidget);
     });
 
     testWidgets('a send error is shown on the email step', (tester) async {
-      repository.sendError = const AppException('No hay una cuenta con ese correo. Regístrate primero.');
+      repository.sendError = const AppException('There is no account with that email. Sign up first.');
       await pumpOtpScreen(tester);
 
       await goToCodeStep(tester);
 
-      expect(find.textContaining('Regístrate'), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Enviar código'), findsOneWidget); // still on step 1
+      expect(find.textContaining('Sign up'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Send code'), findsOneWidget); // still on step 1
     });
 
     group('without a connection', () {
@@ -398,7 +398,8 @@ void main() {
       Future<void> goOnline(WidgetTester tester) async {
         isOffline = false;
         offlineChanges.add(false);
-        await tester.pump();
+        await tester.pump(); // delivers the event; its setState schedules a frame
+        await tester.pump(); // draws that frame
       }
 
       testWidgets('opening the screen offline already says so and blocks sending', (tester) async {
@@ -407,10 +408,10 @@ void main() {
         await tester.enterText(find.byType(TextField), 'ana@uniandes.edu.co');
         await tester.pump();
 
-        expect(find.text('Sin conexión. Conéctate para recibir tu código.'), findsOneWidget);
+        expect(find.text('Offline. Connect to receive your code.'), findsOneWidget);
         // Before any tap, and like LoginView's: an OfflineNotice.
         expect(find.descendant(of: find.byType(OfflineNotice), matching: find.text(AuthViewModel.offlineSendMessage)), findsOneWidget);
-        expect(filledButton(tester, 'Enviar código').onPressed, isNull);
+        expect(filledButton(tester, 'Send code').onPressed, isNull);
       });
 
       testWidgets('email step: keeps the email and reconnecting sends nothing by itself', (tester) async {
@@ -419,13 +420,13 @@ void main() {
         await tester.pump();
 
         await goOffline(tester);
-        expect(filledButton(tester, 'Enviar código').onPressed, isNull);
+        expect(filledButton(tester, 'Send code').onPressed, isNull);
         expect(field(tester).text, 'ana@uniandes.edu.co');
 
         await goOnline(tester);
         await tester.pump();
-        expect(filledButton(tester, 'Enviar código').onPressed, isNotNull);
-        expect(find.textContaining('Sin conexión'), findsNothing);
+        expect(filledButton(tester, 'Send code').onPressed, isNotNull);
+        expect(find.textContaining('Offline'), findsNothing);
         expect(field(tester).text, 'ana@uniandes.edu.co');
         expect(repository.sentTo, isEmpty);
       });
@@ -436,31 +437,31 @@ void main() {
         await tester.pump();
         isOffline = true; // the stream hasn't told the screen yet
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Enviar código'));
+        await tester.tap(find.widgetWithText(FilledButton, 'Send code'));
         await tester.pump();
         await tester.pump();
 
         expect(repository.sentTo, isEmpty);
-        expect(find.text('Sin conexión. Conéctate para recibir tu código.'), findsOneWidget);
+        expect(find.text('Offline. Connect to receive your code.'), findsOneWidget);
         expect(find.descendant(of: find.byType(OfflineNotice), matching: find.text(AuthViewModel.offlineSendMessage)), findsOneWidget);
-        expect(find.widgetWithText(FilledButton, 'Enviar código'), findsOneWidget); // still on step 1
+        expect(find.widgetWithText(FilledButton, 'Send code'), findsOneWidget); // still on step 1
         expect(field(tester).text, 'ana@uniandes.edu.co');
-        expect(find.textContaining('Reenviar código ('), findsNothing);
+        expect(find.textContaining('Resend code ('), findsNothing);
       });
 
       testWidgets('a connection error from a real attempt goes away once back online', (tester) async {
         await pumpOtpScreen(tester);
         await goToCodeStep(tester);
-        repository.verifyError = const AppException('Sin conexión. Inténtalo de nuevo.', isRetryable: true);
+        repository.verifyError = const AppException('Offline. Try again.', isRetryable: true);
         await tester.enterText(find.byType(TextField), _validCode);
         await tester.pump();
         await tester.pump();
-        expect(find.text('Sin conexión. Inténtalo de nuevo.'), findsOneWidget);
+        expect(find.text('Offline. Try again.'), findsOneWidget);
 
         await goOffline(tester);
         await goOnline(tester);
 
-        expect(find.textContaining('Sin conexión'), findsNothing);
+        expect(find.textContaining('Offline'), findsNothing);
         expect(field(tester).text, _validCode);
       });
 
@@ -475,17 +476,17 @@ void main() {
 
         expect(repository.triedCodes, isEmpty);
         expect(field(tester).text, _validCode);
-        expect(find.text('Sin conexión. Conéctate para verificar tu código.'), findsOneWidget);
+        expect(find.text('Offline. Connect to verify your code.'), findsOneWidget);
         expect(find.descendant(of: find.byType(OfflineNotice), matching: find.text(AuthViewModel.offlineVerifyMessage)), findsOneWidget);
-        expect(filledButton(tester, 'Entrar').onPressed, isNull);
+        expect(filledButton(tester, 'Log in').onPressed, isNull);
 
         await goOnline(tester);
         await tester.pump();
         expect(repository.triedCodes, isEmpty);
         expect(field(tester).text, _validCode);
-        expect(find.textContaining('Sin conexión'), findsNothing);
+        expect(find.textContaining('Offline'), findsNothing);
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Entrar'));
+        await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
         await tester.pumpAndSettle();
         expect(repository.triedCodes, [_validCode]);
         expect(find.byType(OtpLoginView), findsNothing);
@@ -494,7 +495,7 @@ void main() {
       testWidgets('"online" but the request fails: the code stays, unlike a wrong one', (tester) async {
         await pumpOtpScreen(tester);
         await goToCodeStep(tester);
-        repository.verifyError = const AppException('Sin conexión. Inténtalo de nuevo.', isRetryable: true);
+        repository.verifyError = const AppException('Offline. Try again.', isRetryable: true);
 
         await tester.enterText(find.byType(TextField), _validCode);
         await tester.pump();
@@ -511,10 +512,10 @@ void main() {
         await goOffline(tester);
 
         await tester.pump(const Duration(seconds: 15));
-        expect(find.text('Reenviar código (0:45)'), findsOneWidget);
+        expect(find.text('Resend code (0:45)'), findsOneWidget);
 
         await tester.pump(const Duration(seconds: 45));
-        final resend = find.widgetWithText(TextButton, 'Reenviar código');
+        final resend = find.widgetWithText(TextButton, 'Resend code');
         expect(tester.widget<TextButton>(resend).onPressed, isNull);
         expect(repository.sentTo, hasLength(1));
 

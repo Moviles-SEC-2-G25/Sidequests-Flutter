@@ -25,17 +25,17 @@ class CompletionLikelihoodLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = switch (level) {
-      CompletionLevel.high => 'Prob. alta',
-      CompletionLevel.medium => 'Prob. media',
-      CompletionLevel.low => 'Prob. baja',
-      CompletionLevel.newForYou => 'Nueva para ti',
+      CompletionLevel.high => 'High chance',
+      CompletionLevel.medium => 'Medium chance',
+      CompletionLevel.low => 'Low chance',
+      CompletionLevel.newForYou => 'New for you',
     };
     final color = completionLevelColor(level);
 
     return Tooltip(
       message: level == CompletionLevel.newForYou
-          ? 'Aún no has probado suficientes misiones de esta categoría'
-          : 'Según cuántas misiones de esta categoría has terminado',
+          ? "You haven't tried enough quests in this category yet"
+          : 'Based on how many quests in this category you have finished',
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

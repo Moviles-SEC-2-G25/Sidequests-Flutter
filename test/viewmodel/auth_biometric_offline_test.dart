@@ -26,8 +26,8 @@ import 'package:sidequests/viewmodel/auth/auth_view_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _confirmation =
-    'Sin conexión no podrás iniciar sesión con tu contraseña hasta reconectar. '
-    '¿Salir de todos modos?';
+    'While offline you will not be able to log in with your password until you reconnect. '
+    'Exit anyway?';
 
 class _NoLocation extends LocationService {
   @override
@@ -338,10 +338,10 @@ void main() {
       expect(find.byType(BiometricLockView), findsOneWidget);
     });
 
-    testWidgets('online, "Usar contraseña" signs out right away, as before', (tester) async {
+    testWidgets('online, "Use password" signs out right away, as before', (tester) async {
       await pumpLockScreen(tester, () async => false);
 
-      await tester.tap(find.text('Usar contraseña'));
+      await tester.tap(find.text('Use password'));
       await tester.pumpAndSettle();
 
       expect(find.byType(AlertDialog), findsNothing);
@@ -352,19 +352,19 @@ void main() {
     testWidgets('offline, it asks first', (tester) async {
       await pumpLockScreen(tester, () async => true);
 
-      await tester.tap(find.text('Usar contraseña'));
+      await tester.tap(find.text('Use password'));
       await tester.pumpAndSettle();
 
       expect(find.text(_confirmation), findsOneWidget);
       expect(repository.signOuts, 0);
     });
 
-    testWidgets('offline, "Cancelar" keeps the session and the lock', (tester) async {
+    testWidgets('offline, "Cancel" keeps the session and the lock', (tester) async {
       await pumpLockScreen(tester, () async => true);
-      await tester.tap(find.text('Usar contraseña'));
+      await tester.tap(find.text('Use password'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Cancelar'));
+      await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
 
       expect(find.byType(AlertDialog), findsNothing);
@@ -374,7 +374,7 @@ void main() {
 
     testWidgets('offline, tapping outside the dialog counts as cancelling', (tester) async {
       await pumpLockScreen(tester, () async => true);
-      await tester.tap(find.text('Usar contraseña'));
+      await tester.tap(find.text('Use password'));
       await tester.pumpAndSettle();
 
       await tester.tapAt(const Offset(5, 5));
@@ -387,10 +387,10 @@ void main() {
 
     testWidgets('offline, "Salir" signs out', (tester) async {
       await pumpLockScreen(tester, () async => true);
-      await tester.tap(find.text('Usar contraseña'));
+      await tester.tap(find.text('Use password'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Salir'));
+      await tester.tap(find.text('Exit'));
       await tester.pumpAndSettle();
 
       expect(repository.signOuts, 1);
@@ -400,7 +400,7 @@ void main() {
     testWidgets('unknown connectivity behaves like online', (tester) async {
       await pumpLockScreen(tester, () async => throw PlatformException(code: 'no-plugin'));
 
-      await tester.tap(find.text('Usar contraseña'));
+      await tester.tap(find.text('Use password'));
       await tester.pumpAndSettle();
 
       expect(find.byType(AlertDialog), findsNothing);

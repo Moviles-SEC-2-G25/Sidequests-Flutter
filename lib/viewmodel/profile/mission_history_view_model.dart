@@ -267,7 +267,7 @@ class MissionHistoryViewModel extends ChangeNotifier {
     } else if (isFromCache) {
       // Offline and nothing was ever cached: not "you have no missions".
       status = HistoryStatus.error;
-      errorMessage = 'Sin conexión y sin datos guardados. Tu bitácora se cargará sola cuando vuelva el internet.';
+      errorMessage = 'Offline and no saved data. Your quest log will load automatically when you are back online.';
     } else {
       status = HistoryStatus.empty;
     }

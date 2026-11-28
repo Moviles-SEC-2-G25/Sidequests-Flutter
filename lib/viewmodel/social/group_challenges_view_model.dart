@@ -32,10 +32,10 @@ List<Quest> creatableGroupQuests(List<Quest> catalog, List<GroupChallenge> mine)
 String groupActionMessage(GroupAction action, GroupActionResult result) {
   if (result.ok) {
     return switch (action.operation) {
-      GroupAction.create => 'Reto creado: ya está en Mis retos.',
-      GroupAction.join => 'Te uniste al reto.',
-      GroupAction.progress => 'Paso marcado. ¡Sigue así!',
-      _ => 'Guardado.',
+      GroupAction.create => "Challenge created: it's now in My challenges.",
+      GroupAction.join => 'You joined the challenge.',
+      GroupAction.progress => 'Step marked. Keep it up!',
+      _ => 'Saved.',
     };
   }
   return _serverMessagesEs[result.message] ?? result.message;
@@ -43,12 +43,12 @@ String groupActionMessage(GroupAction action, GroupActionResult result) {
 
 /// Every refusal `group_challenge_act` can answer (migration 011).
 const _serverMessagesEs = {
-  'Choose an active group quest with steps.': 'Elige una misión en grupo activa y con pasos.',
-  'Challenge not found or expired.': 'Este reto ya no existe o venció.',
-  'Join this challenge first.': 'Primero únete a este reto.',
+  'Choose an active group quest with steps.': 'Choose an active group quest with steps.',
+  'Challenge not found or expired.': 'This challenge no longer exists or has expired.',
+  'Join this challenge first.': 'Join this challenge first.',
   'Progress must be between your current step and the challenge total.':
-      'Ese avance no coincide con tu paso actual. Actualiza la lista.',
-  'The server could not complete the operation.': 'El servidor no pudo completar la operación.',
+      "That progress doesn't match your current step. Refresh the list.",
+  'The server could not complete the operation.': 'The server could not complete the operation.',
 };
 
 /// "Retos en grupo" (BQ2, Group Challenge Module): the user's challenges,

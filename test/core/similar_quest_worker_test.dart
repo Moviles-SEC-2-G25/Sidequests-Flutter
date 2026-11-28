@@ -9,7 +9,7 @@ import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/user_quest.dart';
 import 'package:sidequests/repository/auth_repository.dart';
 
-/// Multithreading strategy (Alejandro): "Te podría gustar" ranked by a
+/// Multithreading strategy (Alejandro): "You might also like" ranked by a
 /// long-lived worker isolate. These run a real isolate (plain test(), not
 /// testWidgets) to prove the answer is the very same as the synchronous
 /// ranking, and that the worker's lifecycle and fallbacks behave.

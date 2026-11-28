@@ -46,14 +46,14 @@ void main() {
     return likelihood.levelFor(foodQuest, likelihood.byCategory(catalog, userQuests));
   }
 
-  test('historial vacío: empty map and every quest is "Nueva para ti"', () {
+  test('historial vacío: empty map and every quest is "New for you"', () {
     final byCategory = likelihood.byCategory([foodQuest], []);
 
     expect(byCategory, isEmpty);
     expect(likelihood.levelFor(foodQuest, byCategory), CompletionLevel.newForYou);
   });
 
-  test('2 de 2 completadas (100%) is still "Nueva para ti" — fewer than 3 attempts', () {
+  test('2 de 2 completadas (100%) is still "New for you" — fewer than 3 attempts', () {
     expect(levelOf(['completed', 'completed']), CompletionLevel.newForYou);
   });
 
@@ -150,11 +150,11 @@ void main() {
     expect(stats['food']!.completed, 2);
     expect(stats['food']!.rate, closeTo(0.667, 0.001));
     expect(stats['art']!.attempts, 1);
-    // byCategory still hides the under-3 category (Explore shows "Nueva para ti").
+    // byCategory still hides the under-3 category (Explore shows "New for you").
     expect(likelihood.byCategory([...food, ...art], [...foodHistory, ...artHistory]).keys, ['food']);
   });
 
-  test('levelOf: "Nueva para ti" below 3 attempts, otherwise the same thresholds', () {
+  test('levelOf: "New for you" below 3 attempts, otherwise the same thresholds', () {
     const fewAttempts = CategoryCompletion(category: 'art', attempts: 2, completed: 2);
     const enough = CategoryCompletion(category: 'art', attempts: 10, completed: 7);
 

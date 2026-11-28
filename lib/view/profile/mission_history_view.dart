@@ -58,20 +58,20 @@ class _MissionHistoryViewState extends State<MissionHistoryView> {
     final historyViewModel = context.watch<MissionHistoryViewModel>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi bitácora')),
+      appBar: AppBar(title: const Text('My quest log')),
       body: SafeArea(
         child: switch (historyViewModel.status) {
           HistoryStatus.loading => const Center(child: CircularProgressIndicator()),
           HistoryStatus.error => _HistoryMessage(
             icon: Icons.cloud_off,
-            message: historyViewModel.errorMessage ?? 'No se pudo cargar tu bitácora.',
-            actionLabel: 'Reintentar',
+            message: historyViewModel.errorMessage ?? 'Could not load your quest log.',
+            actionLabel: 'Retry',
             onAction: historyViewModel.load,
           ),
           HistoryStatus.empty => _HistoryMessage(
             icon: Icons.auto_stories_outlined,
-            message: 'Tu bitácora está vacía. ¡Acepta una misión en Explorar para empezarla!',
-            actionLabel: 'Volver',
+            message: 'Your quest log is empty. Accept a quest in Explore to get started!',
+            actionLabel: 'Back',
             onAction: () => Navigator.of(context).pop(),
           ),
           HistoryStatus.data => _HistoryList(
@@ -138,9 +138,9 @@ class _Controls extends StatelessWidget {
   const _Controls({required this.historyViewModel, required this.searchController});
 
   static const _filterLabels = {
-    HistoryFilter.all: 'Todas',
-    HistoryFilter.completed: 'Completadas',
-    HistoryFilter.abandoned: 'Abandonadas',
+    HistoryFilter.all: 'All',
+    HistoryFilter.completed: 'Completed',
+    HistoryFilter.abandoned: 'Abandoned',
   };
 
   @override
@@ -168,12 +168,12 @@ class _Controls extends StatelessWidget {
             onChanged: historyViewModel.setQuery,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Buscar misión, lugar o categoría',
+              hintText: 'Search quest, place or category',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: value.text.isEmpty
                   ? null
                   : IconButton(
-                      tooltip: 'Borrar búsqueda',
+                      tooltip: 'Clear search',
                       icon: const Icon(Icons.close),
                       onPressed: () {
                         searchController.clear();
@@ -200,8 +200,8 @@ class _Controls extends StatelessWidget {
         const SizedBox(height: 12),
         Text(
           historyViewModel.isNarrowed
-              ? 'Mostrando ${history.matchCount} de $total ${total == 1 ? 'misión' : 'misiones'}'
-              : '$total ${total == 1 ? 'misión' : 'misiones'} en tu bitácora',
+              ? 'Showing ${history.matchCount} of $total ${total == 1 ? 'quest' : 'quests'}'
+              : '$total ${total == 1 ? 'quest' : 'quests'} in your quest log',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 4),
@@ -226,11 +226,11 @@ class _MonthHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = [
-      if (month.completedCount > 0) _count(month.completedCount, 'completada', 'completadas'),
-      if (month.abandonedCount > 0) _count(month.abandonedCount, 'abandonada', 'abandonadas'),
-      if (month.inProgressCount > 0) '${month.inProgressCount} en curso',
+      if (month.completedCount > 0) _count(month.completedCount, 'completed', 'completed'),
+      if (month.abandonedCount > 0) _count(month.abandonedCount, 'abandoned', 'abandoned'),
+      if (month.inProgressCount > 0) '${month.inProgressCount} in progress',
       if (month.completedMinutes > 0) '${month.completedMinutes} min',
-      if (month.steps != null) _count(month.steps!, 'paso', 'pasos'),
+      if (month.steps != null) _count(month.steps!, 'step', 'steps'),
     ].join(' · ');
 
     return Padding(
@@ -301,7 +301,7 @@ class _EntryCard extends StatelessWidget {
                     if (entry.steps != null) ...[
                       const SizedBox(height: 4),
                       Text(
-                        '🚶 ${formatThousands(entry.steps!)} ${entry.steps == 1 ? 'paso' : 'pasos'}',
+                        '🚶 ${formatThousands(entry.steps!)} ${entry.steps == 1 ? 'step' : 'steps'}',
                         style: textTheme.bodySmall,
                       ),
                     ],
@@ -317,7 +317,7 @@ class _EntryCard extends StatelessWidget {
                             color: Theme.of(context).colorScheme.outline,
                           ),
                           const SizedBox(width: 4),
-                          Flexible(child: Text('Pendiente de sincronizar', style: textTheme.bodySmall)),
+                          Flexible(child: Text('Pending sync', style: textTheme.bodySmall)),
                         ],
                       ),
                     ],
@@ -336,7 +336,7 @@ class _EntryCard extends StatelessWidget {
                         ),
                       ),
                       icon: const Icon(Icons.photo_library_outlined, size: 18),
-                      label: const Text('Evidencias'),
+                      label: const Text('Evidence'),
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -372,10 +372,10 @@ class _Outcome extends StatelessWidget {
     final reason = _reasonFor(entry.abandonReason);
 
     final (label, color) = entry.isCompleted
-        ? ('Completada', AppColors.secondary)
+        ? ('Completed', AppColors.secondary)
         : entry.isAbandoned
-        ? ('Abandonada', AppColors.error)
-        : ('En curso', AppColors.primary);
+        ? ('Abandoned', AppColors.error)
+        : ('In progress', AppColors.primary);
 
     return Wrap(
       spacing: 8,
@@ -385,7 +385,7 @@ class _Outcome extends StatelessWidget {
         Text(label, style: textTheme.labelMedium?.copyWith(color: color, fontWeight: FontWeight.w700)),
         if (entry.isCompleted && rating != null)
           Semantics(
-            label: 'Calificación: $rating de 5',
+            label: 'Rating: $rating of 5',
             child: ExcludeSemantics(
               child: Text(
                 '★' * rating + '☆' * (5 - rating),
@@ -394,7 +394,7 @@ class _Outcome extends StatelessWidget {
             ),
           )
         else if (entry.isCompleted)
-          Text('Sin calificar', style: textTheme.bodySmall)
+          Text('Not rated', style: textTheme.bodySmall)
         else if (entry.isAbandoned && reason != null)
           Text('${reason.emoji} ${reason.label}', style: textTheme.bodySmall),
       ],
@@ -421,13 +421,13 @@ class _NoMatches extends StatelessWidget {
           Icon(Icons.search_off, size: 32, color: Theme.of(context).colorScheme.outline),
           const SizedBox(height: 10),
           Text(
-            'Ninguna misión coincide',
+            'No quests match',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.titleSmall,
           ),
           const SizedBox(height: 4),
           Text(
-            'Prueba con otra palabra o cambia el filtro.',
+            'Try another word or change the filter.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall,
           ),
@@ -456,18 +456,18 @@ class _ConnectionBanner extends StatelessWidget {
     final (icon, message) = switch (notice) {
       HistoryConnectionNotice.offline => (
         Icons.wifi_off,
-        'Sin conexión: estás viendo tu bitácora guardada. Se actualizará sola cuando vuelva el internet.',
+        'Offline: you are viewing your saved quest log. It will update automatically when you are back online.',
       ),
-      HistoryConnectionNotice.syncing => (Icons.sync, 'Conectado: actualizando tu bitácora…'),
+      HistoryConnectionNotice.syncing => (Icons.sync, 'Connected: updating your quest log…'),
       HistoryConnectionNotice.serverUnreachable => (
         Icons.cloud_off,
-        'No pudimos conectar con el servidor: estás viendo tu bitácora guardada. '
-            'Desliza hacia abajo para reintentar.',
+        'Could not reach the server: you are viewing your saved quest log. '
+            'Pull down to retry.',
       ),
     };
     final pending = pendingSyncCount == 1
-        ? '1 misión con cambios por sincronizar.'
-        : '$pendingSyncCount misiones con cambios por sincronizar.';
+        ? '1 quest with changes waiting to sync.'
+        : '$pendingSyncCount quests with changes waiting to sync.';
     final syncedAt = lastSyncedAt;
 
     return Container(
@@ -489,7 +489,7 @@ class _ConnectionBanner extends StatelessWidget {
                 Text(message, style: textTheme.bodySmall),
                 if (syncedAt != null) ...[
                   const SizedBox(height: 4),
-                  Text('Última actualización: ${_formatSyncedAt(syncedAt)}', style: textTheme.bodySmall),
+                  Text('Last updated: ${_formatSyncedAt(syncedAt)}', style: textTheme.bodySmall),
                 ],
                 if (pendingSyncCount > 0) ...[
                   const SizedBox(height: 4),
@@ -538,11 +538,11 @@ class _HistoryMessage extends StatelessWidget {
 }
 
 const _monthNamesEs = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-const _monthAbbrEs = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const _monthAbbrEs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /// Same "Nov 12" as Perfil's "Completadas recientemente".
 String _formatShortDate(DateTime date) => '${_monthAbbrEs[date.month - 1]} ${date.day}';

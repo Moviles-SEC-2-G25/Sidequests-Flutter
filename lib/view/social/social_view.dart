@@ -22,16 +22,16 @@ class SocialView extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
           children: [
             Text(
-              'SOLO AMIGOS',
+              'FRIENDS ONLY',
               style: Theme.of(
                 context,
               ).textTheme.labelMedium?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
-            Text('Fotos de misiones', style: Theme.of(context).textTheme.headlineSmall),
+            Text('Quest photos', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 6),
             Text(
-              'Lo que tus amigos están viviendo',
+              'What your friends are up to',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 32),
@@ -47,15 +47,15 @@ class SocialView extends StatelessWidget {
                   const Icon(Icons.people_outline, size: 40, color: AppColors.primary),
                   const SizedBox(height: 12),
                   Text(
-                    'El feed social todavía no está disponible',
+                    'The social feed is not available yet',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Necesita amigos y fotos compartidas, y el backend '
-                    'compartido aún no tiene esas tablas ni Realtime '
-                    'habilitado.',
+                    'It needs friends and shared photos, and the shared '
+                    'backend does not have those tables or Realtime '
+                    'enabled yet.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),

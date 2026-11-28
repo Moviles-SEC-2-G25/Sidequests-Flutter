@@ -86,7 +86,7 @@ class _FakeQuestRepository implements QuestRepository {
 
   @override
   Future<List<UserQuest>> getUserQuests(String userId) async {
-    if (attemptsFail) throw const AppException('Sin conexión');
+    if (attemptsFail) throw const AppException('Offline');
     return [...userQuests];
   }
 

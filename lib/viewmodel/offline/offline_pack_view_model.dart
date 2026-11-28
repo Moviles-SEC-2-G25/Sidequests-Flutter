@@ -7,7 +7,7 @@ import '../../data/offline/offline_pack_manager.dart';
 /// the whole app (app.dart), like the manager: HomeShell restores it when the
 /// app opens and retries it on reconnection.
 class OfflinePackViewModel extends ChangeNotifier {
-  static const saveErrorMessage = 'No se pudo guardar el paquete offline en el teléfono.';
+  static const saveErrorMessage = 'Could not save the offline pack on the phone.';
 
   final OfflinePackManager _manager;
 

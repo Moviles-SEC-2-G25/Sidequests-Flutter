@@ -215,13 +215,13 @@ void main() {
       expect(profile.createdAt, DateTime.utc(2026));
     });
 
-    test('offline with nothing cached: retryable "Sin conexión" error', () async {
+    test('offline with nothing cached: retryable "Offline" error', () async {
       remote.offline = true;
 
       final error = await _expectAppException(repository.getProfile('user-1'));
 
       expect(error.isRetryable, isTrue);
-      expect(error.message, contains('Sin conexión'));
+      expect(error.message, contains('Offline'));
     });
 
     test('server rejection with nothing cached: its message, not retryable', () async {
@@ -267,7 +267,7 @@ void main() {
       final error = await _expectAppException(repository.getSteps('mural-walk'));
 
       expect(error.isRetryable, isTrue);
-      expect(error.message, contains('Sin conexión'));
+      expect(error.message, contains('Offline'));
     });
 
     test('getSteps: always in step_order, even if the server answers in reverse', () async {
@@ -314,7 +314,7 @@ void main() {
     });
   });
 
-  // What "Mi bitácora" shows as "Última actualización" (local storage strategy).
+  // What "My quest log" shows as "Última actualización" (local storage strategy).
   group('QuestRepository.userQuestsSyncedAt (when the attempts were last synced)', () {
     late QuestRepository repository;
 
@@ -508,7 +508,7 @@ void main() {
       for (final write in writes) {
         final error = await _expectAppException(write);
         expect(error.isRetryable, isTrue);
-        expect(error.message, startsWith('Sin conexión'));
+        expect(error.message, startsWith('Offline'));
       }
       expect((await readOffline()).single.status, 'accepted');
     });

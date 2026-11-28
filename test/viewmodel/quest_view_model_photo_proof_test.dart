@@ -192,7 +192,7 @@ class _FakeQuestRepository implements QuestRepository {
     required Uint8List jpeg,
     String? verificationType,
   }) async {
-    if (!isJpeg(jpeg)) throw const AppException('La foto no es JPEG. Toma otra.');
+    if (!isJpeg(jpeg)) throw const AppException('The photo is not a JPEG. Take another one.');
     final proof = PendingPhotoProof(
       localPath: '/documents/pending_proofs/${pending.length}.jpg',
       storagePath: questProofStoragePath(
@@ -297,7 +297,7 @@ void main() {
       if (type == AnalyticsEventType.photoProofUploaded) metadata,
   ];
 
-  test('photo step: blocked until the photo is uploaded; "Tomar foto" uploads and unblocks it', () async {
+  test('photo step: blocked until the photo is uploaded; "Take photo" uploads and unblocks it', () async {
     await openMission([_step(0, 'photo'), _step(1, 'none')]);
     expect(photoResult(), isA<Pending>());
     expect(canComplete(), isFalse);
@@ -331,7 +331,7 @@ void main() {
 
     await viewModel.capturePhotoProof();
 
-    expect(viewModel.photoErrorMessage, 'No se pudo abrir la cámara.');
+    expect(viewModel.photoErrorMessage, 'Could not open the camera.');
   });
 
   group('web build (no device storage)', () {
@@ -374,16 +374,16 @@ void main() {
       expect(repository.verifiedCheckIn, isNull);
     });
 
-    test('offline: no "Reintentar subida" (nothing kept) — it asks for a new photo', () async {
+    test('offline: no "Retry upload" (nothing kept) — it asks for a new photo', () async {
       await openMission([_step(0, 'photo'), _step(1, 'none')]);
       repository.uploadFailure = const AppException(
-        'Sin conexión: no se pudo subir la foto. Tómala de nuevo cuando tengas internet.',
+        'Offline: the photo could not be uploaded. Take it again when you have internet.',
         isRetryable: true,
       );
 
       await viewModel.capturePhotoProof();
 
-      expect(viewModel.photoErrorMessage, contains('Tómala de nuevo'));
+      expect(viewModel.photoErrorMessage, contains('Take it again'));
       expect(viewModel.currentPendingPhotoProof, isNull);
       expect(viewModel.isUploadingPhoto, isFalse);
       expect(canComplete(), isFalse);
@@ -416,13 +416,13 @@ void main() {
     expect(viewModel.photoErrorMessage, isNull);
   });
 
-  test('offline: the photo waits on the device, "Reintentar subida" uploads it later', () async {
+  test('offline: the photo waits on the device, "Retry upload" uploads it later', () async {
     await openMission([_step(0, 'photo'), _step(1, 'none')]);
-    repository.uploadFailure = const AppException('Sin conexión: tu foto quedó guardada.', isRetryable: true);
+    repository.uploadFailure = const AppException('Offline: your photo was saved.', isRetryable: true);
 
     await viewModel.capturePhotoProof();
 
-    expect(viewModel.currentPendingPhotoProof?.lastError, contains('Sin conexión'));
+    expect(viewModel.currentPendingPhotoProof?.lastError, contains('Offline'));
     expect(canComplete(), isFalse);
     expect(uploadEvents(), isEmpty); // no event for a failed upload
 
@@ -436,11 +436,11 @@ void main() {
 
   test('rejected (not retryable): explains why, keeps nothing, still blocked', () async {
     await openMission([_step(0, 'photo'), _step(1, 'none')]);
-    repository.uploadFailure = const AppException('Este paso no admite foto o la misión no es tuya.');
+    repository.uploadFailure = const AppException('This step does not accept photos, or the quest is not yours.');
 
     await viewModel.capturePhotoProof();
 
-    expect(viewModel.photoErrorMessage, contains('no admite foto'));
+    expect(viewModel.photoErrorMessage, contains('does not accept photos'));
     expect(viewModel.currentPendingPhotoProof, isNull);
     expect(canComplete(), isFalse);
   });
@@ -512,7 +512,7 @@ void main() {
         sizeBytes: 5,
         capturedAt: DateTime(2026, 9, 30),
         attempts: 1,
-        lastError: 'Sin conexión',
+        lastError: 'Offline',
       ),
     ];
 
@@ -533,7 +533,7 @@ void main() {
     expect(photoResult(), isA<Verified>());
   });
 
-  testWidgets('Misión tab: "Tomar foto", then "Reintentar subida" offline, "Completar" disabled', (tester) async {
+  testWidgets('Misión tab: "Take photo", then "Retry upload" offline, "Completar" disabled', (tester) async {
     tester.view.physicalSize = const Size(360, 690);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -547,16 +547,16 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Tomar foto'), findsOneWidget);
-    final completeButton = find.widgetWithText(FilledButton, 'Completar este paso →');
+    expect(find.text('Take photo'), findsOneWidget);
+    final completeButton = find.widgetWithText(FilledButton, 'Complete this step →');
     expect(tester.widget<FilledButton>(completeButton).onPressed, isNull);
 
-    repository.uploadFailure = const AppException('Sin conexión: tu foto quedó guardada.', isRetryable: true);
+    repository.uploadFailure = const AppException('Offline: your photo was saved.', isRetryable: true);
     await tester.runAsync(viewModel.capturePhotoProof);
     await tester.pump();
 
-    expect(find.text('Reintentar subida'), findsOneWidget);
-    expect(find.text('Sin conexión: tu foto quedó guardada.'), findsOneWidget);
+    expect(find.text('Retry upload'), findsOneWidget);
+    expect(find.text('Offline: your photo was saved.'), findsOneWidget);
     expect(tester.widget<FilledButton>(completeButton).onPressed, isNull);
   });
 }

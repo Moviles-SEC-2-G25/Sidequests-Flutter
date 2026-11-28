@@ -120,12 +120,12 @@ const _viewerPhotosKept = 3;
 /// delay(3 s); reload() }.
 class AttemptEvidenceViewModel extends ChangeNotifier {
   static const _neverLoadedOfflineMessage =
-      'Sin conexión: las fotos de este intento todavía no se habían cargado en este teléfono. '
-      'Aparecerán solas cuando vuelvas a tener internet.';
+      'Offline: the photos for this attempt had not been loaded on this phone yet. '
+      'They will appear automatically when you are back online.';
   static const _serverUnreachableMessage =
-      'No pudimos conectar con el servidor para traer las fotos de este intento. Reintenta en un momento.';
-  static const _loadFailedMessage = 'No se pudieron cargar las fotos de este intento.';
-  static const _imageFailedMessage = 'No se pudo cargar esta foto. Toca para reintentar.';
+      'Could not reach the server to fetch the photos for this attempt. Try again in a moment.';
+  static const _loadFailedMessage = 'The photos for this attempt could not be loaded.';
+  static const _imageFailedMessage = 'Could not load this photo. Tap to retry.';
 
   final EvidenceRepository _repository;
   final ConnectivityViewModel? _connectivity;
@@ -219,7 +219,7 @@ class AttemptEvidenceViewModel extends ChangeNotifier {
 
   /// "Paso N: título" of the step [item] belongs to.
   String stepLabelOf(EvidenceItem item) =>
-      groups.where((group) => group.stepOrder == item.stepOrder).firstOrNull?.label ?? 'Paso ${item.stepOrder + 1}';
+      groups.where((group) => group.stepOrder == item.stepOrder).firstOrNull?.label ?? 'Step ${item.stepOrder + 1}';
 
   /// Calls made while one is out share it.
   Future<void> load() => _loadInFlight ??= _load().whenComplete(() => _loadInFlight = null);
@@ -308,8 +308,8 @@ class AttemptEvidenceViewModel extends ChangeNotifier {
         EvidenceStepGroup(
           stepOrder: stepOrder,
           label: positionOf[stepOrder] == null
-              ? 'Paso ${stepOrder + 1}'
-              : 'Paso ${positionOf[stepOrder]! + 1}: ${titleOf[stepOrder]}',
+              ? 'Step ${stepOrder + 1}'
+              : 'Step ${positionOf[stepOrder]! + 1}: ${titleOf[stepOrder]}',
           items: byStep[stepOrder]!
             // Pending first (the newest), then newest first.
             ..sort((a, b) {

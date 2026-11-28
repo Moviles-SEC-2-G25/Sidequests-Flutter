@@ -11,14 +11,14 @@ import '../models/group_challenge.dart';
 /// not have applied the request. Sending the same request id again is safe.
 class GroupActionUnconfirmedException extends AppException {
   const GroupActionUnconfirmedException()
-    : super('No sabemos si se guardó. Reconecta y reintenta: es seguro.', isRetryable: true);
+    : super("We couldn't confirm it was saved. Reconnect and retry: it's safe.", isRetryable: true);
 }
 
 /// The request never left the phone (NetworkGuard saw no network), so it
 /// wasn't applied and there's nothing to confirm.
 class GroupActionNotSentException extends AppException {
   const GroupActionNotSentException()
-    : super('Sin conexión: no se envió. Conéctate e inténtalo de nuevo.', isRetryable: true);
+    : super('Offline: it was not sent. Connect and try again.', isRetryable: true);
 }
 
 /// One of the two lists of [GroupChallengeRepository.loadLists]: the server's
@@ -43,7 +43,7 @@ typedef GroupChallengeLists = ({GroupListResult mine, GroupListResult available}
 /// sends is saved in Hive, so the screen opens with the last one even offline
 /// or after a restart; the request whose result is unknown is saved there too.
 class GroupChallengeRepository {
-  static const _listsUnavailableMessage = 'No se pudo actualizar esta lista.';
+  static const _listsUnavailableMessage = 'This list could not be updated.';
 
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
@@ -135,7 +135,7 @@ class GroupChallengeRepository {
     try {
       return GroupActionResult.fromJson(json);
     } catch (_) {
-      throw const AppException('El servidor respondió algo inesperado. Inténtalo de nuevo.');
+      throw const AppException('The server sent an unexpected response. Try again.');
     }
   }
 
@@ -159,8 +159,8 @@ class GroupChallengeRepository {
 
   /// PostgREST's messages are English and technical.
   static String _postgrestMessage(PostgrestException e) => switch (e.code) {
-    '42501' || 'PGRST301' || 'PGRST303' => 'Tu sesión venció. Cierra sesión y vuelve a entrar.',
-    'PGRST202' => 'El servidor todavía no tiene retos en grupo.',
-    _ => 'El servidor no pudo completar la solicitud.',
+    '42501' || 'PGRST301' || 'PGRST303' => 'Your session expired. Log out and log back in.',
+    'PGRST202' => "The server doesn't support group challenges yet.",
+    _ => 'The server could not complete the request.',
   };
 }

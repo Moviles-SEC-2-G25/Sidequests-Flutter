@@ -49,7 +49,7 @@ class _OnboardingViewState extends State<OnboardingView> {
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(profileViewModel.errorMessage ?? 'No se pudieron guardar tus preferencias.'),
+          content: Text(profileViewModel.errorMessage ?? 'Could not save your preferences.'),
         ),
       );
     }

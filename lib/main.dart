@@ -32,7 +32,7 @@ Future<void> main() async {
       child: Center(
         child: Padding(
           padding: EdgeInsets.all(16),
-          child: Text('No se pudo mostrar esta sección.', textAlign: TextAlign.center),
+          child: Text('This section could not be displayed.', textAlign: TextAlign.center),
         ),
       ),
     );

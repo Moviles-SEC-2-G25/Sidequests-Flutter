@@ -95,7 +95,7 @@ void main() {
       final result = strategy.verify(_quest(latitude: null, longitude: null), _fix(0));
 
       expect(result, isA<Unavailable>());
-      expect((result as Unavailable).reason, contains('no tiene ubicación'));
+      expect((result as Unavailable).reason, contains('has no location'));
     });
 
     test('denied permission, GPS off and approximate-only location each say why', () {
@@ -103,9 +103,9 @@ void main() {
           (strategy.verify(_quest(), VerificationEvidence(locationAccess: access)) as Unavailable)
               .reason;
 
-      expect(reason(LocationAccess.denied), contains('Permite'));
+      expect(reason(LocationAccess.denied), contains('Allow'));
       expect(reason(LocationAccess.serviceDisabled), contains('GPS'));
-      expect(reason(LocationAccess.approximateOnly), contains('precisa'));
+      expect(reason(LocationAccess.approximateOnly), contains('precise'));
     });
   });
 

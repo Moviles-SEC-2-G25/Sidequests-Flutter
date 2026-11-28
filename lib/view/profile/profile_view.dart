@@ -63,7 +63,7 @@ class _ProfileViewState extends State<ProfileView> {
               width: double.infinity,
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.insights),
-                label: const Text('Ver mis estadísticas'),
+                label: const Text('View my stats'),
                 onPressed: () => Navigator.of(context).push(StatsView.route()),
               ),
             ),
@@ -107,16 +107,16 @@ class _OfflineAccessSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('ACCESO OFFLINE', style: textTheme.labelSmall?.copyWith(letterSpacing: 0.5)),
+        Text('OFFLINE ACCESS', style: textTheme.labelSmall?.copyWith(letterSpacing: 0.5)),
         const SizedBox(height: 4),
         Text(
-          'Ten disponibles las misiones elegidas y sus pasos cuando pierdas la conexión.',
+          'Keep your chosen quests and their steps available when you lose connection.',
           style: textTheme.bodySmall,
         ),
         TextButton(
           style: TextButton.styleFrom(padding: EdgeInsets.zero),
           onPressed: () => Navigator.of(context).push(OfflinePackView.route()),
-          child: const Text('Gestionar paquete offline →'),
+          child: const Text('Manage offline pack →'),
         ),
       ],
     );
@@ -130,7 +130,7 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = profileViewModel.profile?.displayName ?? 'Explorador';
+    final name = profileViewModel.profile?.displayName ?? 'Explorer';
     final emailLocalPart = profileViewModel.email?.split('@').first;
     final handle = emailLocalPart != null ? '@$emailLocalPart' : '';
     final initials = name.isNotEmpty ? name[0].toUpperCase() : '🙂';
@@ -154,12 +154,12 @@ class _ProfileHeader extends StatelessWidget {
         ),
         IconButton(
           icon: const Icon(Icons.lock_reset),
-          tooltip: 'Cambiar contraseña',
+          tooltip: 'Change password',
           onPressed: () => _changePassword(context),
         ),
         IconButton(
           icon: const Icon(Icons.logout),
-          tooltip: 'Cerrar sesión',
+          tooltip: 'Log out',
           onPressed: () => _signOut(context),
         ),
       ],
@@ -187,20 +187,20 @@ class _ProfileHeader extends StatelessWidget {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Estás sin conexión'),
+          title: const Text("You're offline"),
           content: const Text(
-            'Si cierras sesión ahora no podrás volver a entrar hasta reconectar, '
-            'y se perderán los cambios que aún no se han sincronizado. '
-            '¿Cerrar sesión de todos modos?',
+            'If you log out now you will not be able to log back in until you reconnect, '
+            'and any changes that have not synced yet will be lost. '
+            'Log out anyway?',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancelar'),
+              child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Cerrar sesión'),
+              child: const Text('Log out'),
             ),
           ],
         ),
@@ -224,7 +224,7 @@ class _StatsRow extends StatelessWidget {
           child: _StatCard(
             icon: Icons.bolt,
             value: '${questViewModel.completedCount}',
-            label: 'Completadas',
+            label: 'Completed',
           ),
         ),
         const SizedBox(width: 10),
@@ -232,7 +232,7 @@ class _StatsRow extends StatelessWidget {
           child: _StatCard(
             icon: Icons.local_fire_department,
             value: '${questViewModel.currentStreakDays}',
-            label: 'Racha',
+            label: 'Streak',
           ),
         ),
         const SizedBox(width: 10),
@@ -240,7 +240,7 @@ class _StatsRow extends StatelessWidget {
           child: _StatCard(
             icon: Icons.menu_book,
             value: '${questViewModel.completedCategories.length}',
-            label: 'Categorías',
+            label: 'Categories',
           ),
         ),
       ],
@@ -280,14 +280,14 @@ class _FriendsSection extends StatelessWidget {
 
   const _FriendsSection({required this.tabIndex, required this.onTabChanged});
 
-  static const _tabs = ['Amigos', 'Solicitudes', 'Agregar'];
+  static const _tabs = ['Friends', 'Requests', 'Add'];
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Amigos', style: Theme.of(context).textTheme.titleLarge),
+        Text('Friends', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 10),
         Row(
           children: List.generate(_tabs.length, (i) {
@@ -313,13 +313,13 @@ class _FriendsSection extends StatelessWidget {
               const Icon(Icons.group_outlined, color: AppColors.primary, size: 32),
               const SizedBox(height: 8),
               Text(
-                'Los amigos todavía no están disponibles',
+                'Friends are not available yet',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 4),
               Text(
-                'El backend compartido aún no tiene tablas de amigos ni solicitudes.',
+                'The shared backend does not have friends or requests tables yet.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -347,17 +347,17 @@ class _RewardsSection extends StatelessWidget {
   });
 
   static const _streakMilestones = [
-    (3, 'Primer calentamiento', 'Racha de 3 días seguidos'),
-    (7, 'Semana de fuego', 'Racha de 7 días seguidos'),
-    (14, 'Constancia quincenal', 'Racha de 14 días seguidos'),
-    (30, 'Explorador del mes', 'Racha de 30 días seguidos'),
+    (3, 'First warm-up', '3 days in a row'),
+    (7, 'Week on fire', '7 days in a row'),
+    (14, 'Two-week consistency', '14 days in a row'),
+    (30, 'Explorer of the month', '30 days in a row'),
   ];
 
   static const _missionMilestones = [
-    (1, 'Primeros pasos', 'Completa 1 misión'),
-    (5, 'En marcha', 'Completa 5 misiones'),
-    (15, 'Explorador habitual', 'Completa 15 misiones'),
-    (30, 'Leyenda local', 'Completa 30 misiones'),
+    (1, 'First steps', 'Complete 1 quest'),
+    (5, 'On the move', 'Complete 5 quests'),
+    (15, 'Regular explorer', 'Complete 15 quests'),
+    (30, 'Local legend', 'Complete 30 quests'),
   ];
 
   @override
@@ -373,9 +373,9 @@ class _RewardsSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text('Recompensas', style: Theme.of(context).textTheme.titleLarge),
+            Text('Rewards', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(width: 8),
-            _Badge(text: '$earnedCount ganadas', color: AppColors.amber, textColor: Colors.white),
+            _Badge(text: '$earnedCount earned', color: AppColors.amber, textColor: Colors.white),
           ],
         ),
         const SizedBox(height: 10),
@@ -383,7 +383,7 @@ class _RewardsSection extends StatelessWidget {
           children: [
             Expanded(
               child: ChoiceChip(
-                label: const Text('🔥 Rachas'),
+                label: const Text('🔥 Streaks'),
                 selected: tabIndex == 0,
                 onSelected: (_) => onTabChanged(0),
               ),
@@ -391,7 +391,7 @@ class _RewardsSection extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: ChoiceChip(
-                label: const Text('⚡ Misiones'),
+                label: const Text('⚡ Quests'),
                 selected: tabIndex == 1,
                 onSelected: (_) => onTabChanged(1),
               ),
@@ -406,7 +406,7 @@ class _RewardsSection extends StatelessWidget {
               title: m.$2,
               subtitle: m.$3,
               current: streak,
-              unitLabel: 'días',
+              unitLabel: 'days',
             ),
           )
         else
@@ -416,7 +416,7 @@ class _RewardsSection extends StatelessWidget {
               title: m.$2,
               subtitle: m.$3,
               current: completed,
-              unitLabel: 'misiones',
+              unitLabel: 'quests',
             ),
           ),
       ],
@@ -478,7 +478,7 @@ class _MilestoneCard extends StatelessWidget {
                     Flexible(child: Text(title, style: Theme.of(context).textTheme.titleSmall)),
                     if (earned) ...[
                       const SizedBox(width: 8),
-                      _Badge(text: 'GANADO', color: AppColors.amber, textColor: Colors.white),
+                      _Badge(text: 'EARNED', color: AppColors.amber, textColor: Colors.white),
                     ],
                   ],
                 ),
@@ -520,23 +520,23 @@ class _PreferencesSection extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Flexible(child: Text('Mis preferencias', style: Theme.of(context).textTheme.titleLarge)),
+            Flexible(child: Text('My preferences', style: Theme.of(context).textTheme.titleLarge)),
             TextButton(
               onPressed: () => Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const EditPreferencesView())),
-              child: const Text('Editar'),
+              child: const Text('Edit'),
             ),
           ],
         ),
         Text(
-          'INTERESES',
+          'INTERESTS',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 0.5),
         ),
         const SizedBox(height: 8),
         if (preferences.interests.isEmpty)
           Text(
-            'Aún no has elegido intereses.',
+            "You haven't chosen any interests yet.",
             style: Theme.of(context).textTheme.bodySmall,
           )
         else
@@ -562,18 +562,18 @@ class _BadgesGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final badges = [
-      ('⚡', 'Primera misión', questViewModel.badgeFirstMission),
-      ('🧭', 'Explorador/a', questViewModel.badgeExplorer),
+      ('⚡', 'First quest', questViewModel.badgeFirstMission),
+      ('🧭', 'Explorer', questViewModel.badgeExplorer),
       ('☕', 'Gourmet', questViewModel.badgeGourmet),
-      ('🎨', 'Amante del arte', questViewModel.badgeArtLover),
-      ('🔥', 'Racha de 7 días', questViewModel.badgeSevenDayStreak),
-      ('📚', 'Ratón de biblioteca', questViewModel.badgeBookworm),
+      ('🎨', 'Art lover', questViewModel.badgeArtLover),
+      ('🔥', '7-day streak', questViewModel.badgeSevenDayStreak),
+      ('📚', 'Bookworm', questViewModel.badgeBookworm),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Insignias', style: Theme.of(context).textTheme.titleLarge),
+        Text('Badges', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 10),
         // Rows as tall as their tallest badge, not a fixed aspect ratio: a
         // two-line label ("Ratón de biblioteca") overflowed it on a 360 dp phone.
@@ -669,18 +669,18 @@ class _RecentCompletions extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Flexible(
-              child: Text('Completadas recientemente', style: Theme.of(context).textTheme.titleLarge),
+              child: Text('Recently completed', style: Theme.of(context).textTheme.titleLarge),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).push(MissionHistoryView.route()),
-              child: const Text('Ver bitácora'),
+              child: const Text('View quest log'),
             ),
           ],
         ),
         const SizedBox(height: 10),
         if (recent.isEmpty)
           Text(
-            'Todavía no has completado ninguna misión.',
+            "You haven't completed any quests yet.",
             style: Theme.of(context).textTheme.bodySmall,
           )
         else
@@ -718,7 +718,7 @@ class _PublishedPhotosSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Fotos publicadas', style: Theme.of(context).textTheme.titleLarge),
+        Text('Published photos', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 10),
         Container(
           width: double.infinity,
@@ -728,10 +728,10 @@ class _PublishedPhotosSection extends StatelessWidget {
             children: [
               Icon(Icons.camera_alt_outlined, size: 32, color: Theme.of(context).colorScheme.outline),
               const SizedBox(height: 10),
-              Text('Aún no has publicado fotos', style: Theme.of(context).textTheme.titleSmall),
+              Text("You haven't published any photos yet", style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 4),
               Text(
-                'Al completar una misión, activa "Compartir en Social" para que aparezca aquí.',
+                'When you complete a quest, turn on "Share on Social" for it to show up here.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -774,7 +774,7 @@ class _SettingsSectionState extends State<_SettingsSection> {
     final confirmed = await authViewModel.enableBiometric();
     if (!confirmed && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo verificar tu huella. Desbloqueo no activado.')),
+        const SnackBar(content: Text('Could not verify your fingerprint. Unlock was not enabled.')),
       );
     }
   }
@@ -789,17 +789,17 @@ class _SettingsSectionState extends State<_SettingsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Ajustes', style: Theme.of(context).textTheme.titleLarge),
+        Text('Settings', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 4),
         _SettingSwitch(
-          title: 'Modo oscuro',
-          subtitle: 'Más cómodo para los ojos',
+          title: 'Dark mode',
+          subtitle: 'Easier on the eyes',
           value: themeViewModel.isDarkMode,
           onChanged: themeViewModel.setDarkMode,
         ),
         _SettingSwitch(
-          title: 'Notificaciones de misiones',
-          subtitle: 'Alertas de misiones cercanas — aún sin push real (FCM pendiente)',
+          title: 'Quest notifications',
+          subtitle: 'Alerts for nearby quests — no real push yet (FCM pending)',
           value: _missionNotifications,
           onChanged: (value) {
             setState(() => _missionNotifications = value);
@@ -807,8 +807,8 @@ class _SettingsSectionState extends State<_SettingsSection> {
           },
         ),
         _SettingSwitch(
-          title: 'Recordatorios diarios',
-          subtitle: 'Un recordatorio amable — aún sin push real (FCM pendiente)',
+          title: 'Daily reminders',
+          subtitle: 'A friendly reminder — no real push yet (FCM pending)',
           value: _dailyReminders,
           onChanged: (value) {
             setState(() => _dailyReminders = value);
@@ -817,15 +817,15 @@ class _SettingsSectionState extends State<_SettingsSection> {
         ),
         if (authViewModel.isBiometricAvailable)
           _SettingSwitch(
-            title: 'Desbloquear con huella',
-            subtitle: 'Pide tu huella al abrir la app',
+            title: 'Unlock with fingerprint',
+            subtitle: 'Asks for your fingerprint when you open the app',
             value: authViewModel.biometricEnabled,
             onChanged: _toggleBiometric,
           ),
         const SizedBox(height: 4),
         ListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Correo'),
+          title: const Text('Email'),
           // Bounded: a long address used up the whole tile (a layout error).
           trailing: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.55),
@@ -838,7 +838,7 @@ class _SettingsSectionState extends State<_SettingsSection> {
         ),
         ListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Miembro desde'),
+          title: const Text('Member since'),
           trailing: Text(
             profile?.createdAt != null ? _formatMonthYear(profile!.createdAt!) : '—',
           ),
@@ -891,11 +891,11 @@ class _Badge extends StatelessWidget {
 }
 
 const _monthNamesEs = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-const _monthAbbrEs = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const _monthAbbrEs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 String _formatMonthYear(DateTime date) => '${_monthNamesEs[date.month - 1]} ${date.year}';
 

@@ -385,11 +385,11 @@ void main() {
   }
 
   Future<void> openAbandonScreen(WidgetTester tester) async {
-    await tester.tap(find.text('Misión'));
+    await tester.tap(find.text('Quest'));
     await settle(tester);
     await tester.runAsync(() => viewModel.loadSteps('source'));
     await settle(tester);
-    await tester.tap(find.text('Salir'));
+    await tester.tap(find.text('Leave'));
     await settle(tester);
     expect(find.byType(AbandonMissionView), findsOneWidget);
   }
@@ -404,13 +404,13 @@ void main() {
   NavigationBar navigationBar(WidgetTester tester) =>
       tester.widget<NavigationBar>(find.byType(NavigationBar, skipOffstage: false));
 
-  group('"Guardar y volver después"', () {
+  group('"Save and come back later"', () {
     testWidgets('only goes back: nothing written, nothing tracked, the mission stays', (tester) async {
       await pumpShell(tester);
       await openAbandonScreen(tester);
       sink.events.clear();
 
-      await tapVisible(tester, 'Guardar y volver después');
+      await tapVisible(tester, 'Save and come back later');
 
       expect(find.byType(AbandonMissionView), findsNothing);
       expect(remote.upserts, isEmpty);
@@ -419,20 +419,20 @@ void main() {
     });
   });
 
-  group('"Empezar otra misión"', () {
+  group('"Start another quest"', () {
     testWidgets('abandons once and shows the alternatives over HomeShell', (tester) async {
       await pumpShell(tester);
       await openAbandonScreen(tester);
 
       await tapVisible(tester, AbandonmentReasonLabels.tooLong);
-      await tapVisible(tester, 'Empezar otra misión');
+      await tapVisible(tester, 'Start another quest');
 
       expect(find.byType(QuestAlternativesView), findsOneWidget);
-      expect(find.text('Una mejor opción para ahora'), findsOneWidget);
+      expect(find.text('A better option for right now'), findsOneWidget);
       expect(find.textContaining(AbandonmentReasonLabels.tooLong), findsOneWidget);
       expect(find.text('Quest option'), findsOneWidget);
-      expect(find.text('Por qué te sirve'), findsOneWidget);
-      expect(find.textContaining('Es más corta que la misión que dejaste'), findsOneWidget);
+      expect(find.text('Why it works for you'), findsOneWidget);
+      expect(find.textContaining('Shorter than the quest you left'), findsOneWidget);
       expect(remote.upserts, hasLength(1));
       expect(remote.upserts.single['abandon_reason'], 'ran_out_of_time');
       expect(find.byType(HomeShell, skipOffstage: false), findsOneWidget);
@@ -442,7 +442,7 @@ void main() {
       await pumpShell(tester);
       await openAbandonScreen(tester);
 
-      await tapVisible(tester, 'Empezar otra misión');
+      await tapVisible(tester, 'Start another quest');
 
       expect(remote.upserts.single['abandon_reason'], 'other');
     });
@@ -454,9 +454,9 @@ void main() {
       await openAbandonScreen(tester);
       remote.offline = true;
 
-      await tapVisible(tester, 'Empezar otra misión');
+      await tapVisible(tester, 'Start another quest');
 
-      expect(find.textContaining('se sincronizará al reconectar'), findsOneWidget);
+      expect(find.textContaining('it will sync when you reconnect'), findsOneWidget);
       expect(find.byType(QuestAlternativesView), findsOneWidget);
       expect(find.text('Quest option'), findsOneWidget);
       expect(viewModel.currentMission, isNull);
@@ -469,13 +469,13 @@ void main() {
     Future<void> openAlternatives(WidgetTester tester) async {
       await pumpShell(tester);
       await openAbandonScreen(tester);
-      await tapVisible(tester, 'Empezar otra misión');
+      await tapVisible(tester, 'Start another quest');
     }
 
-    testWidgets('"Volver a Explorar" lands on HomeShell, on the Explorar tab', (tester) async {
+    testWidgets('"Back to Explore" lands on HomeShell, on the Explorar tab', (tester) async {
       await openAlternatives(tester);
 
-      await tapVisible(tester, 'Volver a Explorar');
+      await tapVisible(tester, 'Back to Explore');
 
       expect(find.byType(QuestAlternativesView), findsNothing);
       expect(find.byType(NavigationBar), findsOneWidget);
@@ -495,16 +495,16 @@ void main() {
       expect(viewModel.questAlternatives, isNull);
     });
 
-    testWidgets('"Ver misión" opens the detail, accepting nothing', (tester) async {
+    testWidgets('"View quest" opens the detail, accepting nothing', (tester) async {
       await openAlternatives(tester);
       final writesBefore = remote.upserts.length;
 
-      await tapVisible(tester, 'Ver misión');
+      await tapVisible(tester, 'View quest');
 
       expect(find.byType(QuestDetailView), findsOneWidget);
       expect(remote.upserts, hasLength(writesBefore));
       expect(viewModel.currentMission, isNull);
-      expect(find.text('Aceptar misión →'), findsOneWidget);
+      expect(find.text('Accept quest →'), findsOneWidget);
 
       await tester.state<NavigatorState>(find.byType(Navigator).first).maybePop();
       await settle(tester);
@@ -513,14 +513,14 @@ void main() {
 
     testWidgets('the Misión tab no longer shows the abandoned mission', (tester) async {
       await openAlternatives(tester);
-      await tapVisible(tester, 'Volver a Explorar');
+      await tapVisible(tester, 'Back to Explore');
 
-      await tester.tap(find.text('Misión'));
+      await tester.tap(find.text('Quest'));
       await settle(tester);
 
-      expect(find.text('No tienes ninguna misión activa'), findsOneWidget);
+      expect(find.text('You have no active quest'), findsOneWidget);
 
-      await tapVisible(tester, 'Explorar misiones');
+      await tapVisible(tester, 'Explore quests');
 
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(navigationBar(tester).selectedIndex, 0);
@@ -551,12 +551,12 @@ void main() {
     );
     await settle(tester);
 
-    expect(find.text('Aceptar misión →', skipOffstage: false), findsOneWidget);
-    expect(find.text('Continuar misión →', skipOffstage: false), findsNothing);
+    expect(find.text('Accept quest →', skipOffstage: false), findsOneWidget);
+    expect(find.text('Continue quest →', skipOffstage: false), findsNothing);
 
-    await tester.ensureVisible(find.text('Aceptar misión →'));
+    await tester.ensureVisible(find.text('Accept quest →'));
     await tester.pump();
-    await tester.tap(find.text('Aceptar misión →'));
+    await tester.tap(find.text('Accept quest →'));
     await settle(tester);
 
     expect(find.byType(MissionTabView), findsOneWidget);
@@ -567,5 +567,5 @@ void main() {
 
 /// Spelled out here: the screen shows exactly this text.
 abstract final class AbandonmentReasonLabels {
-  static const tooLong = 'Se me acabó el tiempo';
+  static const tooLong = 'I ran out of time';
 }

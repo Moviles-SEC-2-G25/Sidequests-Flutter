@@ -61,10 +61,10 @@ class _QuestAlternativesViewState extends State<QuestAlternativesView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('Una mejor opción para ahora', style: textTheme.headlineSmall),
+                      Text('A better option for right now', style: textTheme.headlineSmall),
                       const SizedBox(height: 8),
                       Text(
-                        'La dejaste porque: ${state.reason.label}',
+                        'You left it because: ${state.reason.label}',
                         style: textTheme.bodyMedium,
                       ),
                       if (state.context != null) ...[
@@ -74,7 +74,7 @@ class _QuestAlternativesViewState extends State<QuestAlternativesView> {
                       if (state.context != null && state.weatherCondition == 'unknown') ...[
                         const SizedBox(height: 4),
                         Text(
-                          'No conocemos el clima actual, así que las sugerencias no lo tienen en cuenta.',
+                          'The current weather is unknown, so these suggestions do not take it into account.',
                           style: textTheme.bodySmall,
                         ),
                       ],
@@ -86,7 +86,7 @@ class _QuestAlternativesViewState extends State<QuestAlternativesView> {
                         )
                       else if (state.suggestions.isEmpty)
                         Text(
-                          'Ahora no hay misiones que encajen mejor. Puedes buscar otra en Explorar.',
+                          'There are no better-fitting quests right now. You can find another one in Explore.',
                           style: textTheme.bodyMedium,
                         )
                       else
@@ -103,10 +103,10 @@ class _QuestAlternativesViewState extends State<QuestAlternativesView> {
                             : () => context.read<QuestViewModel>().refreshQuestAlternatives(
                                 context.read<ProfileViewModel>().preferences,
                               ),
-                        child: const Text('Actualizar sugerencias'),
+                        child: const Text('Refresh suggestions'),
                       ),
                       const SizedBox(height: 8),
-                      TextButton(onPressed: _leave, child: const Text('Volver a Explorar')),
+                      TextButton(onPressed: _leave, child: const Text('Back to Explore')),
                     ],
                   ),
                 ),
@@ -117,18 +117,18 @@ class _QuestAlternativesViewState extends State<QuestAlternativesView> {
 
   String _contextLine(QuestAlternativesState state) {
     final time = switch (state.context!.timeOfDay) {
-      'morning' => 'Mañana',
-      'afternoon' => 'Tarde',
-      'evening' => 'Atardecer',
-      _ => 'Noche',
+      'morning' => 'Morning',
+      'afternoon' => 'Afternoon',
+      'evening' => 'Evening',
+      _ => 'Night',
     };
     final weather = switch (state.weatherCondition) {
-      'clear' => 'Despejado',
-      'cloudy' => 'Nublado',
-      'rain' => 'Lluvia',
-      'snow' => 'Nieve',
-      'storm' => 'Tormenta',
-      _ => 'Clima desconocido',
+      'clear' => 'Clear',
+      'cloudy' => 'Cloudy',
+      'rain' => 'Rain',
+      'snow' => 'Snow',
+      'storm' => 'Storm',
+      _ => 'Unknown weather',
     };
     return '$time · $weather';
   }
@@ -165,7 +165,7 @@ class _AlternativeCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '${quest.durationMinutes} min · '
-            '${quest.estimatedCost > 0 ? '\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Gratis'}',
+            '${quest.estimatedCost > 0 ? '\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Free'}',
             style: textTheme.bodySmall,
           ),
           if (quest.isSponsored) ...[
@@ -174,7 +174,7 @@ class _AlternativeCard extends StatelessWidget {
           ],
           const SizedBox(height: 10),
           Text(
-            'Por qué te sirve',
+            'Why it works for you',
             style: textTheme.labelMedium?.copyWith(color: AppColors.secondaryDark),
           ),
           const SizedBox(height: 4),
@@ -187,7 +187,7 @@ class _AlternativeCard extends StatelessWidget {
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerRight,
-            child: FilledButton(onPressed: onOpen, child: const Text('Ver misión')),
+            child: FilledButton(onPressed: onOpen, child: const Text('View quest')),
           ),
         ],
       ),

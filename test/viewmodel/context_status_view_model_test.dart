@@ -134,14 +134,14 @@ void main() {
       ),
     );
     await tester.pump(); // connectivity + battery read
-    expect(find.textContaining('Sin conexión'), findsOneWidget);
+    expect(find.textContaining('Offline'), findsOneWidget);
 
     connectivity.set(_wifi);
     await tester.pump(Duration.zero); // deliver the event, then rebuild
-    expect(find.textContaining('Conexión restablecida'), findsOneWidget);
+    expect(find.textContaining('Connection restored'), findsOneWidget);
 
     await tester.pump(_reconnectDelay * 2);
-    expect(find.textContaining('Batería baja'), findsOneWidget);
+    expect(find.textContaining('Low battery'), findsOneWidget);
     expect(refreshes, 1);
   });
 }

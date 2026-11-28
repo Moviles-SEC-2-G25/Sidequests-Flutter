@@ -107,8 +107,8 @@ class AuthViewModel extends ChangeNotifier {
   // --- Passwordless sign-in with an emailed code (feature e). Kept apart
   // from [errorMessage], which LoginView shows. Nothing is sent without a
   // connection or left for later: codes expire, and credentials aren't kept. ---
-  static const offlineSendMessage = 'Sin conexión. Conéctate para recibir tu código.';
-  static const offlineVerifyMessage = 'Sin conexión. Conéctate para verificar tu código.';
+  static const offlineSendMessage = 'Offline. Connect to receive your code.';
+  static const offlineVerifyMessage = 'Offline. Connect to verify your code.';
 
   bool isSendingCode = false;
 
@@ -189,9 +189,9 @@ class AuthViewModel extends ChangeNotifier {
 
   // Signing in, signing up and changing the password all need the server:
   // without a connection they're stopped before the request, with these.
-  static const offlineSignInMessage = 'Sin conexión: necesitas internet para iniciar sesión.';
-  static const offlineSignUpMessage = 'Sin conexión: necesitas internet para crear tu cuenta.';
-  static const offlinePasswordMessage = 'Sin conexión: necesitas internet para cambiar tu contraseña.';
+  static const offlineSignInMessage = 'Offline: you need internet to log in.';
+  static const offlineSignUpMessage = 'Offline: you need internet to create your account.';
+  static const offlinePasswordMessage = 'Offline: you need internet to change your password.';
 
   Future<bool> signIn({required String email, required String password}) => _run(
     () => _authRepository.signIn(email: email, password: password),
@@ -218,7 +218,7 @@ class AuthViewModel extends ChangeNotifier {
 
   /// Asks for the fingerprint once to confirm before persisting the flag.
   Future<bool> enableBiometric() async {
-    if (!await _biometricService.authenticate('Confirma tu huella para activar el desbloqueo')) {
+    if (!await _biometricService.authenticate('Confirm your fingerprint to enable unlocking')) {
       return false;
     }
     await _authRepository.setBiometricEnabled(true);
@@ -235,7 +235,7 @@ class AuthViewModel extends ChangeNotifier {
 
   /// Lock screen: true (and unlocks) if the user authenticated.
   Future<bool> unlock() async {
-    final success = await _biometricService.authenticate('Desbloquea Sidequests');
+    final success = await _biometricService.authenticate('Unlock Sidequests');
     if (success) {
       isLocked = false;
       notifyListeners();

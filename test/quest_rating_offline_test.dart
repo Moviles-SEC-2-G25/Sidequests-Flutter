@@ -30,7 +30,7 @@ import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 const _userId = 'user-1';
-const _queuedNotice = 'Calificación guardada en el teléfono: se enviará al reconectar';
+const _queuedNotice = 'Rating saved on the phone: it will be sent when you reconnect';
 const _rejected = PostgrestException(message: 'new row violates RLS', code: '42501');
 
 Map<String, dynamic> _questRow(String id, {String category = 'food', int minutes = 20}) => {
@@ -344,7 +344,7 @@ void main() {
       expect(local.userQuests.single['status'], 'completed');
     });
 
-    test('an attempt that is not cached fails retryably: the view offers "Reintentar"', () async {
+    test('an attempt that is not cached fails retryably: the view offers "Retry"', () async {
       local.userQuests = [];
 
       await expectLater(
@@ -630,7 +630,7 @@ void main() {
       return viewModel;
     }
 
-    test('"Te podría gustar" comes out of the cache, with no network call of its own', () async {
+    test('"You might also like" comes out of the cache, with no network call of its own', () async {
       final noRemote = _NoRemote();
       final viewModel = await loadFromCacheOnly(noRemote);
       final callsToLoad = noRemote.calls;
@@ -719,9 +719,9 @@ void main() {
     Future<void> saveWithStars(WidgetTester tester) async {
       await tester.tap(find.byTooltip('4'));
       await tester.pump();
-      await tester.ensureVisible(find.text('Guardar'));
+      await tester.ensureVisible(find.text('Save'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Guardar'));
+      await tester.tap(find.text('Save'));
       await tester.pump();
       await tester.pump();
     }
@@ -733,7 +733,7 @@ void main() {
       await pumpView(tester);
       remote.offline = true;
 
-      expect(find.text('Te podría gustar'), findsOneWidget);
+      expect(find.text('You might also like'), findsOneWidget);
       expect(find.text('Quest sushi'), findsOneWidget);
 
       await saveWithStars(tester);
@@ -742,7 +742,7 @@ void main() {
       expect(find.text(_queuedNotice), findsOneWidget);
       expect(find.byType(QuestCompletedView), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text('Reintentar'), findsNothing);
+      expect(find.text('Retry'), findsNothing);
       expect(local.pendingWrites, hasLength(1));
     });
 
@@ -758,7 +758,7 @@ void main() {
       expect(remote.sent, ['rate:uq-1']);
     });
 
-    testWidgets('when it cannot even be kept: it stays open, with "Reintentar"', (tester) async {
+    testWidgets('when it cannot even be kept: it stays open, with "Retry"', (tester) async {
       await pumpView(tester); // the attempt isn't in the cache
       remote.offline = true;
 
@@ -766,7 +766,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(QuestCompletedView), findsOneWidget);
-      expect(find.text('Reintentar'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
       expect(find.text(_queuedNotice), findsNothing);
     });
   });

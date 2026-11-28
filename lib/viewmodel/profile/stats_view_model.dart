@@ -213,7 +213,7 @@ class StatsViewModel extends ChangeNotifier {
       } else if (fromCache) {
         // Offline and nothing was ever cached: not "you have no missions".
         status = StatsStatus.error;
-        errorMessage = 'Sin conexión y sin datos guardados. Conéctate para ver tus estadísticas.';
+        errorMessage = 'Offline and no saved data. Connect to see your stats.';
       } else {
         status = StatsStatus.empty;
       }

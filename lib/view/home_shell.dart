@@ -148,13 +148,13 @@ class _HomeShellState extends State<HomeShell> {
       SnackBar(
         content: Text(
           event.completedQuest
-              ? '📍 ¡Llegaste! Misión completada por ubicación.'
-              : '📍 ¡Llegaste! Paso verificado por ubicación.',
+              ? '📍 You made it! Quest completed by location.'
+              : '📍 You made it! Step verified by location.',
         ),
         // No forced navigation — the user may be on another tab.
         action: event.completedQuest
             ? SnackBarAction(
-                label: 'Calificar',
+                label: 'Rate',
                 onPressed: () => navigator.push(
                   MaterialPageRoute(
                     builder: (_) => QuestCompletedView(mission: event.mission, quest: event.quest),
@@ -203,8 +203,8 @@ class _HomeShellState extends State<HomeShell> {
         SnackBar(
           content: Text(
             questViewModel.shakeHasNoSavedCatalog(isOffline: isOffline)
-                ? 'Sin conexión y sin misiones guardadas: conéctate una vez para usar la misión sorpresa'
-                : 'No hay misiones disponibles para sorprenderte ahora.',
+                ? 'Offline and no saved quests: connect once to use the surprise quest'
+                : 'No quests available to surprise you right now.',
           ),
         ),
       );
@@ -243,11 +243,11 @@ class _HomeShellState extends State<HomeShell> {
         selectedIndex: _index,
         onDestinationSelected: _selectTab,
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.explore_outlined), label: 'Explorar'),
-          NavigationDestination(icon: Icon(Icons.location_on_outlined), label: 'Cerca'),
+          NavigationDestination(icon: Icon(Icons.explore_outlined), label: 'Explore'),
+          NavigationDestination(icon: Icon(Icons.location_on_outlined), label: 'Nearby'),
           NavigationDestination(icon: Icon(Icons.people_outline), label: 'Social'),
-          NavigationDestination(icon: Icon(Icons.bolt_outlined), label: 'Misión'),
-          NavigationDestination(icon: Icon(Icons.person_outline), label: 'Perfil'),
+          NavigationDestination(icon: Icon(Icons.bolt_outlined), label: 'Quest'),
+          NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ),
     ));

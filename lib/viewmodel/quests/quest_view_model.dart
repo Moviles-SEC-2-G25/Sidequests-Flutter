@@ -56,7 +56,7 @@ Duration Function() _startMonotonicClock() {
 }
 
 const kBq11NeedsPreciseLocation =
-    'Se necesita ubicación precisa para compartir. Puedes seguir la misión sin esto.';
+    'Precise location is needed to share. You can continue the quest without it.';
 
 /// Minimum time between two automatic check-in attempts on the same step,
 /// so a failing update (offline) isn't retried on every GPS fix.
@@ -649,7 +649,7 @@ class QuestViewModel extends ChangeNotifier {
   /// Its progress can only be saved on the server, so it never starts on the
   /// device alone.
   static const startNeedsConnectionMessage =
-      'Sin conexión: necesitas internet para iniciar una misión. Conéctate e inténtalo de nuevo.';
+      'Offline: you need internet to start a quest. Connect and try again.';
 
   /// [reuseActiveAttempt]: the card of a mission already being done opens it
   /// (even offline) instead of starting a second attempt.
@@ -1724,7 +1724,7 @@ class QuestViewModel extends ChangeNotifier {
       try {
         jpeg = await _photoCapture.capture();
       } catch (_) {
-        photoErrorMessage = 'No se pudo abrir la cámara.';
+        photoErrorMessage = 'Could not open the camera.';
         return;
       }
       if (jpeg == null) return; // backed out of the camera
@@ -1734,7 +1734,7 @@ class QuestViewModel extends ChangeNotifier {
     } catch (_) {
       // Camera worked; keeping the photo on the device didn't (e.g. the
       // web build, which has no app documents folder).
-      photoErrorMessage = 'No se pudo guardar la foto en este dispositivo.';
+      photoErrorMessage = 'Could not save the photo on this device.';
     } finally {
       isCapturingPhoto = false;
       notifyListeners();

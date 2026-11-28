@@ -42,7 +42,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _userId = 'user-1';
 const _context = AppContext(timeOfDay: 'afternoon', dayOfWeek: 'monday', isConnected: true);
-const _savedLabel = 'Recomendaciones guardadas';
+const _savedLabel = 'Saved recommendations';
 
 const _rejected = PostgrestException(message: 'new row violates RLS', code: '42501');
 
@@ -1020,9 +1020,9 @@ void main() {
       expect(find.text(_savedLabel), findsOneWidget);
       expect(tracker.of(AnalyticsEventType.recommendationShown), isEmpty);
       expect(find.text(OfflineMessages.browseMissions), findsOneWidget);
-      expect(find.text('Empezar ya →'), findsNothing);
+      expect(find.text('Start now →'), findsNothing);
 
-      final blocked = find.widgetWithText(FilledButton, 'Sin conexión');
+      final blocked = find.widgetWithText(FilledButton, 'Offline');
       expect(blocked, findsNWidgets(2)); // one per saved recommendation
       for (final button in tester.widgetList<FilledButton>(blocked)) {
         expect(button.onPressed, isNull);
@@ -1038,9 +1038,9 @@ void main() {
     ) async {
       await pumpExplore(tester, deviceOffline: false);
 
-      await tester.ensureVisible(find.text('Empezar ya →').first);
+      await tester.ensureVisible(find.text('Start now →').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Empezar ya →').first);
+      await tester.tap(find.text('Start now →').first);
       await tester.pump();
       await tester.pump();
       await tester.pump();

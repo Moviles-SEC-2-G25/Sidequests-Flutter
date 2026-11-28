@@ -20,7 +20,7 @@ import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/view/quests/quest_detail_view.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 
-const _unavailable = 'Clima no disponible sin conexión';
+const _unavailable = 'Weather not available offline';
 
 /// No coordinates, so the card asks [LocationService] for the position.
 const _quest = Quest(
@@ -138,9 +138,9 @@ void main() {
       weather: Future.value(_snapshot(age: const Duration(minutes: 5), isStale: false)),
     );
 
-    expect(find.text('18°C · Lluvia ligera'), findsOneWidget);
-    expect(find.text('Lluvia próximas 3 h: 70%'), findsOneWidget);
-    expect(find.textContaining('Último dato'), findsNothing);
+    expect(find.text('18°C · Light rain'), findsOneWidget);
+    expect(find.text('Rain in the next 3 h: 70%'), findsOneWidget);
+    expect(find.textContaining('Last update'), findsNothing);
   });
 
   testWidgets('stale under 3 h: says how old it is and keeps the rain chance', (tester) async {
@@ -149,8 +149,8 @@ void main() {
       weather: Future.value(_snapshot(age: const Duration(minutes: 45), isStale: true)),
     );
 
-    expect(find.text('Último dato: hace 45 min · sin conexión'), findsOneWidget);
-    expect(find.text('Lluvia próximas 3 h: 70%'), findsOneWidget);
+    expect(find.text('Last update: 45 min ago · offline'), findsOneWidget);
+    expect(find.text('Rain in the next 3 h: 70%'), findsOneWidget);
   });
 
   testWidgets('stale over 3 h: hides the rain chance, the forecast ran out', (tester) async {
@@ -159,16 +159,16 @@ void main() {
       weather: Future.value(_snapshot(age: const Duration(hours: 3, minutes: 1), isStale: true)),
     );
 
-    expect(find.text('Último dato: hace 181 min · sin conexión'), findsOneWidget);
-    expect(find.text('18°C · Lluvia ligera'), findsOneWidget);
-    expect(find.textContaining('Lluvia próximas'), findsNothing);
+    expect(find.text('Last update: 181 min ago · offline'), findsOneWidget);
+    expect(find.text('18°C · Light rain'), findsOneWidget);
+    expect(find.textContaining('Rain in the next'), findsNothing);
   });
 
   testWidgets('no data: small text instead of disappearing', (tester) async {
     await pumpDetail(tester, weather: Future.value(null));
 
     expect(find.text(_unavailable), findsOneWidget);
-    expect(find.text('CLIMA EN EL LUGAR'), findsNothing);
+    expect(find.text('WEATHER AT THE LOCATION'), findsNothing);
   });
 
   testWidgets('still loading: no "not available" flash', (tester) async {
@@ -188,6 +188,6 @@ void main() {
     await pumpDetail(tester, weather: Future.value(null), hasFix: false);
 
     expect(find.text(_unavailable), findsNothing);
-    expect(find.text('CLIMA EN EL LUGAR'), findsNothing);
+    expect(find.text('WEATHER AT THE LOCATION'), findsNothing);
   });
 }

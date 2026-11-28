@@ -138,7 +138,7 @@ class _OtpLoginViewState extends State<OtpLoginView> {
         error == AuthViewModel.offlineSendMessage || error == AuthViewModel.offlineVerifyMessage;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Entrar con código')),
+      appBar: AppBar(title: const Text('Log in with a code')),
       body: Center(
         child: SingleChildScrollView(
           child: ConstrainedBox(
@@ -175,8 +175,8 @@ class _OtpLoginViewState extends State<OtpLoginView> {
 
   List<Widget> _emailStep(BuildContext context, bool isBusy) => [
     Text(
-      'Te enviaremos un código de ${OtpLoginView.codeLength} dígitos a tu correo. '
-      'Sin contraseña.',
+      "We'll send a ${OtpLoginView.codeLength}-digit code to your email. "
+      'No password needed.',
       textAlign: TextAlign.center,
       style: Theme.of(context).textTheme.bodyMedium,
     ),
@@ -186,7 +186,7 @@ class _OtpLoginViewState extends State<OtpLoginView> {
       keyboardType: TextInputType.emailAddress,
       autofillHints: const [AutofillHints.email],
       textInputAction: TextInputAction.done,
-      decoration: const InputDecoration(labelText: 'Correo'),
+      decoration: const InputDecoration(labelText: 'Email'),
       onChanged: (_) => setState(() {}),
       onSubmitted: (_) {
         if (_isEmailValid && !isBusy && !_isOffline) _sendCode();
@@ -195,7 +195,7 @@ class _OtpLoginViewState extends State<OtpLoginView> {
     const SizedBox(height: 20),
     FilledButton(
       onPressed: _isEmailValid && !isBusy && !_isOffline ? _sendCode : null,
-      child: isBusy ? const _ButtonSpinner() : const Text('Enviar código'),
+      child: isBusy ? const _ButtonSpinner() : const Text('Send code'),
     ),
   ];
 
@@ -204,7 +204,7 @@ class _OtpLoginViewState extends State<OtpLoginView> {
     final seconds = (_secondsLeft % 60).toString().padLeft(2, '0');
     return [
       Text(
-        'Escribe el código que enviamos a',
+        'Enter the code we sent to',
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodyMedium,
       ),
@@ -213,7 +213,7 @@ class _OtpLoginViewState extends State<OtpLoginView> {
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.titleSmall,
       ),
-      TextButton(onPressed: isBusy ? null : _changeEmail, child: const Text('Cambiar correo')),
+      TextButton(onPressed: isBusy ? null : _changeEmail, child: const Text('Change email')),
       const SizedBox(height: 8),
       TextField(
         controller: _codeController,
@@ -224,7 +224,7 @@ class _OtpLoginViewState extends State<OtpLoginView> {
         maxLength: OtpLoginView.codeLength,
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.headlineSmall?.copyWith(letterSpacing: 8),
-        decoration: const InputDecoration(labelText: 'Código', counterText: ''),
+        decoration: const InputDecoration(labelText: 'Code', counterText: ''),
         onChanged: (_) {
           setState(() {});
           // Typing (or pasting) the last digit signs in — no extra tap.
@@ -234,13 +234,13 @@ class _OtpLoginViewState extends State<OtpLoginView> {
       const SizedBox(height: 20),
       FilledButton(
         onPressed: _isCodeComplete && !isBusy && !_isOffline ? _verify : null,
-        child: isVerifying ? const _ButtonSpinner() : const Text('Entrar'),
+        child: isVerifying ? const _ButtonSpinner() : const Text('Log in'),
       ),
       const SizedBox(height: 8),
       TextButton(
         onPressed: _secondsLeft > 0 || isBusy || _isOffline ? null : _sendCode,
         child: Text(
-          _secondsLeft > 0 ? 'Reenviar código ($minutes:$seconds)' : 'Reenviar código',
+          _secondsLeft > 0 ? 'Resend code ($minutes:$seconds)' : 'Resend code',
         ),
       ),
     ];

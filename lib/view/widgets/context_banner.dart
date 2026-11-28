@@ -15,15 +15,15 @@ class ContextBanner extends StatelessWidget {
     final Color color;
     if (status.isOffline) {
       icon = Icons.wifi_off;
-      text = 'Sin conexión: ves tus datos guardados. Iniciar o completar misiones requiere internet.';
+      text = 'Offline: you are viewing your saved data. Starting or completing quests requires internet.';
       color = Colors.red.shade700;
     } else if (status.justReconnected) {
       icon = Icons.wifi;
-      text = 'Conexión restablecida: actualizando misiones';
+      text = 'Connection restored: updating quests';
       color = Colors.green.shade700;
     } else if (status.isLowBattery) {
       icon = Icons.battery_alert;
-      text = 'Batería baja: usamos menos GPS para ahorrar energía';
+      text = 'Low battery: using less GPS to save power';
       color = Colors.orange.shade800;
     } else {
       return const SizedBox.shrink();

@@ -9,10 +9,10 @@ import '../../viewmodel/quests/quest_view_model.dart';
 import 'quest_detail_view.dart';
 
 const _feedbackTags = <String, String>{
-  'divertida': 'Divertida',
-  'muy larga': 'Muy larga',
-  'costosa': 'Costosa',
-  'repetiría': 'Repetiría',
+  'divertida': 'Fun',
+  'muy larga': 'Too long',
+  'costosa': 'Expensive',
+  'repetiría': 'Would do again',
 };
 
 /// "Misión completada": shown right after the last step is completed.
@@ -48,7 +48,7 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
     );
     if (success && questViewModel.ratingQueued) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Calificación guardada en el teléfono: se enviará al reconectar')),
+        const SnackBar(content: Text('Rating saved on the phone: it will be sent when you reconnect')),
       );
     }
     if (success && navigator.mounted) navigator.pop();
@@ -72,13 +72,13 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
                 Text(widget.quest.emoji ?? '🎯', style: const TextStyle(fontSize: 64)),
                 const SizedBox(height: 12),
                 Text(
-                  '¡Misión completada!',
+                  'Quest completed!',
                   style: textTheme.labelLarge?.copyWith(color: AppColors.secondaryDark),
                 ),
                 const SizedBox(height: 4),
                 Text(widget.quest.title, textAlign: TextAlign.center, style: textTheme.titleLarge),
                 const SizedBox(height: 28),
-                Text('¿Qué te pareció?', style: textTheme.titleMedium),
+                Text('How was it?', style: textTheme.titleMedium),
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -98,7 +98,7 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
                 const SizedBox(height: 20),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Cuéntanos más (opcional)', style: textTheme.bodySmall),
+                  child: Text('Tell us more (optional)', style: textTheme.bodySmall),
                 ),
                 const SizedBox(height: 8),
                 Align(
@@ -140,7 +140,7 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Text(error == null ? 'Guardar' : 'Reintentar'),
+                        : Text(error == null ? 'Save' : 'Retry'),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -148,7 +148,7 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: isSaving ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Omitir'),
+                    child: const Text('Skip'),
                   ),
                 ),
               ],
@@ -181,7 +181,7 @@ class _SimilarQuestsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Te podría gustar', style: Theme.of(context).textTheme.titleMedium),
+          Text('You might also like', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           for (final (index, quest) in similar.indexed)
             _SimilarQuestCard(

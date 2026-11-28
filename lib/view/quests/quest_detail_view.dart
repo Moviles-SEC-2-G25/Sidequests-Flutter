@@ -51,7 +51,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
       // Not started (e.g. offline): no mission to show, stay here.
       setState(() => _isAccepting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(questViewModel.errorMessage ?? 'No se pudo iniciar la misión.')),
+        SnackBar(content: Text(questViewModel.errorMessage ?? 'Could not start the quest.')),
       );
       return;
     }
@@ -99,7 +99,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  if (quest.isNew) _pill('NUEVO', AppColors.amber, Colors.white),
+                  if (quest.isNew) _pill('NEW', AppColors.amber, Colors.white),
                   if (quest.isSponsored)
                     SponsoredBadge(sponsorName: quest.sponsorName, showSponsorName: true),
                   Text(
@@ -123,20 +123,20 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                 children: [
                   _StatCard(
                     icon: Icons.access_time,
-                    label: 'DURACIÓN',
+                    label: 'DURATION',
                     value: '${quest.durationMinutes} min',
                   ),
                   _StatCard(
                     icon: Icons.payments_outlined,
-                    label: 'COSTO APROX.',
+                    label: 'APPROX. COST',
                     value: quest.estimatedCost > 0
                         ? '\$${quest.estimatedCost.toStringAsFixed(0)}'
-                        : 'Gratis',
+                        : 'Free',
                   ),
                   _StatCard(
                     icon: Icons.location_on_outlined,
-                    label: 'UBICACIÓN',
-                    value: quest.locationMode == 'anywhere' ? 'Donde sea' : 'Cerca',
+                    label: 'LOCATION',
+                    value: quest.locationMode == 'anywhere' ? 'Anywhere' : 'Nearby',
                   ),
                   _StatCard(
                     icon: Icons.people_outline,
@@ -162,7 +162,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Dificultad: ${_difficultyLabel(quest.difficulty)}',
+                            'Difficulty: ${_difficultyLabel(quest.difficulty)}',
                             style: const TextStyle(
                               color: AppColors.secondaryDark,
                               fontWeight: FontWeight.w700,
@@ -170,8 +170,8 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                           ),
                           Text(
                             quest.difficulty == 'easy'
-                                ? 'Sin planificación, empieza ya'
-                                : 'Un poco de preparación puede ayudar',
+                                ? 'No planning needed, start now'
+                                : 'A little preparation can help',
                             style: const TextStyle(color: AppColors.secondaryDark, fontSize: 12),
                           ),
                         ],
@@ -184,7 +184,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
               const SizedBox(height: 16),
               QuestCompass(quest: quest),
               Text(
-                stepCount != null ? 'Qué harás ($stepCount pasos)' : 'Qué harás',
+                stepCount != null ? "What you'll do ($stepCount steps)" : "What you'll do",
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               if (stepsUnavailable != null) ...[
@@ -201,7 +201,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: const Text(
-                    '✓ Ya completaste esta misión',
+                    '✓ You already completed this quest',
                     style: TextStyle(color: AppColors.secondaryDark, fontWeight: FontWeight.w700),
                   ),
                 )
@@ -210,7 +210,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const MissionTabView(isTab: false)),
                   ),
-                  child: const Text('Continuar misión →'),
+                  child: const Text('Continue quest →'),
                 )
               else if (isOffline) ...[
                 // Starting needs the server: blocked up front, saying why.
@@ -219,7 +219,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                 FilledButton.icon(
                   onPressed: null,
                   icon: const Icon(Icons.wifi_off, size: 18),
-                  label: const Text('Sin conexión'),
+                  label: const Text('Offline'),
                 ),
               ] else
                 FilledButton(
@@ -230,7 +230,7 @@ class _QuestDetailViewState extends State<QuestDetailView> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Aceptar misión →'),
+                      : const Text('Accept quest →'),
                 ),
             ],
           ),
@@ -306,7 +306,7 @@ class _WeatherCardState extends State<_WeatherCard> {
       return Padding(
         padding: const EdgeInsets.only(top: 16),
         child: Text(
-          'Clima no disponible sin conexión',
+          'Weather not available offline',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       );
@@ -338,7 +338,7 @@ class _WeatherCardState extends State<_WeatherCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'CLIMA EN EL LUGAR',
+                    'WEATHER AT THE LOCATION',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 0.5),
                   ),
                   const SizedBox(height: 2),
@@ -348,12 +348,12 @@ class _WeatherCardState extends State<_WeatherCard> {
                   ),
                   if (showRainChance)
                     Text(
-                      'Lluvia próximas 3 h: $rainChance%',
+                      'Rain in the next 3 h: $rainChance%',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   if (weather.isStale)
                     Text(
-                      'Último dato: hace ${age.inMinutes} min · sin conexión',
+                      'Last update: ${age.inMinutes} min ago · offline',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                 ],
@@ -440,15 +440,15 @@ class _StatCard extends StatelessWidget {
 }
 
 String _difficultyLabel(String difficulty) => switch (difficulty) {
-  'easy' => 'Fácil',
-  'medium' => 'Media',
-  'hard' => 'Difícil',
+  'easy' => 'Easy',
+  'medium' => 'Medium',
+  'hard' => 'Hard',
   _ => difficulty,
 };
 
 String _socialLabel(String socialLevel) => switch (socialLevel) {
-  'solo' => 'Individual — solo tú',
-  'social' => 'Social — con otros',
-  'group' => 'Grupal',
+  'solo' => 'Solo — just you',
+  'social' => 'Social — with others',
+  'group' => 'Group',
   _ => socialLevel,
 };

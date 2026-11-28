@@ -163,22 +163,22 @@ class QuestAlternativeRecommender {
 
     switch (reason) {
       case AbandonmentReason.ranOutOfTime:
-        reward(4, 'shorter', 'Es más corta que la misión que dejaste');
+        reward(4, 'shorter', 'Shorter than the quest you left');
       case AbandonmentReason.tooExpensive:
-        reward(4, 'cheaper', 'Cuesta menos que la misión que dejaste');
+        reward(4, 'cheaper', 'Costs less than the quest you left');
       case AbandonmentReason.tooFar:
         if (noTravel) {
-          reward(5, 'no_travel', 'No necesitas desplazarte');
+          reward(5, 'no_travel', 'No travel needed');
         } else {
-          reward(3, 'shorter_gps_distance', 'Queda más cerca de ti');
+          reward(3, 'shorter_gps_distance', 'Closer to you');
         }
       case AbandonmentReason.placeUnavailable:
-        reward(4, 'no_venue', 'Puedes hacerla sin ir a un lugar específico');
+        reward(4, 'no_venue', 'You can do it without going anywhere specific');
       case AbandonmentReason.tooDifficult:
-        reward(4, 'easier', 'Es más fácil');
+        reward(4, 'easier', 'Easier');
       case AbandonmentReason.weatherOrMoodChanged:
         if (tags.any(_calmTags.contains)) {
-          reward(2, 'calmer', 'Un cambio de ritmo más tranquilo');
+          reward(2, 'calmer', 'A calmer change of pace');
         }
       case AbandonmentReason.other:
         break;
@@ -187,9 +187,9 @@ class QuestAlternativeRecommender {
     switch (alternativesWeatherCondition(context)) {
       case 'rain' || 'storm' || 'snow':
         if (noTravel) {
-          reward(4, 'wet_no_travel', 'No tienes que salir con este clima');
+          reward(4, 'wet_no_travel', "You don't have to go out in this weather");
         } else if (indoor) {
-          reward(4, 'wet_indoor', 'Es bajo techo, ideal con este clima');
+          reward(4, 'wet_indoor', 'Indoors, ideal for this weather');
         }
         if (outdoor && !indoor) {
           points -= 4;
@@ -197,25 +197,25 @@ class QuestAlternativeRecommender {
         }
       case 'clear':
         if (outdoor && !indoor) {
-          reward(4, 'clear_outdoor', 'Es al aire libre y el clima acompaña');
+          reward(4, 'clear_outdoor', 'Outdoors, and the weather is on your side');
         }
     }
 
     switch (context.timeOfDay) {
       case 'night':
         if (noTravel) {
-          reward(4, 'late_local', 'Sirve para esta hora, sin desplazarte');
+          reward(4, 'late_local', 'Works for this time of day, no travel needed');
         } else if (indoor) {
-          reward(4, 'late_local', 'Es bajo techo y sirve para esta hora');
+          reward(4, 'late_local', 'Indoors and works for this time of day');
         }
         if (outdoor && !indoor) {
           points -= 3;
           rules.add('late_outdoor_penalty');
         }
       case 'morning':
-        if (tags.any(_morningTags.contains)) reward(2, 'morning', 'Ideal para empezar la mañana');
+        if (tags.any(_morningTags.contains)) reward(2, 'morning', 'A great way to start the morning');
       case 'evening':
-        if (tags.any(_eveningTags.contains)) reward(2, 'evening', 'Ideal para el final del día');
+        if (tags.any(_eveningTags.contains)) reward(2, 'evening', 'Great for the end of the day');
     }
 
     final category = quest.category.toLowerCase();
@@ -223,7 +223,7 @@ class QuestAlternativeRecommender {
       final wanted = interest.toLowerCase();
       return category == wanted || tags.contains(wanted);
     });
-    if (matchesInterest) reward(2, 'interest', 'Coincide con tus intereses');
+    if (matchesInterest) reward(2, 'interest', 'Matches your interests');
     if (quest.socialLevel == preferences.socialLevel) {
       points += 1;
       rules.add('social_preference');
@@ -232,8 +232,8 @@ class QuestAlternativeRecommender {
       points += 1;
       rules.add('difficulty_preference');
     }
-    if (_budget(quest) == 0) reward(1, 'free', 'Es gratis');
-    explanations.add('Se ajusta a tu tiempo y presupuesto');
+    if (_budget(quest) == 0) reward(1, 'free', "It's free");
+    explanations.add('Fits your time and budget');
 
     return QuestAlternative(
       quest: quest,

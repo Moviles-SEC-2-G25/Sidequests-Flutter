@@ -29,9 +29,9 @@
 	<key>NSFaceIDUsageDescription</key>
 	<string>Sidequests uses Face ID to unlock the app.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Sidequests usa la cámara para la foto de verificación de los pasos de una misión.</string>
+	<string>Sidequests uses the camera to take verification photos for quest steps.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Sidequests cuenta tus pasos mientras haces una misión.</string>
+	<string>Sidequests counts your steps while you do a quest.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Sidequests uses your location to suggest nearby quests.</string>
 	<key>UIApplicationSceneManifest</key>

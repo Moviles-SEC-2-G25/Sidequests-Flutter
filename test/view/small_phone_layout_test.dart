@@ -108,7 +108,7 @@ final _catalog = [
 
 final _attempts = [
   UserQuest(id: 'uq-a', userId: 'u', questId: 'a', status: 'in_progress', acceptedAt: DateTime(2026, 11, 1)),
-  // Enough completed missions to earn badges and milestones ("GANADO").
+  // Enough completed missions to earn badges and milestones ("EARNED").
   for (var i = 0; i < 6; i++)
     UserQuest(
       id: 'done-$i',
@@ -124,7 +124,7 @@ const _evening = AppContext(timeOfDay: 'evening', dayOfWeek: 'friday', isConnect
 
 /// Screens whose first view shows one of the (sponsored) quests above.
 /// ('alternativas' gets no suggestion from this catalogue: its empty state.)
-const _showsSponsoredQuest = {'Explorar', 'Misión', 'detalle (solo)', 'detalle (grupo)'};
+const _showsSponsoredQuest = {'Explore', 'Quest', 'detalle (solo)', 'detalle (grupo)'};
 
 class _Connectivity implements Connectivity {
   final bool offline;
@@ -204,7 +204,7 @@ class _SilentTracker extends AnalyticsTracker {
 
 /// Everything the screens read, from the device's saved copy.
 class _SavedQuests implements QuestRepository {
-  /// Long names and big numbers, so "Tus caminatas" is checked too.
+  /// Long names and big numbers, so "Your walks" is checked too.
   @override
   Future<WalkStats> getWalkStats({required DateTime since}) async => (
     recentSteps: 1234567,
@@ -295,13 +295,13 @@ class _SavedQuests implements QuestRepository {
       stepOrder: 0,
       sizeBytes: 1,
       capturedAt: DateTime(2026),
-      lastError: 'Sin conexión: tu foto quedó guardada en el teléfono. Reintenta cuando tengas internet.',
+      lastError: 'Offline: your photo was saved on the phone. Try again when you have internet.',
     ),
   ];
 
   @override
   Future<QuestPhotoProof> uploadPendingPhotoProof(PendingPhotoProof proof) async =>
-      throw const AppException('Sin conexión', isRetryable: true);
+      throw const AppException('Offline', isRetryable: true);
 
   @override
   Future<List<QuestPhotoProof>> getPhotoProofs(String attemptId) async => const [];
@@ -358,7 +358,7 @@ class _SavedHistory extends _SavedQuests {
   @override
   Map<String, int> getStepTotals() => const {'rated': 123456, 'gave-up': 98765};
 
-  /// Abandoned and rated offline: the "Pendiente de sincronizar" marks and
+  /// Abandoned and rated offline: the "Pending sync" marks and
   /// the banner's count line.
   @override
   Set<String> pendingSyncAttemptIds() => const {'rated', 'gave-up'};
@@ -484,13 +484,13 @@ void main() {
   setUpAll(() async => skipReason = await _loadRealFonts());
 
   final screens = <String, Widget Function()>{
-    'Explorar': () => const ExploreView(),
-    'Cerca': () => const NearbyView(),
+    'Explore': () => const ExploreView(),
+    'Nearby': () => const NearbyView(),
     'Social': () => const SocialView(),
-    'Misión': () => const MissionTabView(),
+    'Quest': () => const MissionTabView(),
     'detalle (solo)': () => QuestDetailView(quest: _catalog[0]),
     'detalle (grupo)': () => QuestDetailView(quest: _catalog[1]),
-    'Perfil': () => const ProfileView(),
+    'Profile': () => const ProfileView(),
     'misión completada': () => QuestCompletedView(mission: _attempts.first, quest: _catalog[0]),
     'abandonar misión': () => AbandonMissionView(mission: _attempts.first, totalSteps: 3),
     'alternativas': () => const QuestAlternativesView(),
@@ -500,12 +500,12 @@ void main() {
     'onboarding': () => OnboardingView(onFinished: () {}),
     'bloqueo con huella': () => const BiometricLockView(),
     'preferencias': () => const EditPreferencesView(),
-    'Mis estadísticas': () => ChangeNotifierProvider(
+    'My stats': () => ChangeNotifierProvider(
       create: (_) => StatsViewModel(_SavedQuests(), 'u', runner: (input) async => summarizeStats(input)),
       child: const StatsView(),
     ),
     // Saved copy either way: "no pudimos conectar" (online) / "sin conexión".
-    'Mi bitácora': () => _bitacora(deviceOffline: false),
+    'My quest log': () => _bitacora(deviceOffline: false),
     'Mi bitácora (sin red)': () => _bitacora(deviceOffline: true),
     'cambiar contraseña': () => const _PasswordDialog(),
     'banner de contexto': () => const Scaffold(body: ContextBanner()),
@@ -537,7 +537,7 @@ void main() {
                 _contextManager(),
                 _SilentTracker(),
                 'u',
-                // "Te podría gustar" ranked here: no isolate in testWidgets.
+                // "You might also like" ranked here: no isolate in testWidgets.
                 similarQuestRunner: const SynchronousSimilarQuestRunner(),
                 stepCounter: StepCounterService(
                   requestAccess: () async => StepCounterStatus.permissionDenied,

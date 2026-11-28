@@ -42,7 +42,7 @@ void main() {
       expect(s.precipitationProbabilityNext3h, [10, 40, 70]);
       expect(s.maxPrecipitationProbability, 70);
       expect(s.fetchedAt, fetchedAt);
-      expect(s.description, 'Lluvia ligera');
+      expect(s.description, 'Light rain');
       expect(s.isRainy, isTrue);
     });
 
@@ -53,7 +53,7 @@ void main() {
       expect(s.temperatureC, 20.0);
       expect(s.precipitationProbabilityNext3h, isEmpty);
       expect(s.isRainy, isFalse);
-      expect(s.description, 'Despejado');
+      expect(s.description, 'Clear');
     });
 
     test('isRainy follows WMO ranges 51-67, 80-82, 95-99', () {

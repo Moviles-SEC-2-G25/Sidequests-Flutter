@@ -52,16 +52,16 @@ class _NearbyViewState extends State<NearbyView> {
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
             children: [
               Text(
-                'MISIONES DE UBICACIÓN',
+                'LOCATION QUESTS',
                 style: Theme.of(
                   context,
                 ).textTheme.labelMedium?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
-              Text('¿A dónde vas hoy?', style: Theme.of(context).textTheme.headlineSmall),
+              Text('Where are you headed today?', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 6),
               Text(
-                '${gpsQuests.length} lugares esperando — confirmados con 📷 + 📍',
+                '${gpsQuests.length} places waiting — confirmed with 📷 + 📍',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 24),
@@ -78,20 +78,20 @@ class _NearbyViewState extends State<NearbyView> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Activar ubicación para ver distancias'),
+                      : const Text('Turn on location to see distances'),
                 ),
               if (questViewModel.userLatitude == null && questViewModel.userLocationUnavailable) ...[
                 const SizedBox(height: 8),
                 Text(
-                  'No pudimos obtener tu ubicación. Revisa que el GPS esté activado '
-                  'y que Sidequests tenga permiso de ubicación.',
+                  'Could not get your location. Check that GPS is on '
+                  'and that Sidequests has location permission.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
               const SizedBox(height: 20),
               Text(
-                'DISPONIBLES · ${gpsQuests.length}',
+                'AVAILABLE · ${gpsQuests.length}',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(letterSpacing: 0.5),
               ),
               const SizedBox(height: 10),
@@ -203,7 +203,7 @@ class _NearbyCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            quest.locationName ?? 'Ubicación no especificada',
+                            quest.locationName ?? 'Location not specified',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: bodySmall,
@@ -239,8 +239,8 @@ class _NearbyCard extends StatelessWidget {
 }
 
 String _difficultyLabel(String difficulty) => switch (difficulty) {
-  'easy' => 'Fácil',
-  'medium' => 'Media',
-  'hard' => 'Difícil',
+  'easy' => 'Easy',
+  'medium' => 'Medium',
+  'hard' => 'Hard',
   _ => difficulty,
 };

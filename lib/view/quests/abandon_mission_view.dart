@@ -40,13 +40,13 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
       // Couldn't even be kept on the device: stay, so the user can retry or go on.
       setState(() => _isSaving = false);
       messenger.showSnackBar(
-        SnackBar(content: Text(questViewModel.errorMessage ?? 'No se pudo guardar.')),
+        SnackBar(content: Text(questViewModel.errorMessage ?? 'Could not save.')),
       );
       return;
     }
     if (questViewModel.abandonmentQueued) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Misión abandonada sin conexión: se sincronizará al reconectar.')),
+        const SnackBar(content: Text('Quest abandoned offline: it will sync when you reconnect.')),
       );
     }
     final navigator = Navigator.of(context);
@@ -79,11 +79,11 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
             children: [
               Text(quest?.emoji ?? '🌿', style: const TextStyle(fontSize: 32)),
               const SizedBox(height: 12),
-              Text('¿Necesitas un descanso? Está bien.', style: Theme.of(context).textTheme.headlineSmall),
+              Text("Need a break? That's okay.", style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 8),
               Text(
-                'Si guardas, tu progreso te espera: vuelve cuando quieras, sin límite de tiempo. '
-                'Si empiezas otra misión, esta quedará abandonada.',
+                'If you save, your progress will wait for you: come back whenever you want, with no time limit. '
+                'If you start another quest, this one will be abandoned.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 20),
@@ -101,7 +101,7 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'DÓNDE LO DEJASTE',
+                      'WHERE YOU LEFT OFF',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 0.5),
                     ),
                     const SizedBox(height: 8),
@@ -120,7 +120,7 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
                     if (widget.totalSteps > 0) ...[
                       const SizedBox(height: 4),
                       Text(
-                        'Pausado en el paso ${widget.mission.currentStep + 1}',
+                        'Paused at step ${widget.mission.currentStep + 1}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                       const SizedBox(height: 10),
@@ -137,7 +137,7 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '$completed de ${widget.totalSteps} pasos completados',
+                            '$completed of ${widget.totalSteps} steps completed',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           Text(
@@ -155,7 +155,7 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
               ),
               const SizedBox(height: 20),
               Text(
-                'Si la dejas, ¿qué pasó? (opcional — nos ayuda a mejorar)',
+                'If you leave it, what happened? (optional — it helps us improve)',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 10),
@@ -192,7 +192,7 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
               const SizedBox(height: 12),
               FilledButton(
                 onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-                child: const Text('Guardar y volver después'),
+                child: const Text('Save and come back later'),
               ),
               const SizedBox(height: 8),
               OutlinedButton(
@@ -203,13 +203,13 @@ class _AbandonMissionViewState extends State<AbandonMissionView> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Empezar otra misión'),
+                    : const Text('Start another quest'),
               ),
               const SizedBox(height: 8),
               Center(
                 child: TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Mejor sigamos →'),
+                  child: const Text("Let's keep going →"),
                 ),
               ),
             ],

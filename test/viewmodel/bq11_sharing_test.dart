@@ -45,7 +45,7 @@ const _gpsQuest = Quest(
   socialLevel: 'solo',
 );
 
-const _offline = AppException('Sin conexión', isRetryable: true);
+const _offline = AppException('Offline', isRetryable: true);
 
 /// analytics_events: [offline] fails like a dropped connection.
 class _Sink implements AnalyticsEventSink {
@@ -291,7 +291,7 @@ void main() {
       final mission = viewModel.currentMission!;
       const group = Quest(
         id: 'mercado',
-        title: 'En grupo',
+        title: 'In a group',
         category: 'food',
         durationMinutes: 60,
         difficulty: 'easy',
@@ -534,8 +534,8 @@ void main() {
     testWidgets('shows for a physical individual mission, off, saying what is sent', (tester) async {
       await pumpMission(tester);
 
-      expect(find.text('Compartir tiempo en la zona (anónimo)'), findsOneWidget);
-      expect(find.textContaining('nunca tus coordenadas'), findsOneWidget);
+      expect(find.text('Share time in the area (anonymous)'), findsOneWidget);
+      expect(find.textContaining('never your coordinates'), findsOneWidget);
       final toggle = tester.widget<SwitchListTile>(find.byKey(const Key('bq11SharingSwitch')));
       expect(toggle.value, isFalse);
     });
@@ -543,7 +543,7 @@ void main() {
     testWidgets('not for a group challenge', (tester) async {
       repository.quest = const Quest(
         id: 'mercado',
-        title: 'En grupo',
+        title: 'In a group',
         category: 'food',
         durationMinutes: 60,
         difficulty: 'easy',

@@ -195,7 +195,7 @@ void main() {
       final error = await uploadExpectingFailure();
 
       expect(error.isRetryable, isTrue);
-      expect(error.message, contains('Sin conexión'));
+      expect(error.message, contains('Offline'));
       final kept = repository.getPendingPhotoProofs().single;
       expect(kept.attempts, 1);
       expect(kept.lastError, error.message);
@@ -277,7 +277,7 @@ void main() {
         repository.uploadPhotoProofDirectly(attempt: _attempt, stepOrder: 0, jpeg: _jpeg),
         throwsA(
           isA<AppException>()
-              .having((e) => e.message, 'message', contains('Tómala de nuevo'))
+              .having((e) => e.message, 'message', contains('Take it again'))
               .having((e) => e.message, 'message', isNot(contains('guardada'))),
         ),
       );
@@ -289,7 +289,7 @@ void main() {
 
       await expectLater(
         repository.uploadPhotoProofDirectly(attempt: _attempt, stepOrder: 0, jpeg: _jpeg),
-        throwsA(isA<AppException>().having((e) => e.message, 'message', contains('no admite foto'))),
+        throwsA(isA<AppException>().having((e) => e.message, 'message', contains('does not accept photos'))),
       );
       expect(remote.calls, ['upload', 'insert', 'remove']);
       expect(remote.objects, isEmpty);

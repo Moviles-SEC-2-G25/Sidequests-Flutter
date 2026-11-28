@@ -17,32 +17,32 @@ bool readIsOffline(BuildContext context) =>
 /// same block reads the same everywhere.
 abstract final class OfflineMessages {
   static const browseMissions =
-      'Sin conexión: puedes ver las misiones guardadas, pero necesitas internet para empezar una.';
+      'Offline: you can view saved quests, but you need internet to start one.';
   static const startMission =
-      'Sin conexión: necesitas internet para iniciar esta misión. Puedes ver sus detalles mientras tanto.';
+      'Offline: you need internet to start this quest. You can view its details in the meantime.';
   static const missionProgress =
-      'Sin conexión: puedes revisar tu misión, pero necesitas internet para completar pasos. '
-      'Tu avance está guardado.';
-  static const photoUpload = 'Tu foto está guardada en el teléfono y se subirá cuando vuelvas a tener conexión.';
-  static const savePreferences = 'Sin conexión: necesitas internet para guardar tus preferencias.';
+      'Offline: you can review your quest, but you need internet to complete steps. '
+      'Your progress is saved.';
+  static const photoUpload = 'Your photo is saved on the phone and will upload when you are back online.';
+  static const savePreferences = 'Offline: you need internet to save your preferences.';
   static const attemptEvidence =
-      'Sin conexión: ves las fotos guardadas en tu teléfono. Las demás estarán disponibles al reconectar, '
-      'y necesitas internet para guardarlas.';
+      'Offline: you are viewing the photos saved on your phone. The rest will be available when you reconnect, '
+      'and you need internet to save them.';
   static const offlinePackPending =
-      'Sin conexión: la misión se descargará cuando vuelvas a tener internet.';
+      'Offline: the quest will download when you are back online.';
   static const offlinePackRetry =
-      'Sin conexión: podrás reintentar las descargas cuando vuelvas a tener internet.';
+      'Offline: you can retry the downloads when you are back online.';
 
   /// Retos en grupo: the lists on screen are the ones saved on the phone;
   /// create, join and steps need the server (they're never queued).
-  static const groupChallenges = 'Retos cargados antes · conéctate para hacer cambios.';
+  static const groupChallenges = 'Previously loaded challenges · connect to make changes.';
   static const groupChallengesNothingSaved =
-      'Sin conexión: conéctate para ver los retos en grupo y hacer cambios.';
+      'Offline: connect to see group challenges and make changes.';
 
   /// ES13: a "¿Cómo te sientes hoy?" chip tapped while the list on screen is
   /// the saved one; [level] is the chip's name ("En grupo").
   static String awaitingSocialLevel(String level) =>
-      "Sin conexión: estas son tus últimas recomendaciones. Aplicaremos '$level' al reconectar.";
+      "Offline: these are your latest recommendations. We'll apply '$level' when you reconnect.";
 }
 
 /// Inline card next to an action that needs the internet: says it's blocked

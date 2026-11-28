@@ -26,8 +26,8 @@ import 'offline_pack_entry.dart';
 class OfflinePackManager {
   static const maxConcurrentDownloads = 3;
   static const downloadFailedMessage =
-      'No se pudo descargar el contenido. Reintenta cuando tengas conexión.';
-  static const incompleteMessage = 'La misión no tiene todos sus pasos completos para usarla sin conexión.';
+      'Could not download the content. Try again when you are back online.';
+  static const incompleteMessage = 'This quest is missing steps needed to use it offline.';
 
   final QuestRepository _repository;
   final OfflinePackManifestStore _store;

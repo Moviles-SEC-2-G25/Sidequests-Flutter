@@ -5,12 +5,12 @@
 /// this is presentation-only — filtering and recommendation matching still
 /// use the real underlying value, never the label.
 const Map<String, String> kCategoryLabelsEs = {
-  'outdoors': 'Aire libre',
-  'food': 'Gastronomía',
-  'art': 'Arte',
-  'learning': 'Aprendizaje',
-  'mindfulness': 'Bienestar',
-  'movement': 'Movimiento',
+  'outdoors': 'Outdoors',
+  'food': 'Food',
+  'art': 'Art',
+  'learning': 'Learning',
+  'mindfulness': 'Mindfulness',
+  'movement': 'Movement',
   'social': 'Social',
 };
 

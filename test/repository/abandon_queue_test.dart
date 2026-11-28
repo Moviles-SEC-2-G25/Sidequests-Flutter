@@ -327,7 +327,7 @@ void main() {
     });
   });
 
-  // What the bitácora marks "Pendiente de sincronizar".
+  // What the bitácora marks "Pending sync".
   group('pendingSyncAttemptIds', () {
     test('an attempt changed offline is pending until the queue reaches the server', () async {
       expect(repository.pendingSyncAttemptIds(), isEmpty);

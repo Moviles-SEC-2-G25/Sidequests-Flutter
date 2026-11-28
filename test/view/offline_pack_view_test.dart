@@ -70,7 +70,7 @@ class _FakeRepository implements QuestRepository {
 
   @override
   Future<List<QuestStep>> getSteps(String questId) async {
-    if (serverDown) throw const AppException('Sin conexión', isRetryable: true);
+    if (serverDown) throw const AppException('Offline', isRetryable: true);
     return savedSteps[questId] = _steps(questId);
   }
 
@@ -179,21 +179,21 @@ void main() {
     });
     await pumpScreen(tester);
 
-    expect(find.text('2 misiones · 1 lista'), findsOneWidget);
+    expect(find.text('2 quests · 1 ready'), findsOneWidget);
     expect(find.text('🍜'), findsOneWidget);
     expect(find.text('Ramen escondido'), findsOneWidget);
-    expect(find.text('Lista para usar sin conexión'), findsOneWidget);
-    expect(find.text('Falló la descarga'), findsOneWidget);
+    expect(find.text('Ready to use offline'), findsOneWidget);
+    expect(find.text('Download failed'), findsOneWidget);
     expect(find.text(OfflinePackManager.downloadFailedMessage), findsOneWidget);
 
     repository.serverDown = false;
-    await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Reintentar'));
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Retry'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Reintentar'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Retry'));
     await run(tester, () => Future<void>.delayed(Duration.zero));
 
-    expect(find.text('2 misiones · 2 listas'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, 'Reintentar'), findsNothing);
+    expect(find.text('2 quests · 2 ready'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Retry'), findsNothing);
   });
 
   testWidgets('quitar removes the row and nothing else', (tester) async {
@@ -201,13 +201,13 @@ void main() {
     await tester.runAsync(() => pack.add('ramen', isOnline: true));
     await pumpScreen(tester);
 
-    await tester.ensureVisible(find.byTooltip('Quitar del paquete'));
+    await tester.ensureVisible(find.byTooltip('Remove from pack'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Quitar del paquete'));
+    await tester.tap(find.byTooltip('Remove from pack'));
     await run(tester, () => Future<void>.delayed(Duration.zero));
 
     expect(find.text('Ramen escondido'), findsNothing);
-    expect(find.text('0 misiones · 0 listas'), findsOneWidget);
+    expect(find.text('0 quests · 0 ready'), findsOneWidget);
     expect(repository.hasCachedSteps('ramen'), isTrue);
   });
 
@@ -215,27 +215,27 @@ void main() {
       (tester) async {
     await pumpScreen(tester, offline: true);
 
-    await tester.ensureVisible(find.text('Agregar misiones'));
+    await tester.ensureVisible(find.text('Add quests'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Agregar misiones'));
+    await tester.tap(find.text('Add quests'));
     await tester.pumpAndSettle();
     // Only the quests not in the pack yet.
     expect(find.text('Ramen escondido'), findsOneWidget);
     expect(find.text('Ruta de murales'), findsOneWidget);
     expect(find.text(OfflineMessages.offlinePackPending), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Agregar').first);
+    await tester.tap(find.widgetWithText(FilledButton, 'Add').first);
     await run(tester, () => Future<void>.delayed(Duration.zero));
     expect(find.text('Ramen escondido'), findsNothing, reason: 'already in the pack');
 
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    expect(find.text('Esperando conexión'), findsOneWidget);
-    expect(find.text('1 misión · 0 listas'), findsOneWidget);
+    expect(find.text('Waiting for connection'), findsOneWidget);
+    expect(find.text('1 quest · 0 ready'), findsOneWidget);
     expect(find.text(OfflineMessages.offlinePackPending), findsOneWidget);
     expect(find.text(OfflineMessages.offlinePackRetry), findsOneWidget);
-    final retry = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Reintentar'));
+    final retry = tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Retry'));
     expect(retry.onPressed, isNull);
   });
 }

@@ -42,7 +42,7 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(profileViewModel.errorMessage ?? 'No se pudieron guardar tus preferencias.'),
+          content: Text(profileViewModel.errorMessage ?? 'Could not save your preferences.'),
         ),
       );
     }
@@ -60,11 +60,11 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
   Widget build(BuildContext context) {
     final isOffline = watchIsOffline(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Mis preferencias')),
+      appBar: AppBar(title: const Text('My preferences')),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Text('Intereses', style: Theme.of(context).textTheme.titleMedium),
+          Text('Interests', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -80,7 +80,7 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
                 .toList(),
           ),
           const SizedBox(height: 24),
-          Text('Dificultad preferida', style: Theme.of(context).textTheme.titleMedium),
+          Text('Preferred difficulty', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -97,7 +97,7 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
                 .toList(),
           ),
           const SizedBox(height: 24),
-          Text('Nivel social', style: Theme.of(context).textTheme.titleMedium),
+          Text('Social level', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -113,7 +113,7 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
                 .toList(),
           ),
           const SizedBox(height: 24),
-          Text('Modo de ubicación', style: Theme.of(context).textTheme.titleMedium),
+          Text('Location mode', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -130,7 +130,7 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Tiempo típico disponible: ${_preferences.typicalTimeMinutes} min',
+            'Typical available time: ${_preferences.typicalTimeMinutes} min',
             style: Theme.of(context).textTheme.titleMedium,
           ),
           Slider(
@@ -155,7 +155,7 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
-                : const Text('Guardar'),
+                : const Text('Save'),
           ),
         ],
       ),
