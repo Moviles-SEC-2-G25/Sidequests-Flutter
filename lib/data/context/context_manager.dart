@@ -23,12 +23,23 @@ class ContextManager {
   /// reordering Explore.
   static const rainFallbackMaxAge = Duration(hours: 3);
 
+  /// Battery saver (mirror of the Kotlin app's battery-aware context): with
+  /// low battery and no charger, GPS + weather aren't read again while the
+  /// last reading is younger than this.
+  static const batterySaverReuse = Duration(minutes: 15);
+
   final LocationService _locationService;
   final BatteryMonitor _batteryMonitor;
   final Connectivity _connectivity;
   final WeatherService _weatherService;
   final DateTime Function() _now;
   Future<_DeviceReading>? _readingInFlight;
+
+  ({Position? position, WeatherSnapshot? weather, DateTime readAt})? _lastReading;
+  bool _forceNextReading = false;
+
+  /// The last snapshot reused the previous GPS/weather reading to save battery.
+  bool batterySaverActive = false;
 
   ContextManager({
     LocationService? locationService,
@@ -80,12 +91,29 @@ class ContextManager {
     );
   }
 
+  /// The next [snapshot] reads GPS and weather again even on low battery:
+  /// a manual refresh or a reconnection.
+  void forceNextReading() => _forceNextReading = true;
+
   /// Connectivity depends on nothing else, so it runs alongside the
   /// battery -> GPS -> weather chain, whose order each link needs. It never
   /// throws, so awaiting it last can't leave an error unhandled.
   Future<_DeviceReading> _readDevice() async {
     final isConnected = _isConnected();
     final isLowBattery = await _isLowBattery();
+    final force = _forceNextReading;
+    _forceNextReading = false;
+
+    // Battery saver: reuse the last GPS + weather while it's recent enough.
+    final last = _lastReading;
+    if (!force &&
+        isLowBattery &&
+        last != null &&
+        _now().difference(last.readAt) < batterySaverReuse) {
+      batterySaverActive = true;
+      return (position: last.position, weather: last.weather, isConnected: await isConnected);
+    }
+
     final position = await _locationService.getCurrentPosition(
       accuracy: isLowBattery ? LocationAccuracy.low : LocationAccuracy.medium,
     );
@@ -95,6 +123,9 @@ class ContextManager {
     final weather = position == null
         ? null
         : await _weatherService.fetch(position.latitude, position.longitude);
+    batterySaverActive = false;
+    // Only a reading with a fix is worth reusing.
+    if (position != null) _lastReading = (position: position, weather: weather, readAt: _now());
 
     return (position: position, weather: weather, isConnected: await isConnected);
   }

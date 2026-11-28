@@ -1,3 +1,5 @@
+import '../../core/memo.dart';
+
 /// Caching strategy (Sprint 3): a small in-memory cache in front of the
 /// network, bounded in time (TTL) and in size (LRU).
 ///
@@ -9,7 +11,9 @@
 /// It lives only while the app runs. What has to survive a restart or work
 /// offline is the Hive cache in LocalDataSource (local storage strategy),
 /// which repositories still fall back to when the network fails.
-class MemoryCache<K, V> {
+///
+/// A [SessionCache], so one holding account data can be emptied on sign-out.
+class MemoryCache<K, V> implements SessionCache {
   final Duration ttl;
   final int maxEntries;
   final DateTime Function() _now;
@@ -42,7 +46,12 @@ class MemoryCache<K, V> {
     if (_entries.length > maxEntries) _entries.remove(_entries.keys.first);
   }
 
+  /// The value stored for [key] even if it expired ("stale-if-error": the
+  /// network failed, and an old answer beats none). Doesn't count as a use.
+  V? getStale(K key) => _entries[key]?.value;
+
   void invalidate(K key) => _entries.remove(key);
 
+  @override
   void clear() => _entries.clear();
 }
