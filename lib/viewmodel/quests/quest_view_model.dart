@@ -16,6 +16,7 @@ import '../../data/context/context_manager.dart';
 import '../../data/remote/network_guard.dart';
 import '../../data/services/location_check_in_service.dart';
 import '../../data/services/photo_capture_service.dart';
+import '../../data/services/reverse_geocoding_service.dart';
 import '../../data/services/step_counter_service.dart';
 import '../../models/abandonment_reason.dart';
 import '../../models/app_context.dart';
@@ -30,6 +31,7 @@ import '../../models/user_preferences.dart';
 import '../../models/user_quest.dart';
 import '../../models/verified_check_in.dart';
 import '../../repository/quest_repository.dart';
+import '../../telemetry/app_module.dart';
 
 const List<int> kAvailableMinuteOptions = [10, 20, 30, 45, 60];
 
@@ -46,6 +48,11 @@ const _autoCheckInRetryInterval = Duration(seconds: 30);
 /// How many new steps between two writes of the active step session to
 /// Hive — enough to survive an app kill without writing on every reading.
 const _stepPersistInterval = 25;
+
+/// A finished attempt, for the smart difficulty feature (BQ13): completed, or
+/// abandoned with a reason.
+typedef AttemptFinishedCallback =
+    void Function({required String difficulty, required bool completed, AbandonmentReason? reason});
 
 /// One automatic location check-in, for HomeShell to announce.
 class CheckInEvent {
@@ -111,6 +118,13 @@ class QuestViewModel extends ChangeNotifier {
   final StreamController<void> _exploreTabRequests = StreamController<void>.broadcast();
   final QuestAlternativesRunner _runQuestAlternatives;
 
+  /// BQ1: non-fatal failures per module (Bq1Telemetry in the app).
+  final FailureReporter _failureReporter;
+
+  /// "📍 Cerca de: ..." (where the user is), from Nominatim.
+  final ReverseGeocodingService? _geocoding;
+  final AttemptFinishedCallback? _onAttemptFinished;
+
   /// Abandonments on their way, by attempt: a repeated tap gets the same one.
   final Map<String, Future<bool>> _abandonsInFlight = {};
 
@@ -152,6 +166,19 @@ class QuestViewModel extends ChangeNotifier {
 
   /// [recommendations] is the list saved on the device: the network failed.
   bool recommendationsFromCache = false;
+
+  /// Where [recommendations] came from: the server, the in-memory LRU, or an
+  /// earlier list because the network failed. Null before the first load.
+  RecommendationSource? recommendationsSource;
+
+  /// Short address of where the user is ("📍 Cerca de: ..."); the last one
+  /// resolved is kept when a lookup fails.
+  String? currentArea;
+
+  /// Why [currentArea] couldn't be updated (offline, service unavailable).
+  String? currentAreaError;
+  double? _areaLatitude;
+  double? _areaLongitude;
 
   /// The social level of the last list the server answered, which is also the
   /// one saved on the device. null until one arrives this session.
@@ -245,7 +272,13 @@ class QuestViewModel extends ChangeNotifier {
     DateTime Function()? now,
     QuestAlternativesRunner questAlternativesRunner = _computeAlternativesInBackground,
     CompletionLikelihoodMemo? completionLikelihoodMemo,
+    FailureReporter failureReporter = FailureReporter.none,
+    ReverseGeocodingService? geocoding,
+    AttemptFinishedCallback? onAttemptFinished,
   }) : _now = now ?? DateTime.now,
+       _failureReporter = failureReporter,
+       _geocoding = geocoding,
+       _onAttemptFinished = onAttemptFinished,
        _completionLikelihoodMemo = completionLikelihoodMemo ?? CompletionLikelihoodMemo(),
        _runQuestAlternatives = questAlternativesRunner,
        _lastJourneyEndedAt = (now ?? DateTime.now)(),
@@ -321,8 +354,17 @@ class QuestViewModel extends ChangeNotifier {
       ]);
       unawaited(_resumeStepTracking());
       unawaited(retryPendingPhotoUploads());
+      // Only asked when someone records it (Bq1Telemetry in the app).
+      if (!identical(_failureReporter, FailureReporter.none) && _questRepository.catalogFromCache) {
+        _failureReporter.report(
+          AppModule.catalog,
+          null,
+          message: 'Quest catalogue fell back to the device cache',
+        );
+      }
     } on AppException catch (e) {
       errorMessage = e.message;
+      _failureReporter.report(AppModule.catalog, e, message: e.message);
     } finally {
       isLoading = false;
       _syncCheckIn();
@@ -356,6 +398,15 @@ class QuestViewModel extends ChangeNotifier {
     selectedMinutes = minutes;
     _saveFilters();
     registerInteraction();
+    notifyListeners();
+  }
+
+  /// Smart available time preselected it when Explore opened: not a choice
+  /// of the user, so it isn't a BQ4 interaction (the caller reloads).
+  void applySmartMinutes(int minutes) {
+    if (minutes == selectedMinutes) return;
+    selectedMinutes = minutes;
+    _saveFilters();
     notifyListeners();
   }
 
@@ -425,6 +476,7 @@ class QuestViewModel extends ChangeNotifier {
       if (forceContext) _contextManager.forceNextReading();
       final context = await _contextWithinLimit();
       currentContext = context;
+      unawaited(_updateArea(context));
       final effectivePreferences = preferences.copyWith(
         locationMode: selectedLocationScope,
         socialLevel: sessionSocialLevel,
@@ -436,6 +488,7 @@ class QuestViewModel extends ChangeNotifier {
       );
       recommendations = batch.recommendations;
       recommendationsFromCache = batch.fromCache;
+      recommendationsSource = batch.source;
       // One batch_id per RPC call so BQ8 can group the events of one list.
       final batchId = batch.batchId;
       // BQ4: starts the decision clock on the first non-empty list shown
@@ -447,8 +500,17 @@ class QuestViewModel extends ChangeNotifier {
         _visibleBatchId = batchId;
       }
       // A saved list logged its impressions when it was first shown (BQ8).
-      if (batch.fromCache) return;
+      if (batch.fromCache) {
+        _failureReporter.report(
+          AppModule.recommendations,
+          null,
+          message: 'recommend_quests unavailable; showing an earlier list',
+        );
+        return;
+      }
       _lastServedSocialLevel = effectivePreferences.socialLevel;
+      // A list from the in-memory cache too: same list, same batch (as Kotlin).
+      if (batch.alreadyShown) return;
       for (final recommendation in recommendations) {
         _analyticsTracker.track(
           AnalyticsEventType.recommendationShown,
@@ -467,6 +529,7 @@ class QuestViewModel extends ChangeNotifier {
       }
     } on AppException catch (e) {
       errorMessage = e.message;
+      _failureReporter.report(AppModule.recommendations, e, message: e.message);
     } finally {
       isLoadingRecommendations = false;
       notifyListeners();
@@ -485,6 +548,7 @@ class QuestViewModel extends ChangeNotifier {
         reading.then(
           (context) {
             currentContext = context;
+            unawaited(_updateArea(context));
             notifyListeners();
           },
           onError: (Object _) {},
@@ -503,6 +567,7 @@ class QuestViewModel extends ChangeNotifier {
     if (saved == null || saved.recommendations.isEmpty) return;
     recommendations = saved.recommendations;
     recommendationsFromCache = true;
+    recommendationsSource = RecommendationSource.saved;
     _decisionStartedAt ??= _now();
     _decisionBatchId ??= saved.batchId;
     _visibleBatchId = saved.batchId;
@@ -526,14 +591,47 @@ class QuestViewModel extends ChangeNotifier {
       final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
       currentContext = context;
       notifyListeners();
-    } catch (_) {
+      await _updateArea(context);
+    } catch (error) {
       // A missing sensor: nothing new to adapt to.
+      _failureReporter.report(AppModule.context, error);
     }
   }
 
   /// With low battery and no charger, the last snapshot reused the previous
   /// GPS/weather reading (refreshed every 15 min, or on a manual refresh).
   bool get contextBatterySaverActive => _contextManager.batterySaverActive;
+
+  /// External service (mirror of the Kotlin app): Nominatim's short address
+  /// for where the user is. Offline, or when the lookup fails, the last known
+  /// address stays and [currentAreaError] says why.
+  Future<void> _updateArea(AppContext context) async {
+    final geocoding = _geocoding;
+    final latitude = context.latitude;
+    final longitude = context.longitude;
+    if (geocoding == null || latitude == null || longitude == null) return;
+    if (!context.isConnected) {
+      currentAreaError = 'Dirección no disponible sin conexión';
+      notifyListeners();
+      return;
+    }
+    if (latitude == _areaLatitude && longitude == _areaLongitude && currentArea != null) return;
+    final area = await geocoding.areaFor(latitude, longitude);
+    if (area != null) {
+      currentArea = area;
+      currentAreaError = null;
+      _areaLatitude = latitude;
+      _areaLongitude = longitude;
+    } else {
+      currentAreaError = 'Dirección no disponible por ahora';
+      _failureReporter.report(
+        AppModule.geocoding,
+        null,
+        message: 'Reverse geocoding returned no address',
+      );
+    }
+    notifyListeners();
+  }
 
   /// Back online. Recommendations reload only when Explore has nothing to show
   /// or only the saved list (it failed offline): reloading a live list the user
@@ -777,11 +875,14 @@ class QuestViewModel extends ChangeNotifier {
       _replaceUserQuest(updated);
       if (isLastStep) {
         await _finishStepTracking(updated.id, outcome: StepLogEntry.completed);
+        final difficulty = questById(updated.questId)?.difficulty;
+        if (difficulty != null) _onAttemptFinished?.call(difficulty: difficulty, completed: true);
       }
       return isLastStep;
     } on AppException catch (e) {
       stepErrorMessage = e.message;
       _lastStepFailedForConnection = e.isRetryable;
+      _failureReporter.report(AppModule.questProgress, e, message: e.message);
       return false;
     } finally {
       _isCompletingStep = false;
@@ -940,6 +1041,10 @@ class QuestViewModel extends ChangeNotifier {
           uploadedPhotoProofCount: uploadedProofs,
         ),
       );
+      final difficulty = quest?.difficulty;
+      if (difficulty != null) {
+        _onAttemptFinished?.call(difficulty: difficulty, completed: false, reason: reason);
+      }
       questAlternatives = QuestAlternativesState(
         sourceQuestId: questId,
         sourceAttemptId: attempt.id,
@@ -949,6 +1054,7 @@ class QuestViewModel extends ChangeNotifier {
       return true;
     } on AppException catch (e) {
       errorMessage = e.message;
+      _failureReporter.report(AppModule.questProgress, e, message: e.message);
       notifyListeners();
       return false;
     }
@@ -1569,6 +1675,7 @@ class QuestViewModel extends ChangeNotifier {
       // Retryable: the repository kept the photo with this message as
       // its lastError ("Reintentar subida"). Not retryable: it's gone.
       if (!e.isRetryable) photoErrorMessage = e.message;
+      _failureReporter.report(AppModule.photoProof, e, message: e.message);
     } finally {
       _uploadingStoragePath = null;
       pendingPhotoProofs = _questRepository.getPendingPhotoProofs();
@@ -1605,6 +1712,7 @@ class QuestViewModel extends ChangeNotifier {
       );
     } on AppException catch (e) {
       photoErrorMessage = e.message;
+      _failureReporter.report(AppModule.photoProof, e, message: e.message);
     } finally {
       _uploadingStoragePath = null;
       notifyListeners();
