@@ -142,36 +142,36 @@ void main() {
     await openEvidence(tester);
 
     expect(find.text('Ramen escondido'), findsOneWidget);
-    expect(find.text('Intento del 20 de noviembre de 2026'), findsOneWidget);
-    expect(find.text('Paso 1: Encuentra el local'), findsOneWidget);
-    expect(find.text('Paso 2: Foto del plato'), findsOneWidget);
-    expect(find.bySemanticsLabel(RegExp(r'^Paso 2: Foto del plato, foto 2')), findsOneWidget);
+    expect(find.text('Attempt on November 20, 2026'), findsOneWidget);
+    expect(find.text('Step 1: Encuentra el local'), findsOneWidget);
+    expect(find.text('Step 2: Foto del plato'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp(r'^Step 2: Foto del plato, photo 2')), findsOneWidget);
     // Shown with network = saved on the phone.
-    expect(find.byTooltip('Guardada en el teléfono'), findsNWidgets(3));
-    expect(find.text('3 de 3 fotos guardadas en el teléfono'), findsOneWidget);
-    expect(find.text('Todas guardadas en el teléfono'), findsOneWidget);
+    expect(find.byTooltip('Saved on phone'), findsNWidgets(3));
+    expect(find.text('3 of 3 photos saved on the phone'), findsOneWidget);
+    expect(find.text('All saved on phone'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('a tile opens the full-screen viewer (zoom) on that photo; swiping goes to the next', (tester) async {
     await openEvidence(tester);
 
-    await tester.tap(find.bySemanticsLabel(RegExp(r'^Paso 2: Foto del plato, foto 1')));
+    await tester.tap(find.bySemanticsLabel(RegExp(r'^Step 2: Foto del plato, photo 1')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.byType(PageView), findsOneWidget);
-    expect(find.text('2 de 3'), findsOneWidget);
-    expect(find.text('Paso 2: Foto del plato'), findsWidgets);
+    expect(find.text('2 of 3'), findsOneWidget);
+    expect(find.text('Step 2: Foto del plato'), findsWidgets);
     expect(find.byType(InteractiveViewer), findsOneWidget);
 
     await tester.fling(find.byType(PageView), const Offset(-300, 0), 1000);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('3 de 3'), findsOneWidget);
+    expect(find.text('3 of 3'), findsOneWidget);
   });
 
-  testWidgets('offline: the team\'s notice, "Disponible al reconectar", pending photos, and no "Guardar todas"', (
+  testWidgets('offline: the team\'s notice, "Available when back online", pending photos, and no "Guardar todas"', (
     tester,
   ) async {
     await repository.getPhotoProofs('attempt-1'); // listed online once
@@ -185,11 +185,11 @@ void main() {
 
     expect(find.byType(OfflineNotice), findsOneWidget);
     expect(find.text(OfflineMessages.attemptEvidence), findsOneWidget);
-    expect(find.text('Disponible al reconectar'), findsNWidgets(3));
-    expect(find.text('Pendiente de subir'), findsOneWidget);
+    expect(find.text('Available when back online'), findsNWidgets(3));
+    expect(find.text('Waiting to upload'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing, reason: 'no spinner waiting on no network');
     final saveAll = tester.widget<ButtonStyleButton>(
-      find.ancestor(of: find.text('Guardar todas en el teléfono'), matching: find.bySubtype<ButtonStyleButton>()),
+      find.ancestor(of: find.text('Save all to phone'), matching: find.bySubtype<ButtonStyleButton>()),
     );
     expect(saveAll.onPressed, isNull);
     expect(remote.downloads, isEmpty);
@@ -198,10 +198,10 @@ void main() {
   testWidgets('an attempt without photos says so', (tester) async {
     quests.serverProofs['attempt-1'] = [];
     await openEvidence(tester);
-    expect(find.text('Este intento no tiene fotos'), findsOneWidget);
+    expect(find.text('This attempt has no photos'), findsOneWidget);
   });
 
-  testWidgets('Mi bitácora: the "Evidencias" button of a card opens this attempt\'s evidence', (tester) async {
+  testWidgets('Mi bitácora: the "Evidence" button of a card opens this attempt\'s evidence', (tester) async {
     tester.view.physicalSize = const Size(360, 690);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -223,7 +223,7 @@ void main() {
     await tester.pump();
     expect(find.text('Ramen escondido'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(TextButton, 'Evidencias'));
+    await tester.tap(find.widgetWithText(TextButton, 'Evidence'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
@@ -231,6 +231,6 @@ void main() {
     expect(view.attempt.attemptId, 'attempt-1');
     expect(view.attempt.questId, 'quest-1');
     expect(quests.listReads, 1, reason: 'the list of that attempt was asked for');
-    expect(find.text('Intento del 20 de noviembre de 2026'), findsOneWidget);
+    expect(find.text('Attempt on November 20, 2026'), findsOneWidget);
   });
 }

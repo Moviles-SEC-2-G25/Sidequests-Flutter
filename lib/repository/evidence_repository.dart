@@ -50,9 +50,9 @@ class EvidenceUnavailableException implements Exception {
 /// timeout). A download that fails throws for that photo only: callers handle
 /// each photo on its own, so one failure never breaks the others.
 class EvidenceRepository {
-  static const _downloadFailedMessage = 'No se pudo descargar esta foto. Toca para reintentar.';
-  static const _goneMessage = 'Esta foto ya no está en el servidor.';
-  static const _pendingMissingMessage = 'Esta foto ya no está en el teléfono.';
+  static const _downloadFailedMessage = 'Could not download this photo. Tap to retry.';
+  static const _goneMessage = 'This photo is no longer on the server.';
+  static const _pendingMissingMessage = 'This photo is no longer on the phone.';
 
   final QuestRepository _questRepository;
   final SupabaseRemoteDataSource _remoteDataSource;

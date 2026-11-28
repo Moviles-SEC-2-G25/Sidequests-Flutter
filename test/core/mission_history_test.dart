@@ -214,9 +214,9 @@ void main() {
     test('search ignores case and accents, in the title, place and category label', () {
       expect(_ids(_build(query: 'CAFE')), ['uq-4', 'uq-1']); // "Café de especialidad"
       expect(_ids(_build(query: 'candelaria')), ['uq-2']); // place
-      expect(_ids(_build(query: 'gastronomía')), ['uq-4', 'uq-1']); // label of "food"
+      expect(_ids(_build(query: 'Food')), ['uq-4', 'uq-1']); // label of "food"
       expect(_ids(_build(query: 'mindfulness')), ['uq-3', 'uq-5']); // stored category
-      expect(_ids(_build(query: 'bienestar')), ['uq-3', 'uq-5']); // its label
+      expect(_ids(_build(query: 'Mindfulness')), ['uq-3', 'uq-5']); // its label
     });
 
     test('search: every word must appear, in any order and field', () {

@@ -30,7 +30,7 @@ import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 
 /// What QuestRepository now throws when a write gets no answer.
 const _offlineError = AppException(
-  'Sin conexión: no se pudo guardar el cambio. Inténtalo de nuevo cuando tengas internet.',
+  'Offline: the change could not be saved. Try again when you have internet.',
   isRetryable: true,
 );
 
@@ -220,7 +220,7 @@ void main() {
       final saved = await viewModel.abandonQuest(repository.mission, reason: AbandonmentReason.tooFar);
 
       expect(saved, isFalse);
-      expect(viewModel.errorMessage, startsWith('Sin conexión'));
+      expect(viewModel.errorMessage, startsWith('Offline'));
       expect(viewModel.currentMission?.status, 'in_progress');
       expect(tracker.tracked, isNot(contains(AnalyticsEventType.questAbandoned)));
     });
@@ -244,15 +244,15 @@ void main() {
         ),
       );
 
-      await tester.ensureVisible(find.text('Empezar otra misión'));
-      await tester.tap(find.text('Empezar otra misión'));
+      await tester.ensureVisible(find.text('Start another quest'));
+      await tester.tap(find.text('Start another quest'));
       await tester.pump(); // the write fails
       await tester.pump(); // SnackBar in
 
-      expect(find.textContaining('Sin conexión'), findsOneWidget);
+      expect(find.textContaining('Offline'), findsOneWidget);
       expect(find.byType(AbandonMissionView), findsOneWidget);
       final button = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, 'Empezar otra misión'),
+        find.widgetWithText(OutlinedButton, 'Start another quest'),
       );
       expect(button.onPressed, isNotNull);
     });
@@ -285,7 +285,7 @@ void main() {
       final completedQuest = await viewModel.completeCurrentStep(viewModel.currentMission!);
 
       expect(completedQuest, isFalse);
-      expect(viewModel.stepErrorMessage, startsWith('Sin conexión'));
+      expect(viewModel.stepErrorMessage, startsWith('Offline'));
       expect(viewModel.currentMission!.currentStep, 0);
       expect(viewModel.isCompletingStep, isFalse);
       expect(tracker.tracked, isNot(contains(AnalyticsEventType.questCompleted)));
@@ -309,15 +309,15 @@ void main() {
       repository.offline = true;
       await pumpMissionTab(tester);
 
-      await tester.ensureVisible(find.text('Completar este paso →'));
-      await tester.tap(find.text('Completar este paso →'));
+      await tester.ensureVisible(find.text('Complete this step →'));
+      await tester.tap(find.text('Complete this step →'));
       await tester.pump(); // the write fails
       await tester.pump(); // SnackBar in
 
-      expect(find.textContaining('Sin conexión'), findsOneWidget);
+      expect(find.textContaining('Offline'), findsOneWidget);
       expect(viewModel.currentMission!.currentStep, 0);
       final button = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Completar este paso →'),
+        find.widgetWithText(FilledButton, 'Complete this step →'),
       );
       expect(button.onPressed, isNotNull);
     });
@@ -326,14 +326,14 @@ void main() {
       await tester.runAsync(openMission);
       await pumpMissionTab(tester);
 
-      await tester.ensureVisible(find.text('Completar este paso →'));
-      await tester.tap(find.text('Completar este paso →'));
+      await tester.ensureVisible(find.text('Complete this step →'));
+      await tester.tap(find.text('Complete this step →'));
       await tester.pump();
       await tester.pump();
 
       expect(find.byType(SnackBar), findsNothing);
       expect(viewModel.currentMission!.currentStep, 1);
-      expect(find.text('Completar misión →'), findsOneWidget);
+      expect(find.text('Complete quest →'), findsOneWidget);
     });
   });
 
@@ -342,7 +342,7 @@ void main() {
       repository.offline = true;
 
       expect(await viewModel.acceptQuest('a'), isFalse);
-      expect(viewModel.errorMessage, startsWith('Sin conexión'));
+      expect(viewModel.errorMessage, startsWith('Offline'));
       expect(tracker.tracked, isEmpty);
     });
 
@@ -360,15 +360,15 @@ void main() {
       );
       await tester.pump(); // steps load after the first frame
 
-      await tester.ensureVisible(find.text('Aceptar misión →'));
-      await tester.tap(find.text('Aceptar misión →'));
+      await tester.ensureVisible(find.text('Accept quest →'));
+      await tester.tap(find.text('Accept quest →'));
       await tester.pump(); // the write fails
       await tester.pump(); // SnackBar in
 
-      expect(find.textContaining('Sin conexión'), findsOneWidget);
+      expect(find.textContaining('Offline'), findsOneWidget);
       expect(find.byType(QuestDetailView), findsOneWidget);
       final button = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Aceptar misión →'),
+        find.widgetWithText(FilledButton, 'Accept quest →'),
       );
       expect(button.onPressed, isNotNull);
     });

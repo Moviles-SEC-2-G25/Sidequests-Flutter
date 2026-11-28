@@ -34,11 +34,11 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
   Future<void> _save() async {
     final password = _passwordController.text;
     if (password.length < 6) {
-      setState(() => _error = 'Mínimo 6 caracteres');
+      setState(() => _error = 'At least 6 characters');
       return;
     }
     if (password != _confirmController.text) {
-      setState(() => _error = 'Las contraseñas no coinciden');
+      setState(() => _error = 'Passwords do not match');
       return;
     }
     setState(() {
@@ -57,28 +57,28 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     }
     Navigator.of(context).pop();
     messenger.showSnackBar(
-      const SnackBar(content: Text('Contraseña actualizada')),
+      const SnackBar(content: Text('Password updated')),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Cambiar contraseña'),
+      title: const Text('Change password'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             controller: _passwordController,
             obscureText: true,
-            decoration: const InputDecoration(labelText: 'Nueva contraseña'),
+            decoration: const InputDecoration(labelText: 'New password'),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _confirmController,
             obscureText: true,
             decoration: const InputDecoration(
-              labelText: 'Confirmar contraseña',
+              labelText: 'Confirm password',
             ),
           ),
           if (_error != null) ...[
@@ -93,11 +93,11 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
       actions: [
         TextButton(
           onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
+          child: const Text('Cancel'),
         ),
         FilledButton(
           onPressed: _isSaving ? null : _save,
-          child: const Text('Guardar'),
+          child: const Text('Save'),
         ),
       ],
     );

@@ -65,64 +65,64 @@ void main() {
 
     await pumpScreen(tester);
 
-    expect(find.text('Retos en grupo'), findsOneWidget);
-    expect(find.text('Pequeñas aventuras, mejor en compañía.'), findsOneWidget);
-    expect(find.text('Reto unido'), findsOneWidget);
-    expect(find.text('Paso completado'), findsOneWidget);
-    expect(find.textContaining('7 días'), findsOneWidget);
-    expect(find.textContaining('auto-reportados'), findsOneWidget);
-    expect(find.textContaining('Solo se comparten conteos'), findsOneWidget);
-    expect(find.text('Mis retos'), findsOneWidget);
+    expect(find.text('Group challenges'), findsOneWidget);
+    expect(find.text('Small adventures, better together.'), findsOneWidget);
+    expect(find.text('Challenge joined'), findsOneWidget);
+    expect(find.text('Step completed'), findsOneWidget);
+    expect(find.textContaining('7 days'), findsOneWidget);
+    expect(find.textContaining('self-reported'), findsOneWidget);
+    expect(find.textContaining('Only group counts are shared'), findsOneWidget);
+    expect(find.text('My challenges'), findsOneWidget);
     expect(find.text('25%'), findsOneWidget);
-    expect(find.text('1 de 4 pasos completados'), findsOneWidget);
-    expect(find.text('SIGUIENTE PASO · 2'), findsOneWidget);
+    expect(find.text('1 of 4 steps completed'), findsOneWidget);
+    expect(find.text('NEXT STEP · 2'), findsOneWidget);
     expect(find.text('Foto 1'), findsOneWidget);
-    expect(find.text('Retos disponibles'), findsOneWidget);
-    expect(find.text('👥 1 participante'), findsNWidgets(2));
-    expect(find.text('2 pasos'), findsOneWidget);
-    expect(find.text('Crear un reto'), findsOneWidget);
+    expect(find.text('Available challenges'), findsOneWidget);
+    expect(find.text('👥 1 participant'), findsNWidgets(2));
+    expect(find.text('2 steps'), findsOneWidget);
+    expect(find.text('Create a challenge'), findsOneWidget);
     // Already in a Group Photo Walk: only the picnic can be created.
     expect(find.text('Park Picnic'), findsNWidgets(2)); // available + create
     expect(find.byType(OfflineNotice), findsNothing);
-    expect(isEnabled(tester, 'Marcar siguiente paso'), isTrue);
-    expect(isEnabled(tester, 'Unirme'), isTrue);
-    expect(isEnabled(tester, 'Crear reto'), isTrue);
+    expect(isEnabled(tester, 'Mark next step'), isTrue);
+    expect(isEnabled(tester, 'Join'), isTrue);
+    expect(isEnabled(tester, 'Create challenge'), isTrue);
   });
 
   testWidgets('offline: the saved lists with the notice, and create/join/step off', (tester) async {
     server.seedChallenge('group-photo-walk', owner: userA, ownerProgress: 1);
     server.seedChallenge('park-picnic', owner: userB);
     await pumpScreen(tester); // saves both lists
-    expect(isEnabled(tester, 'Unirme'), isTrue);
+    expect(isEnabled(tester, 'Join'), isTrue);
     server.listCalls.clear();
     connectivity.setOffline(true);
 
     await pumpScreen(tester);
 
     expect(find.widgetWithText(OfflineNotice, OfflineMessages.groupChallenges), findsOneWidget);
-    expect(OfflineMessages.groupChallenges, 'Retos cargados antes · conéctate para hacer cambios.');
-    expect(find.text('1 de 4 pasos completados'), findsOneWidget);
-    expect(isEnabled(tester, 'Marcar siguiente paso'), isFalse);
-    expect(isEnabled(tester, 'Unirme'), isFalse);
-    expect(isEnabled(tester, 'Crear reto'), isFalse);
+    expect(OfflineMessages.groupChallenges, 'Previously loaded challenges · connect to make changes.');
+    expect(find.text('1 of 4 steps completed'), findsOneWidget);
+    expect(isEnabled(tester, 'Mark next step'), isFalse);
+    expect(isEnabled(tester, 'Join'), isFalse);
+    expect(isEnabled(tester, 'Create challenge'), isFalse);
     expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.refresh)).onPressed, isNull);
     expect(server.listCalls, isEmpty);
   });
 
   testWidgets('going offline turns the buttons off; back online the lists reload', (tester) async {
     await pumpScreen(tester);
-    expect(isEnabled(tester, 'Crear reto'), isTrue);
+    expect(isEnabled(tester, 'Create challenge'), isTrue);
 
     connectivity.setOffline(true);
     await tester.pumpAndSettle();
-    expect(isEnabled(tester, 'Crear reto'), isFalse);
+    expect(isEnabled(tester, 'Create challenge'), isFalse);
     expect(find.byType(OfflineNotice), findsOneWidget);
 
     server.seedChallenge('park-picnic', owner: userB);
     connectivity.setOffline(false);
     await tester.pumpAndSettle();
     expect(find.byType(OfflineNotice), findsNothing);
-    expect(isEnabled(tester, 'Unirme'), isTrue);
+    expect(isEnabled(tester, 'Join'), isTrue);
   });
 
   testWidgets('a pending request: the warning and its retry, off while offline', (tester) async {
@@ -135,26 +135,26 @@ void main() {
 
     final viewModel = await pumpScreen(tester);
 
-    expect(find.text('No sabemos si se guardó. Reconecta y reintenta: es seguro.'), findsOneWidget);
-    expect(find.text('Crear reto · Group Photo Walk Challenge'), findsOneWidget);
-    expect(isEnabled(tester, 'Reintentar solicitud pendiente'), isTrue);
+    expect(find.text("We couldn't confirm it was saved. Reconnect and retry: it's safe."), findsOneWidget);
+    expect(find.text('Create challenge · Group Photo Walk Challenge'), findsOneWidget);
+    expect(isEnabled(tester, 'Retry pending request'), isTrue);
     // Other writes wait for it.
-    expect(isEnabled(tester, 'Crear reto'), isFalse);
+    expect(isEnabled(tester, 'Create challenge'), isFalse);
 
     connectivity.setOffline(true);
     await tester.pumpAndSettle();
-    expect(isEnabled(tester, 'Reintentar solicitud pendiente'), isFalse);
+    expect(isEnabled(tester, 'Retry pending request'), isFalse);
     connectivity.setOffline(false);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Reintentar solicitud pendiente'));
+    await tester.tap(find.text('Retry pending request'));
     await tester.pumpAndSettle();
 
     expect(server.actCalls.single['p_request_id'], 'pending-1');
     expect(viewModel.pending, isNull);
-    expect(find.text('Reintentar solicitud pendiente'), findsNothing);
-    expect(find.text('Reto creado: ya está en Mis retos.'), findsOneWidget);
-    expect(find.text('0 de 4 pasos completados'), findsOneWidget);
+    expect(find.text('Retry pending request'), findsNothing);
+    expect(find.text("Challenge created: it's now in My challenges."), findsOneWidget);
+    expect(find.text('0 of 4 steps completed'), findsOneWidget);
   });
 
   testWidgets('empty states, and a list that failed says so', (tester) async {
@@ -162,17 +162,17 @@ void main() {
 
     await pumpScreen(tester);
 
-    expect(find.text('Aún no estás en ningún reto'), findsOneWidget);
-    expect(find.text('Lista no disponible'), findsOneWidget); // available: never loaded
-    expect(find.textContaining('Algunas listas no se pudieron actualizar'), findsOneWidget);
-    expect(isEnabled(tester, 'Crear reto'), isFalse);
+    expect(find.text("You're not in any challenges yet"), findsOneWidget);
+    expect(find.text('List unavailable'), findsOneWidget); // available: never loaded
+    expect(find.textContaining('Some lists could not be updated'), findsOneWidget);
+    expect(isEnabled(tester, 'Create challenge'), isFalse);
 
     server.listError = (_) => null;
-    await tester.tap(find.text('Reintentar'));
+    await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Algunas listas no se pudieron actualizar'), findsNothing);
-    expect(find.text('No hay otros retos abiertos'), findsOneWidget);
-    expect(isEnabled(tester, 'Crear reto'), isTrue);
+    expect(find.textContaining('Some lists could not be updated'), findsNothing);
+    expect(find.text('No other open challenges'), findsOneWidget);
+    expect(isEnabled(tester, 'Create challenge'), isTrue);
   });
 }

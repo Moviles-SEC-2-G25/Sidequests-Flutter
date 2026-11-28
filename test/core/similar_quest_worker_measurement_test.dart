@@ -6,7 +6,7 @@ import 'package:sidequests/models/quest.dart';
 import 'package:sidequests/models/user_quest.dart';
 
 /// Measurement for the wiki (Multithreading strategy, Alejandro): UI-thread
-/// time per "Te podría gustar" re-ranking before (synchronous, on the UI
+/// time per "You might also like" re-ranking before (synchronous, on the UI
 /// thread) and after (worker isolate), and the one-time costs of the worker
 /// (spawning it, copying the catalog). Prints a table; it only asserts that
 /// both give the same answer, since times depend on the machine.

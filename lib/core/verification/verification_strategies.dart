@@ -59,15 +59,15 @@ class LocationVerification implements StepVerificationStrategy {
   VerificationResult verify(Quest quest, VerificationEvidence evidence) {
     // Migration 003 allows quests without coordinates.
     if (quest.latitude == null || quest.longitude == null) {
-      return const Unavailable('Esta misión no tiene ubicación: complétalo manualmente.');
+      return const Unavailable('This quest has no location: complete it manually.');
     }
     switch (evidence.locationAccess) {
       case LocationAccess.denied:
-        return const Unavailable('Permite el acceso a tu ubicación para verificarlo solo.');
+        return const Unavailable('Allow location access to verify it automatically.');
       case LocationAccess.serviceDisabled:
-        return const Unavailable('Activa el GPS para verificarlo solo.');
+        return const Unavailable('Turn on GPS to verify it automatically.');
       case LocationAccess.approximateOnly:
-        return const Unavailable('Activa la ubicación precisa para verificarlo solo.');
+        return const Unavailable('Turn on precise location to verify it automatically.');
       case LocationAccess.unknown:
       case LocationAccess.granted:
         break;

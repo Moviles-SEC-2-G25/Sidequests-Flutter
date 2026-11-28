@@ -231,7 +231,7 @@ void main() {
     test('a pending photo whose file is gone fails on its own, with a clear message', () async {
       await expectLater(
         repository.pendingThumbnail(pendingOf('gone')),
-        throwsA(isA<AppException>().having((e) => e.message, 'message', contains('ya no está en el teléfono'))),
+        throwsA(isA<AppException>().having((e) => e.message, 'message', contains('no longer on the phone'))),
       );
     });
   });

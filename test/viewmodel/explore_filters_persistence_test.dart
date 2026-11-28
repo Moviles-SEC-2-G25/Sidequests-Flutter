@@ -144,7 +144,7 @@ void main() {
     expect(restarted.filteredCatalog.map((q) => q.id), ['b']);
   });
 
-  test('volver a "Todo" también se guarda', () async {
+  test('volver a "All" también se guarda', () async {
     final (first, _) = await launchApp();
     first.setCategory('art');
     first.setCategory(null);
@@ -165,7 +165,7 @@ void main() {
     expect(restarted.selectedMinutes, 45);
   });
 
-  test('una categoría que ya no está en el catálogo vuelve a "Todo", también tras reiniciar', () async {
+  test('una categoría que ya no está en el catálogo vuelve a "All", también tras reiniciar', () async {
     final (first, _) = await launchApp();
     first.setMinutes(60);
     first.setCategory('art');

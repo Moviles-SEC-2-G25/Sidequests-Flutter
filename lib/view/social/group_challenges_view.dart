@@ -66,7 +66,7 @@ class _GroupChallengesViewState extends State<GroupChallengesView> {
       appBar: AppBar(
         actions: [
           IconButton(
-            tooltip: 'Actualizar',
+            tooltip: 'Refresh',
             onPressed: viewModel.canRefresh ? viewModel.refresh : null,
             icon: const Icon(Icons.refresh),
           ),
@@ -78,9 +78,9 @@ class _GroupChallengesViewState extends State<GroupChallengesView> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
             children: [
-              Text('Retos en grupo', style: textTheme.headlineSmall),
+              Text('Group challenges', style: textTheme.headlineSmall),
               const SizedBox(height: 4),
-              Text('Pequeñas aventuras, mejor en compañía.', style: textTheme.bodyMedium),
+              Text('Small adventures, better together.', style: textTheme.bodyMedium),
               const SizedBox(height: 16),
               if (viewModel.hasMine) ...[
                 Row(
@@ -89,7 +89,7 @@ class _GroupChallengesViewState extends State<GroupChallengesView> {
                       child: _Metric(
                         icon: '👥',
                         value: viewModel.joinedCount,
-                        label: viewModel.joinedCount == 1 ? 'Reto unido' : 'Retos unidos',
+                        label: viewModel.joinedCount == 1 ? 'Challenge joined' : 'Challenges joined',
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -97,7 +97,7 @@ class _GroupChallengesViewState extends State<GroupChallengesView> {
                       child: _Metric(
                         icon: '✓',
                         value: viewModel.completedSteps,
-                        label: viewModel.completedSteps == 1 ? 'Paso completado' : 'Pasos completados',
+                        label: viewModel.completedSteps == 1 ? 'Step completed' : 'Steps completed',
                       ),
                     ),
                   ],
@@ -107,9 +107,9 @@ class _GroupChallengesViewState extends State<GroupChallengesView> {
               const _Notice(
                 icon: Icons.lock_outline,
                 text:
-                    'Se comparte durante 7 días con usuarios con sesión iniciada. Tus pasos son '
-                    'auto-reportados y no cuentan en tu historial individual. Solo se comparten '
-                    'conteos del grupo.',
+                    'Shared for 7 days with signed-in users. Your steps are '
+                    'self-reported and do not count toward your individual history. Only group '
+                    'counts are shared.',
               ),
               ..._statusNotices(context, viewModel),
               if (viewModel.isFirstLoad)
@@ -119,50 +119,50 @@ class _GroupChallengesViewState extends State<GroupChallengesView> {
                 )
               else ...[
                 const SizedBox(height: 20),
-                _SectionTitle('Mis retos', count: viewModel.hasMine ? viewModel.mine.length : null),
+                _SectionTitle('My challenges', count: viewModel.hasMine ? viewModel.mine.length : null),
                 const SizedBox(height: 10),
                 if (!viewModel.hasMine)
                   const _EmptyCard(
                     icon: '☁️',
-                    title: 'Lista no disponible',
-                    description: 'Conéctate para ver tus retos.',
+                    title: 'List unavailable',
+                    description: 'Connect to see your challenges.',
                   )
                 else if (viewModel.mine.isEmpty)
                   const _EmptyCard(
                     icon: '👥',
-                    title: 'Aún no estás en ningún reto',
-                    description: 'Únete a uno abierto o crea uno abajo.',
+                    title: "You're not in any challenges yet",
+                    description: 'Join an open one or create one below.',
                   ),
                 for (final challenge in viewModel.mine)
                   _MyChallengeCard(challenge: challenge, viewModel: viewModel),
                 const SizedBox(height: 20),
                 _SectionTitle(
-                  'Retos disponibles',
+                  'Available challenges',
                   count: viewModel.hasAvailable ? viewModel.available.length : null,
                 ),
                 const SizedBox(height: 10),
                 if (!viewModel.hasAvailable)
                   const _EmptyCard(
                     icon: '☁️',
-                    title: 'Lista no disponible',
-                    description: 'Conéctate para ver los retos abiertos.',
+                    title: 'List unavailable',
+                    description: 'Connect to see open challenges.',
                   )
                 else if (viewModel.available.isEmpty)
                   const _EmptyCard(
                     icon: '🌐',
-                    title: 'No hay otros retos abiertos',
-                    description: 'Puedes crear uno abajo.',
+                    title: 'No other open challenges',
+                    description: 'You can create one below.',
                   ),
                 for (final challenge in viewModel.available)
                   _AvailableChallengeCard(challenge: challenge, viewModel: viewModel),
                 const SizedBox(height: 20),
-                _SectionTitle('Crear un reto', count: creatable.length),
+                _SectionTitle('Create a challenge', count: creatable.length),
                 const SizedBox(height: 10),
                 if (creatable.isEmpty)
                   const _EmptyCard(
                     icon: '＋',
-                    title: 'No hay misiones en grupo nuevas para crear',
-                    description: 'Tus retos siguen en Mis retos.',
+                    title: 'No new group quests to create from',
+                    description: 'Your challenges are still in My challenges.',
                   ),
                 for (final quest in creatable) _CreateChallengeCard(quest: quest, viewModel: viewModel),
               ],
@@ -191,7 +191,7 @@ class _GroupChallengesViewState extends State<GroupChallengesView> {
         const LinearProgressIndicator(),
         const SizedBox(height: 6),
         Text(
-          viewModel.isSubmitting ? 'Enviando solicitud…' : 'Actualizando retos…',
+          viewModel.isSubmitting ? 'Sending request…' : 'Updating challenges…',
           style: Theme.of(context).textTheme.labelMedium,
         ),
       ],
@@ -199,8 +199,8 @@ class _GroupChallengesViewState extends State<GroupChallengesView> {
         const SizedBox(height: 12),
         _Notice(
           icon: Icons.cloud_off,
-          text: 'Algunas listas no se pudieron actualizar. Se muestran las últimas guardadas.',
-          actionLabel: 'Reintentar',
+          text: 'Some lists could not be updated. Showing the last saved ones.',
+          actionLabel: 'Retry',
           onAction: viewModel.canRefresh ? viewModel.refresh : null,
         ),
       ],
@@ -243,7 +243,7 @@ class _MyChallengeCard extends StatelessWidget {
         const Divider(height: 1),
         Row(
           children: [
-            Expanded(child: Text('Tu progreso', style: textTheme.titleSmall)),
+            Expanded(child: Text('Your progress', style: textTheme.titleSmall)),
             Text(
               '$percent%',
               style: textTheme.titleSmall?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w700),
@@ -256,7 +256,7 @@ class _MyChallengeCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(3),
         ),
         Text(
-          '${challenge.progress} de ${challenge.totalSteps} pasos completados',
+          '${challenge.progress} of ${challenge.totalSteps} steps completed',
           style: textTheme.bodySmall,
         ),
         if (nextStep != null)
@@ -271,7 +271,7 @@ class _MyChallengeCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'SIGUIENTE PASO · ${challenge.progress + 1}',
+                  'NEXT STEP · ${challenge.progress + 1}',
                   style: textTheme.labelSmall?.copyWith(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w700,
@@ -293,7 +293,7 @@ class _MyChallengeCard extends StatelessWidget {
             onPressed: viewModel.canWrite && !challenge.isCompleted
                 ? () => viewModel.markNextStep(challenge)
                 : null,
-            child: Text(challenge.isCompleted ? 'Completado' : 'Marcar siguiente paso'),
+            child: Text(challenge.isCompleted ? 'Completed' : 'Mark next step'),
           ),
         ),
       ],
@@ -317,14 +317,14 @@ class _AvailableChallengeCard extends StatelessWidget {
           runSpacing: 6,
           children: [
             _Pill('👥 ${_participantLabel(challenge.participants)}'),
-            _Pill(challenge.totalSteps == 1 ? '1 paso' : '${challenge.totalSteps} pasos'),
+            _Pill(challenge.totalSteps == 1 ? '1 step' : '${challenge.totalSteps} steps'),
           ],
         ),
         SizedBox(
           width: double.infinity,
           child: FilledButton(
             onPressed: viewModel.canWrite ? () => viewModel.joinChallenge(challenge) : null,
-            child: const Text('Unirme'),
+            child: const Text('Join'),
           ),
         ),
       ],
@@ -347,7 +347,7 @@ class _CreateChallengeCard extends StatelessWidget {
           width: double.infinity,
           child: OutlinedButton(
             onPressed: viewModel.canWrite ? () => viewModel.createChallenge(quest) : null,
-            child: const Text('Crear reto'),
+            child: const Text('Create challenge'),
           ),
         ),
       ],
@@ -365,9 +365,9 @@ class _PendingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final what = switch (action.operation) {
-      GroupAction.create => 'Crear reto',
-      GroupAction.join => 'Unirte al reto',
-      GroupAction.progress => 'Marcar el paso ${action.progressValue ?? ''}',
+      GroupAction.create => 'Create challenge',
+      GroupAction.join => 'Join challenge',
+      GroupAction.progress => 'Mark step ${action.progressValue ?? ''}',
       _ => action.operation,
     };
     final title = action.title;
@@ -408,7 +408,7 @@ class _PendingCard extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: viewModel.canRetryPending ? viewModel.retryPending : null,
               icon: const Icon(Icons.replay, size: 18),
-              label: const Text('Reintentar solicitud pendiente'),
+              label: const Text('Retry pending request'),
             ),
           ),
         ],
@@ -417,9 +417,9 @@ class _PendingCard extends StatelessWidget {
   }
 }
 
-String _participantLabel(int count) => count == 1 ? '1 participante' : '$count participantes';
+String _participantLabel(int count) => count == 1 ? '1 participant' : '$count participants';
 
-String _finishedLabel(int count) => count == 1 ? '1 terminó' : '$count terminaron';
+String _finishedLabel(int count) => count == 1 ? '1 finished' : '$count finished';
 
 Color _primaryContainer(BuildContext context) => Theme.of(context).brightness == Brightness.dark
     ? AppColors.primaryContainerDark

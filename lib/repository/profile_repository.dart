@@ -14,9 +14,9 @@ class ProfileRepository {
   final NetworkGuard _network;
 
   static const _offlineMessage =
-      'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
+      'Offline and no data saved on the phone. Try again when you have internet.';
   static const _offlineWriteMessage =
-      'Sin conexión: no se pudieron guardar los cambios. Inténtalo de nuevo cuando tengas internet.';
+      'Offline: your changes could not be saved. Try again when you have internet.';
 
   ProfileRepository(
     this._remoteDataSource,

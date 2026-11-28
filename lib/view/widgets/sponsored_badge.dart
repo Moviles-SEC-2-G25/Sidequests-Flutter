@@ -10,7 +10,7 @@ import '../../core/app_theme.dart';
 /// Dark text on a solid amber pill, so it stays readable on light and dark
 /// cards alike.
 class SponsoredBadge extends StatelessWidget {
-  static const label = 'Patrocinada';
+  static const label = 'Sponsored';
 
   final String? sponsorName;
   final bool showSponsorName;
@@ -20,7 +20,7 @@ class SponsoredBadge extends StatelessWidget {
   String get text {
     final name = sponsorName?.trim();
     if (!showSponsorName || name == null || name.isEmpty) return label;
-    return '$label por $name';
+    return '$label by $name';
   }
 
   @override

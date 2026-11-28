@@ -426,14 +426,14 @@ void main() {
 
     test('Explore lo recalcula sin red aunque las recomendaciones fallen', () async {
       final viewModel = await afterRestartOffline(const Duration(minutes: 40));
-      repository.recommendationsError = const AppException('Sin conexión', isRetryable: true);
+      repository.recommendationsError = const AppException('Offline', isRetryable: true);
       await viewModel.load();
 
       await viewModel.loadRecommendations(const UserPreferences());
 
       expect(viewModel.isAdaptingToContext, isTrue);
       expect(viewModel.filteredCatalog.map((q) => q.id), _anywhereFirst);
-      expect(viewModel.errorMessage, 'Sin conexión');
+      expect(viewModel.errorMessage, 'Offline');
     });
 
     group('al reconectar', () {
@@ -533,8 +533,8 @@ void main() {
     });
 
     group('_ContextAdaptationBanner', () {
-      const fresh = 'Está lloviendo: te mostramos primero misiones bajo techo.';
-      const night = 'Es de noche: priorizamos misiones cerca o en casa.';
+      const fresh = "It's raining: showing indoor quests first.";
+      const night = "It's nighttime: prioritizing quests nearby or at home.";
 
       Future<void> pumpExplore(WidgetTester tester, QuestViewModel viewModel) async {
         await tester.pumpWidget(
@@ -561,7 +561,7 @@ void main() {
 
         expect(
           find.text(
-            'Según el último clima conocido (hace 40 min): te mostramos primero misiones bajo techo.',
+            'Based on the last known weather (40 min ago): showing indoor quests first.',
           ),
           findsOneWidget,
         );
@@ -574,7 +574,7 @@ void main() {
         await pumpExplore(tester, viewModel);
 
         expect(find.text(fresh), findsOneWidget);
-        expect(find.textContaining('último clima'), findsNothing);
+        expect(find.textContaining('last known weather'), findsNothing);
       });
 
       testWidgets('respaldo vencido de noche: habla de la noche, no de lluvia', (tester) async {
@@ -588,7 +588,7 @@ void main() {
         await pumpExplore(tester, viewModel!);
 
         expect(find.text(night), findsOneWidget);
-        expect(find.textContaining('último clima'), findsNothing);
+        expect(find.textContaining('last known weather'), findsNothing);
       });
 
       testWidgets('respaldo vencido de día: sin banner', (tester) async {
@@ -599,7 +599,7 @@ void main() {
         await pumpExplore(tester, viewModel!);
 
         expect(find.text(fresh), findsNothing);
-        expect(find.textContaining('último clima'), findsNothing);
+        expect(find.textContaining('last known weather'), findsNothing);
         expect(find.text(night), findsNothing);
       });
     });

@@ -44,21 +44,21 @@ void main() {
   });
 
   group('SponsoredBadge', () {
-    testWidgets('says "Patrocinada" on cards', (tester) async {
+    testWidgets('says "Sponsored" on cards', (tester) async {
       await tester.pumpWidget(_host(const SponsoredBadge(sponsorName: 'Boulder Box')));
-      expect(find.text('Patrocinada'), findsOneWidget);
+      expect(find.text('Sponsored'), findsOneWidget);
     });
 
     testWidgets('names the sponsor in the detail view', (tester) async {
       await tester.pumpWidget(
         _host(const SponsoredBadge(sponsorName: ' Boulder Box ', showSponsorName: true)),
       );
-      expect(find.text('Patrocinada por Boulder Box'), findsOneWidget);
+      expect(find.text('Sponsored by Boulder Box'), findsOneWidget);
     });
 
     testWidgets('stays labelled when the sponsor has no name', (tester) async {
       await tester.pumpWidget(_host(const SponsoredBadge(sponsorName: '  ', showSponsorName: true)));
-      expect(find.text('Patrocinada'), findsOneWidget);
+      expect(find.text('Sponsored'), findsOneWidget);
     });
 
     testWidgets('a long sponsor name is cut, not overflowed, in a narrow space', (tester) async {
@@ -74,7 +74,7 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('Patrocinada por'), findsOneWidget);
+      expect(find.textContaining('Sponsored by'), findsOneWidget);
     });
   });
 }

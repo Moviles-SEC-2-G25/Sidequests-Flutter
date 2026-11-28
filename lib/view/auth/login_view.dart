@@ -86,7 +86,7 @@ class _LoginViewState extends State<LoginView> {
                           MaterialPageRoute(builder: (_) => const OtpLoginView()),
                         ),
                   icon: const Icon(Icons.mark_email_read_outlined),
-                  label: const Text('Entrar con código'),
+                  label: const Text('Log in with a code'),
                 ),
                 TextButton(
                   onPressed: isBusy

@@ -341,13 +341,13 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('no permission: says how to allow it, with "Permitir"', (tester) async {
+    testWidgets('no permission: says how to allow it, with "Allow"', (tester) async {
       requestAccess = () async => StepCounterStatus.permissionDenied;
 
       await pumpMission(tester);
 
-      expect(find.text('Activa "Actividad física" para contarlos durante la misión.'), findsOneWidget);
-      expect(find.text('Permitir'), findsOneWidget);
+      expect(find.text('Turn on "Physical activity" to count them during the quest.'), findsOneWidget);
+      expect(find.text('Allow'), findsOneWidget);
     });
 
     testWidgets('no sensor: says the phone has no step counter', (tester) async {
@@ -355,7 +355,7 @@ void main() {
 
       await pumpMission(tester);
 
-      expect(find.text('Tu teléfono no tiene contador de pasos.'), findsOneWidget);
+      expect(find.text('Your phone has no step counter.'), findsOneWidget);
     });
 
     testWidgets('offline it keeps counting and adds no notice of its own', (tester) async {
@@ -363,7 +363,7 @@ void main() {
       await tester.runAsync(() => walk([3000, 3042]));
       await tester.pump();
 
-      expect(find.text('42 pasos caminados'), findsOneWidget);
+      expect(find.text('42 steps walked'), findsOneWidget);
       // The only offline notice is the mission's own: nothing about the steps.
       expect(find.byType(OfflineNotice), findsOneWidget);
       expect(find.text(OfflineMessages.missionProgress), findsOneWidget);

@@ -47,11 +47,11 @@ class QuestCompass extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
-                  child: Text('Activa tu ubicación para ver la brújula'),
+                  child: Text('Turn on your location to see the compass'),
                 ),
                 TextButton(
                   onPressed: vm.isLocatingUser ? null : vm.requestUserLocation,
-                  child: const Text('Activar'),
+                  child: const Text('Turn on'),
                 ),
               ],
             )
@@ -82,14 +82,14 @@ class _CompassArrow extends StatelessWidget {
     final events = FlutterCompass.events;
 
     if (events == null) {
-      return Text('Tu dispositivo no tiene brújula. Distancia: $distanceLabel');
+      return Text('Your device has no compass. Distance: $distanceLabel');
     }
 
     return StreamBuilder<CompassEvent>(
       stream: events,
       builder: (context, snapshot) {
         final heading = snapshot.data?.heading;
-        if (heading == null) return const Text('Calibrando brújula…');
+        if (heading == null) return const Text('Calibrating compass…');
         // Arrow rotation = bearing to the quest relative to where the phone points.
         final angle = (bearing - heading) * pi / 180;
         return Row(
@@ -114,11 +114,11 @@ class _CompassArrow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Sigue la flecha',
+                    'Follow the arrow',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   Text(
-                    'A $distanceLabel de la misión',
+                    '$distanceLabel from the quest',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],

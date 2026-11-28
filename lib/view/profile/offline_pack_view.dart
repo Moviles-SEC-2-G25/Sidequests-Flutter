@@ -18,13 +18,13 @@ class OfflinePackView extends StatelessWidget {
   static Route<void> route() => MaterialPageRoute(builder: (_) => const OfflinePackView());
 
   static String summary(int quests, int ready) =>
-      '$quests ${quests == 1 ? 'misión' : 'misiones'} · $ready ${ready == 1 ? 'lista' : 'listas'}';
+      '$quests ${quests == 1 ? 'quest' : 'quests'} · $ready ready';
 
   static String statusLabel(OfflinePackStatus status) => switch (status) {
-    OfflinePackStatus.ready => 'Lista para usar sin conexión',
-    OfflinePackStatus.pendingDownload => 'Esperando conexión',
-    OfflinePackStatus.downloading => 'Preparando contenido…',
-    OfflinePackStatus.failed => 'Falló la descarga',
+    OfflinePackStatus.ready => 'Ready to use offline',
+    OfflinePackStatus.pendingDownload => 'Waiting for connection',
+    OfflinePackStatus.downloading => 'Preparing content…',
+    OfflinePackStatus.failed => 'Download failed',
   };
 
   @override
@@ -37,7 +37,7 @@ class OfflinePackView extends StatelessWidget {
     final waiting = entries.any((e) => e.status != OfflinePackStatus.ready);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Paquete offline')),
+      appBar: AppBar(title: const Text('Offline pack')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -45,7 +45,7 @@ class OfflinePackView extends StatelessWidget {
             Text(summary(entries.length, pack.readyCount), style: textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(
-              'Sus detalles y pasos quedan guardados en el teléfono para cuando pierdas la conexión.',
+              'Their details and steps stay saved on the phone for when you lose connection.',
               style: textTheme.bodySmall,
             ),
             if (isOffline && waiting) ...[
@@ -59,7 +59,7 @@ class OfflinePackView extends StatelessWidget {
             const SizedBox(height: 16),
             if (entries.isEmpty)
               Text(
-                'Todavía no tienes misiones en el paquete. Agrega las que quieras tener sin conexión.',
+                'No quests in your pack yet. Add the ones you want available offline.',
                 style: textTheme.bodyMedium,
               )
             else
@@ -80,14 +80,14 @@ class OfflinePackView extends StatelessWidget {
               ],
               OutlinedButton.icon(
                 icon: const Icon(Icons.refresh),
-                label: const Text('Reintentar'),
+                label: const Text('Retry'),
                 onPressed: isOffline ? null : () => pack.retry(isOnline: true),
               ),
             ],
             const SizedBox(height: 12),
             FilledButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('Agregar misiones'),
+              label: const Text('Add quests'),
               onPressed: () => Navigator.of(
                 context,
               ).push(MaterialPageRoute<void>(builder: (_) => const _AddQuestsView())),
@@ -141,7 +141,7 @@ class _PackEntryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(quest?.title ?? 'Misión guardada', style: textTheme.titleSmall),
+                    Text(quest?.title ?? 'Saved quest', style: textTheme.titleSmall),
                     const SizedBox(height: 2),
                     Row(
                       children: [
@@ -162,7 +162,7 @@ class _PackEntryCard extends StatelessWidget {
               ),
               IconButton(
                 icon: const Icon(Icons.remove_circle_outline),
-                tooltip: 'Quitar del paquete',
+                tooltip: 'Remove from pack',
                 onPressed: onRemove,
               ),
             ],
@@ -188,7 +188,7 @@ class _AddQuestsView extends StatelessWidget {
     ];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Agregar misiones')),
+      appBar: AppBar(title: const Text('Add quests')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -199,7 +199,7 @@ class _AddQuestsView extends StatelessWidget {
             ],
             if (available.isEmpty)
               Text(
-                'Todas las misiones del catálogo ya están en tu paquete.',
+                'All catalog quests are already in your pack.',
                 style: Theme.of(context).textTheme.bodyMedium,
               )
             else
@@ -231,7 +231,7 @@ class _AddQuestsView extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                         ),
                         onPressed: () => pack.add(quest.id, isOnline: !readIsOffline(context)),
-                        child: const Text('Agregar'),
+                        child: const Text('Add'),
                       ),
                     ],
                   ),

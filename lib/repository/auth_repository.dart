@@ -19,7 +19,7 @@ class AuthRepository {
   static const requestTimeout = Duration(seconds: 15);
 
   static const _connectionMessage =
-      'No se pudo conectar. Revisa tu conexión a internet e inténtalo de nuevo.';
+      'Could not connect. Check your internet connection and try again.';
 
   final SupabaseRemoteDataSource _remoteDataSource;
   final LocalDataSource _localDataSource;
@@ -69,7 +69,7 @@ class AuthRepository {
     } on AuthException catch (e) {
       throw AppException(_loginCodeMessage(e), isRetryable: e is AuthRetryableFetchException);
     } on TimeoutException {
-      throw const AppException('Sin conexión. Inténtalo de nuevo.', isRetryable: true);
+      throw const AppException('Offline. Try again.', isRetryable: true);
     }
   }
 
@@ -80,22 +80,22 @@ class AuthRepository {
     } on AuthException catch (e) {
       throw AppException(_loginCodeMessage(e), isRetryable: e is AuthRetryableFetchException);
     } on TimeoutException {
-      throw const AppException('Sin conexión. Inténtalo de nuevo.', isRetryable: true);
+      throw const AppException('Offline. Try again.', isRetryable: true);
     }
   }
 
   /// Supabase's messages are English and don't say what to do next.
   String _loginCodeMessage(AuthException e) {
-    if (e is AuthRetryableFetchException) return 'Sin conexión. Inténtalo de nuevo.';
+    if (e is AuthRetryableFetchException) return 'Offline. Try again.';
     return switch (e.code) {
       // Supabase answers otp_expired for a wrong code too.
-      'otp_expired' => 'El código no es correcto o ya venció. Pide uno nuevo.',
+      'otp_expired' => 'The code is incorrect or has expired. Request a new one.',
       // shouldCreateUser: false + an email without an account. Saying so
       // reveals which emails are registered; chosen for clarity here.
-      'otp_disabled' || 'user_not_found' => 'No hay una cuenta con ese correo. Regístrate primero.',
+      'otp_disabled' || 'user_not_found' => 'There is no account with that email. Sign up first.',
       'over_email_send_rate_limit' ||
-      'over_request_rate_limit' => 'Ya te enviamos un código hace poco. Espera un momento.',
-      'email_address_invalid' || 'validation_failed' => 'Ese correo no es válido.',
+      'over_request_rate_limit' => 'We just sent you a code. Please wait a moment.',
+      'email_address_invalid' || 'validation_failed' => 'That email is not valid.',
       _ => e.message,
     };
   }

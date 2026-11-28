@@ -196,7 +196,7 @@ class _FakeQuestRepository implements QuestRepository {
   @override
   Future<UserQuest> acceptQuest({required String userId, required String questId}) async {
     accepts++;
-    throw const AppException('Sin conexión', isRetryable: true);
+    throw const AppException('Offline', isRetryable: true);
   }
 
   @override
@@ -213,7 +213,7 @@ class _FakeQuestRepository implements QuestRepository {
 
   @override
   Future<QuestPhotoProof> uploadPendingPhotoProof(PendingPhotoProof proof) async =>
-      throw const AppException('Sin conexión: tu foto quedó guardada.', isRetryable: true);
+      throw const AppException('Offline: your photo was saved.', isRetryable: true);
 
   @override
   Future<List<QuestPhotoProof>> getPhotoProofs(String attemptId) async => const [];
@@ -387,8 +387,8 @@ void main() {
       await pumpScreen(tester, const QuestDetailView(quest: _quest), offline: true);
 
       expect(find.text(OfflineMessages.startMission), findsOneWidget);
-      expect(find.text('Aceptar misión →'), findsNothing);
-      final button = find.widgetWithText(FilledButton, 'Sin conexión');
+      expect(find.text('Accept quest →'), findsNothing);
+      final button = find.widgetWithText(FilledButton, 'Offline');
       await tester.ensureVisible(button);
       expect(tester.widget<FilledButton>(button).onPressed, isNull);
       expect(repository.accepts, 0);
@@ -398,7 +398,7 @@ void main() {
       await pumpScreen(tester, const QuestDetailView(quest: _quest), offline: false);
 
       expect(find.text(OfflineMessages.startMission), findsNothing);
-      expect(find.text('Aceptar misión →'), findsOneWidget);
+      expect(find.text('Accept quest →'), findsOneWidget);
     });
 
     testWidgets('quest detail offline: a mission already started can still be opened', (tester) async {
@@ -407,7 +407,7 @@ void main() {
 
       await pumpScreen(tester, const QuestDetailView(quest: _quest), offline: true);
 
-      final resume = find.widgetWithText(FilledButton, 'Continuar misión →');
+      final resume = find.widgetWithText(FilledButton, 'Continue quest →');
       await tester.ensureVisible(resume);
       expect(tester.widget<FilledButton>(resume).onPressed, isNotNull);
       expect(find.text(OfflineMessages.startMission), findsNothing);
@@ -431,13 +431,13 @@ void main() {
 
       expect(find.text(OfflineMessages.missionProgress), findsOneWidget);
       expect(find.text('Paso 0'), findsOneWidget);
-      expect(find.text('Completar este paso →'), findsNothing);
-      final blocked = find.widgetWithText(FilledButton, 'Conéctate para completar');
+      expect(find.text('Complete this step →'), findsNothing);
+      final blocked = find.widgetWithText(FilledButton, 'Connect to complete');
       await tester.ensureVisible(blocked);
       expect(tester.widget<FilledButton>(blocked).onPressed, isNull);
       // Abandoning waits on the device and syncs later: it stays available.
       expect(
-        tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Salir')).onPressed,
+        tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Leave')).onPressed,
         isNotNull,
       );
 
@@ -445,7 +445,7 @@ void main() {
       await tester.pump();
 
       expect(find.text(OfflineMessages.missionProgress), findsNothing);
-      expect(find.text('Completar este paso →'), findsOneWidget);
+      expect(find.text('Complete this step →'), findsOneWidget);
     });
 
     testWidgets('Misión offline: a saved photo says it uploads by itself, with no retry button', (
@@ -463,7 +463,7 @@ void main() {
             stepOrder: 0,
             sizeBytes: 10,
             capturedAt: DateTime(2026, 11, 1),
-            lastError: 'Sin conexión: tu foto quedó guardada.',
+            lastError: 'Offline: your photo was saved.',
           ),
         ];
       await tester.runAsync(viewModel.load);
@@ -471,7 +471,7 @@ void main() {
       await pumpScreen(tester, const MissionTabView(), offline: true);
 
       expect(find.text(OfflineMessages.photoUpload), findsOneWidget);
-      expect(find.text('Reintentar subida'), findsNothing);
+      expect(find.text('Retry upload'), findsNothing);
     });
 
     test('offline with no catalog ever saved: told apart from filters that exclude everything', () async {
@@ -598,7 +598,7 @@ void main() {
         throwsA(
           isA<AppException>()
               .having((e) => e.isRetryable, 'isRetryable', isTrue)
-              .having((e) => e.message, 'message', startsWith('No se pudo conectar')),
+              .having((e) => e.message, 'message', startsWith('Could not connect')),
         ),
       );
     });
@@ -678,10 +678,10 @@ void main() {
       return connectivity;
     }
 
-    testWidgets('offline: "Guardar" disabled, with the reason', (tester) async {
+    testWidgets('offline: "Save" disabled, with the reason', (tester) async {
       await pumpPreferences(tester, profileViewModel(offline: true), offline: true);
 
-      final save = find.widgetWithText(FilledButton, 'Guardar');
+      final save = find.widgetWithText(FilledButton, 'Save');
       await tester.scrollUntilVisible(save, 300); // last item of a lazy ListView
       await tester.pumpAndSettle();
       expect(find.text(OfflineMessages.savePreferences), findsOneWidget);
@@ -694,14 +694,14 @@ void main() {
       remote.error = const SocketException('Failed host lookup');
       await pumpPreferences(tester, profileViewModel(offline: false), offline: false);
 
-      final save = find.widgetWithText(FilledButton, 'Guardar');
+      final save = find.widgetWithText(FilledButton, 'Save');
       await tester.scrollUntilVisible(save, 300); // last item of a lazy ListView
       await tester.pumpAndSettle();
       await tester.tap(save);
       await tester.pump();
       await tester.pump();
 
-      expect(find.textContaining('Sin conexión'), findsOneWidget);
+      expect(find.textContaining('Offline'), findsOneWidget);
       expect(find.byType(EditPreferencesView), findsOneWidget);
       expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
     });

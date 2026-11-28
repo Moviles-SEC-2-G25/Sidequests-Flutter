@@ -31,14 +31,14 @@ import '../models/verified_check_in.dart';
 /// user's quest progress. Falls back to the cache when the network fails.
 class QuestRepository {
   static const _offlineMessage =
-      'Sin conexión: tu foto quedó guardada en el teléfono. Reintenta cuando tengas internet.';
-  static const _serverRetryMessage = 'No se pudo subir la foto ahora. Inténtalo de nuevo.';
+      'Offline: your photo was saved on the phone. Try again when you have internet.';
+  static const _serverRetryMessage = 'Could not upload the photo right now. Try again.';
   static const _offlineNoCopyMessage =
-      'Sin conexión: no se pudo subir la foto. Tómala de nuevo cuando tengas internet.';
+      'Offline: the photo could not be uploaded. Take it again when you have internet.';
   static const _noCacheMessage =
-      'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
+      'Offline and no data saved on the phone. Try again when you have internet.';
   static const _offlineWriteMessage =
-      'Sin conexión: no se pudo guardar el cambio. Inténtalo de nuevo cuando tengas internet.';
+      'Offline: the change could not be saved. Try again when you have internet.';
 
   /// Steps are catalogue content: they only change when someone edits a quest.
   static const stepsCacheTtl = Duration(minutes: 10);
@@ -558,7 +558,7 @@ class QuestRepository {
     final bytes = await _localDataSource.readPendingProofFile(pending.localPath);
     if (bytes == null) {
       await discardPendingPhotoProof(pending);
-      throw const AppException('La foto guardada ya no está en el teléfono. Toma otra.');
+      throw const AppException('The saved photo is no longer on the phone. Take another one.');
     }
 
     if (await _network.isOffline || !await _attemptReachedServer(pending.attemptId)) {
@@ -659,9 +659,9 @@ class QuestRepository {
   }
 
   void _checkPhoto(Uint8List jpeg) {
-    if (!isJpeg(jpeg)) throw const AppException('La foto no es JPEG. Toma otra.');
+    if (!isJpeg(jpeg)) throw const AppException('The photo is not a JPEG. Take another one.');
     if (jpeg.length > kQuestProofMaxBytes) {
-      throw const AppException('La foto pesa más de 25 MB. Toma otra.');
+      throw const AppException('The photo is larger than 25 MB. Take another one.');
     }
   }
 
@@ -721,9 +721,9 @@ class QuestRepository {
         return AppException(status == null ? _offlineMessage : _serverRetryMessage, isRetryable: true);
       }
       return switch (status) {
-        413 => const AppException('La foto es demasiado grande. Toma otra.'),
-        415 => const AppException('La foto no es JPEG. Toma otra.'),
-        401 || 403 => const AppException('Este paso no admite foto o la misión no es tuya.'),
+        413 => const AppException('The photo is too large. Take another one.'),
+        415 => const AppException('The photo is not a JPEG. Take another one.'),
+        401 || 403 => const AppException('This step does not accept photos, or the quest is not yours.'),
         _ => AppException(error.message),
       };
     }
@@ -732,7 +732,7 @@ class QuestRepository {
       // 42501 = row-level security rejected the insert (wrong owner, step
       // without photo, object missing).
       if (error.code == '42501') {
-        return const AppException('Este paso no admite foto o la misión no es tuya.');
+        return const AppException('This step does not accept photos, or the quest is not yours.');
       }
       final status = int.tryParse(error.code ?? '');
       if (status != null && status >= 500) {

@@ -28,7 +28,7 @@ import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 const _userId = 'user-1';
 const _profile = UserPreferences(socialLevel: 'solo');
 const _groupNotice =
-    "Sin conexión: estas son tus últimas recomendaciones. Aplicaremos 'En grupo' al reconectar.";
+    "Offline: these are your latest recommendations. We'll apply 'In a group' when you reconnect.";
 
 Map<String, dynamic> _questRow(String id) => {
   'id': id,
@@ -428,16 +428,16 @@ void main() {
     remote.requestedLevels.clear();
     expect(find.text(_groupNotice), findsNothing);
 
-    final chip = find.widgetWithText(ChoiceChip, '👥 En grupo');
+    final chip = find.widgetWithText(ChoiceChip, '👥 In a group');
     await tester.ensureVisible(chip);
     await tester.tap(chip);
     await tester.pump();
     await tester.pumpAndSettle();
 
     expect(find.text(_groupNotice), findsOneWidget);
-    expect(_groupNotice, OfflineMessages.awaitingSocialLevel('En grupo'));
+    expect(_groupNotice, OfflineMessages.awaitingSocialLevel('In a group'));
     expect(find.descendant(of: find.byType(OfflineNotice), matching: find.text(_groupNotice)), findsOneWidget);
-    expect(find.text('Recomendaciones guardadas'), findsOneWidget);
+    expect(find.text('Saved recommendations'), findsOneWidget);
     expect(tester.widget<ChoiceChip>(chip).selected, isTrue);
     expect(remote.requestedLevels, isEmpty);
 
@@ -447,7 +447,7 @@ void main() {
 
     expect(remote.requestedLevels, ['group']);
     expect(find.text(_groupNotice), findsNothing);
-    expect(find.text('Recomendaciones guardadas'), findsNothing);
+    expect(find.text('Saved recommendations'), findsNothing);
     expect(tester.widget<ChoiceChip>(chip).selected, isTrue);
   });
 }

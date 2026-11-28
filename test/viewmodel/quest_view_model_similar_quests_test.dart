@@ -15,7 +15,7 @@ import 'package:sidequests/models/user_quest.dart';
 import 'package:sidequests/repository/quest_repository.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 
-/// QuestViewModel's side of the "Te podría gustar" worker: which requests it
+/// QuestViewModel's side of the "You might also like" worker: which requests it
 /// sends, which answers it applies, and that it releases the worker.
 
 class _NoLocation extends LocationService {

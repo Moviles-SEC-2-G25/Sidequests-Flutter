@@ -207,7 +207,7 @@ void main() {
       await viewModel.load();
 
       expect(viewModel.status, HistoryStatus.error);
-      expect(viewModel.errorMessage, contains('Sin conexión'));
+      expect(viewModel.errorMessage, contains('Offline'));
     });
 
     test('an AppException ends in the error state with its message', () async {
@@ -567,7 +567,7 @@ void main() {
       await tester.pump();
       await vm.load();
       expect(vm.status, HistoryStatus.error);
-      expect(vm.errorMessage, contains('se cargará sola'));
+      expect(vm.errorMessage, contains('will load automatically'));
 
       seedHistory();
       repository.fromCache = false;
@@ -664,21 +664,21 @@ void main() {
 
       await pumpHistory(tester);
 
-      expect(find.text('Mi bitácora'), findsOneWidget);
-      expect(find.text('2 misiones en tu bitácora'), findsOneWidget);
-      expect(find.text('Noviembre 2026'), findsOneWidget);
-      expect(find.text('1 completada · 30 min · 1.234 pasos'), findsOneWidget);
+      expect(find.text('My quest log'), findsOneWidget);
+      expect(find.text('2 quests in your quest log'), findsOneWidget);
+      expect(find.text('November 2026'), findsOneWidget);
+      expect(find.text('1 completed · 30 min · 1.234 steps'), findsOneWidget);
       expect(find.text('Café de especialidad'), findsOneWidget);
       expect(find.text('★★★★☆'), findsOneWidget);
       // Read out instead of the stars (merged into the card's own label).
       expect(
-        find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Calificación: 4 de 5'),
+        find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Rating: 4 of 5'),
         findsOneWidget,
       );
-      expect(find.text('🚶 1.234 pasos'), findsOneWidget);
-      expect(find.text('Octubre 2026'), findsOneWidget);
-      expect(find.text('Abandonada'), findsOneWidget);
-      expect(find.text('📍 Quedaba muy lejos'), findsOneWidget);
+      expect(find.text('🚶 1.234 steps'), findsOneWidget);
+      expect(find.text('October 2026'), findsOneWidget);
+      expect(find.text('Abandoned'), findsNWidgets(2)); // the filter chip and this attempt's status
+      expect(find.text('📍 It was too far away'), findsOneWidget);
     });
 
     testWidgets('search: the list follows after the pause, and says how many it shows', (tester) async {
@@ -693,9 +693,9 @@ void main() {
       await tester.pump();
       expect(find.text('Café de especialidad'), findsNothing);
       expect(find.text('Murales del centro'), findsOneWidget);
-      expect(find.text('Mostrando 1 de 2 misiones'), findsOneWidget);
+      expect(find.text('Showing 1 of 2 quests'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Borrar búsqueda'));
+      await tester.tap(find.byTooltip('Clear search'));
       await tester.pump(kHistorySearchDebounce);
       await tester.pump();
       expect(find.text('Café de especialidad'), findsOneWidget);
@@ -705,7 +705,7 @@ void main() {
       seedHistory();
       await pumpHistory(tester);
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Completadas'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Completed'));
       await tester.pump();
       expect(find.text('Murales del centro'), findsNothing);
       expect(find.text('Café de especialidad'), findsOneWidget);
@@ -713,7 +713,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'murales');
       await tester.pump(kHistorySearchDebounce);
       await tester.pump();
-      expect(find.text('Ninguna misión coincide'), findsOneWidget);
+      expect(find.text('No quests match'), findsOneWidget);
     });
 
     testWidgets('server unreachable (Wi-Fi without internet): says so and how to retry', (tester) async {
@@ -722,8 +722,8 @@ void main() {
 
       await pumpHistory(tester);
 
-      expect(find.textContaining('No pudimos conectar con el servidor'), findsOneWidget);
-      expect(find.textContaining('Sin conexión'), findsNothing);
+      expect(find.textContaining('Could not reach the server'), findsOneWidget);
+      expect(find.textContaining('Offline'), findsNothing);
     });
 
     testWidgets('the saved copy says when it was last updated; a fresh list has no banner', (tester) async {
@@ -732,12 +732,12 @@ void main() {
       repository.syncedAt = DateTime(2026, 11, 20, 8, 5);
 
       await pumpHistory(tester);
-      expect(find.text('Última actualización: Nov 20, 08:05'), findsOneWidget);
+      expect(find.text('Last updated: Nov 20, 08:05'), findsOneWidget);
 
       repository.fromCache = false;
       await viewModel.load();
       await tester.pumpAndSettle();
-      expect(find.textContaining('Última actualización'), findsNothing);
+      expect(find.textContaining('Last updated'), findsNothing);
     });
 
     testWidgets('offline, then back: the banner and the pending marks follow the connection', (tester) async {
@@ -748,39 +748,39 @@ void main() {
       viewModel = build(); // in this test's zone, for the reconnect timer
 
       await pumpHistory(tester);
-      expect(find.textContaining('Sin conexión: estás viendo tu bitácora guardada'), findsOneWidget);
-      expect(find.text('1 misión con cambios por sincronizar.'), findsOneWidget);
+      expect(find.textContaining('Offline: you are viewing your saved quest log'), findsOneWidget);
+      expect(find.text('1 quest with changes waiting to sync.'), findsOneWidget);
       // October's card, below the fold of a small phone. The list, not the
       // search field's own Scrollable.
       final list = find.byType(Scrollable).first;
-      await tester.scrollUntilVisible(find.text('Pendiente de sincronizar'), 100, scrollable: list);
-      expect(find.text('Pendiente de sincronizar'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Pending sync'), 100, scrollable: list);
+      expect(find.text('Pending sync'), findsOneWidget);
       await tester.scrollUntilVisible(find.byType(TextField), -100, scrollable: list); // back to the banner
 
       repository.fromCache = false;
       connectivity.add(false);
       await tester.pump();
-      expect(find.text('Conectado: actualizando tu bitácora…'), findsOneWidget);
+      expect(find.text('Connected: updating your quest log…'), findsOneWidget);
 
       await tester.pump(kHistoryReconnectDelay);
       await tester.pump();
-      expect(find.textContaining('Sin conexión'), findsNothing);
-      expect(find.text('Conectado: actualizando tu bitácora…'), findsNothing);
+      expect(find.textContaining('Offline'), findsNothing);
+      expect(find.text('Connected: updating your quest log…'), findsNothing);
       // Its card is built (the title is there), without the mark now.
       await tester.scrollUntilVisible(find.text('Murales del centro'), 100, scrollable: list);
-      expect(find.text('Pendiente de sincronizar'), findsNothing);
+      expect(find.text('Pending sync'), findsNothing);
     });
 
     testWidgets('empty and error states each show their message and action', (tester) async {
       await pumpHistory(tester);
-      expect(find.textContaining('Tu bitácora está vacía'), findsOneWidget);
-      expect(find.text('Volver'), findsOneWidget);
+      expect(find.textContaining('Your quest log is empty'), findsOneWidget);
+      expect(find.text('Back'), findsOneWidget);
 
       repository.fromCache = true;
       await viewModel.load();
       await tester.pumpAndSettle();
-      expect(find.textContaining('Sin conexión y sin datos guardados'), findsOneWidget);
-      expect(find.text('Reintentar'), findsOneWidget);
+      expect(find.textContaining('Offline and no saved data'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
     });
   });
 }

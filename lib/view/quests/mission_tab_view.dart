@@ -97,10 +97,10 @@ class _NoMissionState extends StatelessWidget {
           children: [
             const Text('⚡', style: TextStyle(fontSize: 48)),
             const SizedBox(height: 16),
-            Text('No tienes ninguna misión activa', style: Theme.of(context).textTheme.titleMedium),
+            Text('You have no active quest', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
-              'Acepta una misión desde Explorar o Cerca para empezar.',
+              'Accept a quest from Explore or Nearby to get started.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),
@@ -111,7 +111,7 @@ class _NoMissionState extends StatelessWidget {
                 context.read<QuestViewModel>().requestExploreTab();
                 Navigator.of(context).popUntil((route) => route.isFirst);
               },
-              child: const Text('Explorar misiones'),
+              child: const Text('Explore quests'),
             ),
           ],
         ),
@@ -182,7 +182,7 @@ class _MissionChecklist extends StatelessWidget {
                   ),
                 ),
                 style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
-                child: const Text('Salir'),
+                child: const Text('Leave'),
               ),
             ],
           ),
@@ -217,7 +217,7 @@ class _MissionChecklist extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '${completed.length} de ${steps.length} pasos completados',
+              '${completed.length} of ${steps.length} steps completed',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 12),
@@ -248,7 +248,7 @@ class _MissionChecklist extends StatelessWidget {
               FilledButton.icon(
                 onPressed: null,
                 icon: const Icon(Icons.wifi_off, size: 18),
-                label: const Text('Conéctate para completar'),
+                label: const Text('Connect to complete'),
               )
             else
               FilledButton(
@@ -276,13 +276,13 @@ class _MissionChecklist extends StatelessWidget {
                       }
                     : null,
                 child: Text(
-                  currentIndex >= steps.length - 1 ? 'Completar misión →' : 'Completar este paso →',
+                  currentIndex >= steps.length - 1 ? 'Complete quest →' : 'Complete this step →',
                 ),
               ),
           ] else
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
-              child: Text('Esta misión no tiene pasos definidos.'),
+              child: Text('This quest has no steps defined.'),
             ),
         ],
       ),
@@ -308,21 +308,21 @@ class _WalkedStepsCard extends StatelessWidget {
     final (String? title, String? subtitle, String? actionLabel) = switch (questViewModel.stepStatus) {
       StepCounterStatus.counting when isThisMission => (null, null, null),
       StepCounterStatus.permissionDenied => (
-        'Pasos caminados',
-        'Activa "Actividad física" para contarlos durante la misión.',
-        'Permitir',
+        'Steps walked',
+        'Turn on "Physical activity" to count them during the quest.',
+        'Allow',
       ),
       StepCounterStatus.permissionPermanentlyDenied => (
-        'Pasos caminados',
-        'Activa "Actividad física" en los ajustes del teléfono para contarlos.',
-        'Abrir ajustes',
+        'Steps walked',
+        'Turn on "Physical activity" in your phone settings to count them.',
+        'Open settings',
       ),
       StepCounterStatus.unavailable => (
-        'Pasos caminados',
-        'Tu teléfono no tiene contador de pasos.',
+        'Steps walked',
+        'Your phone has no step counter.',
         null,
       ),
-      _ => ('Pasos caminados', 'No se están contando en esta misión.', 'Contar mis pasos'),
+      _ => ('Steps walked', 'Not being counted on this quest.', 'Count my steps'),
     };
     final isCounting = questViewModel.stepStatus == StepCounterStatus.counting && isThisMission;
 
@@ -353,8 +353,8 @@ class _WalkedStepsCard extends StatelessWidget {
                     valueListenable: questViewModel.missionStepsListenable,
                     builder: (context, steps, _) => Text(
                       steps == null
-                          ? 'Esperando tus primeros pasos…'
-                          : '${formatThousands(steps)} pasos caminados',
+                          ? 'Waiting for your first steps…'
+                          : '${formatThousands(steps)} steps walked',
                       style: textTheme.titleMedium,
                     ),
                   ),
@@ -399,12 +399,12 @@ class _ZoneTimeSharingCard extends StatelessWidget {
             SwitchListTile(
               key: const Key('bq11SharingSwitch'),
               contentPadding: EdgeInsets.zero,
-              title: const Text('Compartir tiempo en la zona (anónimo)'),
+              title: const Text('Share time in the area (anonymous)'),
               subtitle: const Text(
-                'Opcional. Solo fines de semana en Bogotá y con esta pantalla abierta: '
-                'al completar se envía cuánto tiempo pasaste en una cuadra comercial '
-                'del piloto (si fueron más de 20 min), nunca tus coordenadas. '
-                'Apágalo antes de completar y no se envía nada.',
+                'Optional. Weekends in Bogotá only, with this screen open: '
+                'when you complete, we send how long you spent on a commercial block '
+                'in the pilot (if it was more than 20 min), never your coordinates. '
+                'Turn it off before completing and nothing is sent.',
               ),
               value: questViewModel.isSharingBq11,
               onChanged: questViewModel.setBq11Sharing,
@@ -533,21 +533,21 @@ class _VerificationRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLocation = part is LocationVerification;
-    final label = isLocation ? 'Ubicación' : 'Foto de verificación';
+    final label = isLocation ? 'Location' : 'Verification photo';
     final outline = Theme.of(context).colorScheme.outline;
     final (IconData icon, Color iconColor, String detail) = switch (result) {
       _ when isSavedForLater => (
         Icons.check_circle,
         AppColors.secondary,
-        '📍 Llegaste. Se guardará cuando vuelvas a tener conexión.',
+        '📍 You made it. It will be saved when you are back online.',
       ),
-      Verified() => (Icons.check_circle, AppColors.secondary, 'Verificada automáticamente'),
+      Verified() => (Icons.check_circle, AppColors.secondary, 'Verified automatically'),
       Pending(distanceMeters: final distance?) => (
         Icons.near_me_outlined,
         AppColors.primary,
-        'Acércate al lugar · estás a ${_formatDistance(distance)}',
+        'Get closer to the place · you are ${_formatDistance(distance)} away',
       ),
-      Pending() => (Icons.my_location, AppColors.primary, 'Buscando tu ubicación…'),
+      Pending() => (Icons.my_location, AppColors.primary, 'Finding your location…'),
       Unavailable(:final reason) => (
         isLocation ? Icons.location_off_outlined : Icons.camera_alt_outlined,
         outline,
@@ -607,12 +607,12 @@ class _PhotoProofRow extends StatelessWidget {
 
     final (IconData icon, Color iconColor, String detail, Widget? action) =
         result is Verified
-        ? (Icons.check_circle, AppColors.secondary, 'Foto subida y registrada', null)
+        ? (Icons.check_circle, AppColors.secondary, 'Photo uploaded and recorded', null)
         : questViewModel.isUploadingPhoto
         ? (
             Icons.cloud_upload_outlined,
             AppColors.primary,
-            'Subiendo foto…',
+            'Uploading photo…',
             const SizedBox(
               width: 18,
               height: 18,
@@ -620,17 +620,17 @@ class _PhotoProofRow extends StatelessWidget {
             ),
           )
         : questViewModel.isCapturingPhoto
-        ? (Icons.camera_alt_outlined, AppColors.primary, 'Abriendo la cámara…', null)
+        ? (Icons.camera_alt_outlined, AppColors.primary, 'Opening the camera…', null)
         : pending != null && isOffline
         ? (Icons.cloud_off, AppColors.amber, OfflineMessages.photoUpload, null)
         : pending != null
         ? (
             Icons.cloud_off,
             AppColors.amber,
-            pending.lastError ?? 'Tu foto está guardada en el teléfono, sin subir.',
+            pending.lastError ?? 'Your photo is saved on the phone, not uploaded yet.',
             TextButton(
               onPressed: questViewModel.retryPhotoUpload,
-              child: const Text('Reintentar subida'),
+              child: const Text('Retry upload'),
             ),
           )
         : (
@@ -638,11 +638,11 @@ class _PhotoProofRow extends StatelessWidget {
             outline,
             questViewModel.photoErrorMessage ??
                 (isOffline
-                    ? 'Sin conexión: puedes tomar la foto; se guardará en el teléfono y se subirá al reconectar.'
-                    : 'Toma una foto para completar este paso.'),
+                    ? 'Offline: you can take the photo; it will be saved on the phone and uploaded when you reconnect.'
+                    : 'Take a photo to complete this step.'),
             TextButton(
               onPressed: questViewModel.capturePhotoProof,
-              child: const Text('Tomar foto'),
+              child: const Text('Take photo'),
             ),
           );
 
@@ -664,7 +664,7 @@ class _PhotoProofRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Foto de verificación', style: Theme.of(context).textTheme.bodySmall),
+                Text('Verification photo', style: Theme.of(context).textTheme.bodySmall),
                 Text(
                   detail,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(color: outline),

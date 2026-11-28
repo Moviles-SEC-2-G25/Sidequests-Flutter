@@ -152,7 +152,7 @@ void main() {
         throwsA(
           isA<AppException>()
               .having((e) => e, 'type', isNot(isA<GroupActionUnconfirmedException>()))
-              .having((e) => e.message, 'message', 'El servidor todavía no tiene retos en grupo.'),
+              .having((e) => e.message, 'message', "The server doesn't support group challenges yet."),
         ),
       );
 
@@ -267,7 +267,7 @@ void main() {
         throwsA(
           isA<AppException>()
               .having((e) => e, 'type', isNot(isA<GroupActionUnconfirmedException>()))
-              .having((e) => e.message, 'message', contains('sesión')),
+              .having((e) => e.message, 'message', contains('session')),
         ),
       );
     });

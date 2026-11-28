@@ -30,8 +30,8 @@ import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 const _questLat = 4.6473;
 const _questLon = -74.0600;
 const _degPerMeter = 1 / 111195;
-const _savedNotice = '📍 Llegaste. Se guardará cuando vuelvas a tener conexión.';
-const _noConnection = AppException('Sin conexión', isRetryable: true);
+const _savedNotice = '📍 You made it. It will be saved when you are back online.';
+const _noConnection = AppException('Offline', isRetryable: true);
 
 class _NoLocation extends LocationService {
   @override
@@ -329,7 +329,7 @@ void main() {
     expect(gpsSubscriptions, 0);
     final result = currentLocationResult();
     expect(result, isA<Unavailable>());
-    expect((result as Unavailable).reason, contains('Permite'));
+    expect((result as Unavailable).reason, contains('Allow'));
 
     await viewModel.completeCurrentStep(viewModel.currentMission!);
     expect(repository.progressUpdates.single.currentStep, 1);
@@ -626,7 +626,7 @@ void main() {
 
       await viewModel.completeCurrentStep(viewModel.currentMission!);
 
-      expect(viewModel.stepErrorMessage, 'Sin conexión');
+      expect(viewModel.stepErrorMessage, 'Offline');
       expect(repository.verifiedCheckIn, isNull);
     });
   });
@@ -648,13 +648,13 @@ void main() {
     testWidgets('the location row shows how far away you are, live', (tester) async {
       await tester.runAsync(() => openMission([_step(0, 'location'), _step(1, 'none')]));
       await pumpMissionTab(tester);
-      expect(find.text('Buscando tu ubicación…'), findsOneWidget);
+      expect(find.text('Finding your location…'), findsOneWidget);
 
       await tester.runAsync(() => walkTo(500));
       await tester.pump();
 
-      expect(find.text('Ubicación'), findsOneWidget);
-      expect(find.text('Acércate al lugar · estás a 500 m'), findsOneWidget);
+      expect(find.text('Location'), findsOneWidget);
+      expect(find.text('Get closer to the place · you are 500 m away'), findsOneWidget);
     });
 
     testWidgets('verified offline: the step says so, even after walking away', (tester) async {
@@ -666,7 +666,7 @@ void main() {
       await tester.runAsync(() => walkTo(20));
       await tester.pump();
       expect(find.text(_savedNotice), findsOneWidget);
-      expect(find.text('Verificada automáticamente'), findsNothing);
+      expect(find.text('Verified automatically'), findsNothing);
 
       await tester.runAsync(() => walkTo(500));
       await tester.pump();
@@ -708,7 +708,7 @@ void main() {
       expect(find.text(_savedNotice), findsOneWidget);
       expect(find.text(OfflineMessages.missionProgress), findsNothing);
       expect(repository.verifiedCheckIn, isNotNull); // saved, not queued
-      final blocked = find.widgetWithText(FilledButton, 'Conéctate para completar');
+      final blocked = find.widgetWithText(FilledButton, 'Connect to complete');
       await tester.ensureVisible(blocked);
       expect(tester.widget<FilledButton>(blocked).onPressed, isNull);
 
@@ -724,7 +724,7 @@ void main() {
       expect(find.byType(OfflineNotice), findsNothing);
     });
 
-    testWidgets('photo_and_location: location ✓, photo asks for "Tomar foto"', (tester) async {
+    testWidgets('photo_and_location: location ✓, photo asks for "Take photo"', (tester) async {
       await tester.runAsync(
         () => openMission([_step(0, 'photo_and_location'), _step(1, 'none')]),
       );
@@ -733,9 +733,9 @@ void main() {
       await tester.runAsync(() => walkTo(10));
       await tester.pump();
 
-      expect(find.text('Verificada automáticamente'), findsOneWidget);
-      expect(find.text('Foto de verificación'), findsOneWidget);
-      expect(find.text('Tomar foto'), findsOneWidget);
+      expect(find.text('Verified automatically'), findsOneWidget);
+      expect(find.text('Verification photo'), findsOneWidget);
+      expect(find.text('Take photo'), findsOneWidget);
     });
   });
 }

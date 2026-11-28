@@ -84,7 +84,7 @@ void main() {
 
       expect(_ids(results), ['short']);
       expect(results.single.ruleCodes, contains('shorter'));
-      expect(results.single.explanations, contains('Es más corta que la misión que dejaste'));
+      expect(results.single.explanations, contains('Shorter than the quest you left'));
     });
 
     test('too_expensive picks the cheaper one, ran_out_of_time the shorter one', () {
@@ -245,7 +245,7 @@ void main() {
       'difficulty_preference',
       'free',
     ]);
-    expect(result.explanations.last, 'Se ajusta a tu tiempo y presupuesto');
+    expect(result.explanations.last, 'Fits your time and budget');
     expect(result.explanations.toSet(), hasLength(result.explanations.length));
   });
 

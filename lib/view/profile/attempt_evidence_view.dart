@@ -59,7 +59,7 @@ class _AttemptEvidenceViewState extends State<AttemptEvidenceView> {
           children: [
             Text(widget.attempt.questTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
             Text(
-              'Intento del ${formatEvidenceDate(widget.attempt.date)}',
+              'Attempt on ${formatEvidenceDate(widget.attempt.date)}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: textTheme.bodySmall,
@@ -72,14 +72,14 @@ class _AttemptEvidenceViewState extends State<AttemptEvidenceView> {
           EvidenceStatus.loading => const Center(child: CircularProgressIndicator()),
           EvidenceStatus.empty => _EvidenceMessage(
             icon: Icons.photo_library_outlined,
-            message: 'Este intento no tiene fotos',
-            actionLabel: 'Volver',
+            message: 'This attempt has no photos',
+            actionLabel: 'Back',
             onAction: () => Navigator.of(context).pop(),
           ),
           EvidenceStatus.error => _EvidenceMessage(
             icon: viewModel.isOffline ? Icons.wifi_off : Icons.cloud_off,
-            message: viewModel.errorMessage ?? 'No se pudieron cargar las fotos de este intento.',
-            actionLabel: 'Reintentar',
+            message: viewModel.errorMessage ?? 'The photos for this attempt could not be loaded.',
+            actionLabel: 'Retry',
             onAction: viewModel.load,
           ),
           EvidenceStatus.data => _EvidenceGrid(viewModel: viewModel),
@@ -175,7 +175,7 @@ class _Header extends StatelessWidget {
         ],
         if (viewModel.uploadedListMissing) ...[
           Text(
-            'Las fotos que ya subiste de este intento aparecerán cuando vuelvas a tener internet.',
+            'The photos you already uploaded for this attempt will appear when you are back online.',
             style: textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
@@ -183,8 +183,8 @@ class _Header extends StatelessWidget {
         if (pending > 0) ...[
           Text(
             pending == 1
-                ? '1 foto pendiente de subir: se subirá sola cuando haya conexión.'
-                : '$pending fotos pendientes de subir: se subirán solas cuando haya conexión.',
+                ? '1 photo waiting to upload: it will upload automatically when you are online.'
+                : '$pending photos waiting to upload: they will upload automatically when you are online.',
             style: textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
@@ -227,7 +227,7 @@ class _SaveAllPanel extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '$saved de $total ${total == 1 ? 'foto guardada' : 'fotos guardadas'} en el teléfono',
+                  '$saved of $total ${total == 1 ? 'photo saved' : 'photos saved'} on the phone',
                   style: textTheme.bodySmall,
                 ),
               ),
@@ -239,11 +239,11 @@ class _SaveAllPanel extends StatelessWidget {
               value: viewModel.saveTotal == 0 ? null : viewModel.saveDone / viewModel.saveTotal,
             ),
             const SizedBox(height: 4),
-            Text('Guardando ${viewModel.saveDone} de ${viewModel.saveTotal}…', style: textTheme.bodySmall),
+            Text('Saving ${viewModel.saveDone} of ${viewModel.saveTotal}…', style: textTheme.bodySmall),
           ] else if (failed > 0) ...[
             const SizedBox(height: 4),
             Text(
-              failed == 1 ? '1 foto no se pudo guardar.' : '$failed fotos no se pudieron guardar.',
+              failed == 1 ? '1 photo could not be saved.' : '$failed photos could not be saved.',
               style: textTheme.bodySmall?.copyWith(color: AppColors.error),
             ),
           ],
@@ -253,7 +253,7 @@ class _SaveAllPanel extends StatelessWidget {
             child: FilledButton.tonalIcon(
               onPressed: viewModel.canSaveAll ? viewModel.saveAll : null,
               icon: Icon(viewModel.allSaved ? Icons.check : Icons.download_outlined),
-              label: Text(viewModel.allSaved ? 'Todas guardadas en el teléfono' : 'Guardar todas en el teléfono'),
+              label: Text(viewModel.allSaved ? 'All saved on phone' : 'Save all to phone'),
             ),
           ),
         ],
@@ -288,7 +288,7 @@ class _EvidenceTile extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: '$stepLabel, foto $number${status == null ? '' : ': $status'}',
+      label: '$stepLabel, photo $number${status == null ? '' : ': $status'}',
       child: ExcludeSemantics(
         child: Material(
           color: colorScheme.surfaceContainerHighest,
@@ -340,10 +340,10 @@ class _EvidenceTile extends StatelessWidget {
 
 /// What each state says, on the tile and in the viewer.
 String? _statusLabel(EvidenceAvailability availability, String? error) => switch (availability) {
-  EvidenceAvailability.onPhone => 'Guardada en el teléfono',
-  EvidenceAvailability.availableOnReconnect => 'Disponible al reconectar',
-  EvidenceAvailability.pendingUpload => 'Pendiente de subir',
-  EvidenceAvailability.failed => error ?? 'No se pudo cargar. Toca para reintentar.',
+  EvidenceAvailability.onPhone => 'Saved on phone',
+  EvidenceAvailability.availableOnReconnect => 'Available when back online',
+  EvidenceAvailability.pendingUpload => 'Waiting to upload',
+  EvidenceAvailability.failed => error ?? 'Could not load. Tap to retry.',
   EvidenceAvailability.inCloud => null,
 };
 
@@ -352,7 +352,7 @@ class _SavedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Tooltip(
-    message: 'Guardada en el teléfono',
+    message: 'Saved on phone',
     child: Container(
       padding: const EdgeInsets.all(3),
       decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
@@ -436,7 +436,7 @@ class _EvidenceViewerState extends State<_EvidenceViewer> {
           children: [
             Text(viewModel.stepLabelOf(current), maxLines: 1, overflow: TextOverflow.ellipsis),
             Text(
-              '${_index + 1} de ${items.length}',
+              '${_index + 1} of ${items.length}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white70),
             ),
           ],
@@ -510,7 +510,7 @@ class _ViewerPageState extends State<_ViewerPage> {
             gaplessPlayback: true,
             errorBuilder: (_, _, _) => const _ViewerMessage(
               icon: Icons.broken_image_outlined,
-              title: 'No se pudo mostrar esta foto',
+              title: 'Could not display this photo',
             ),
           ),
         ),
@@ -518,14 +518,14 @@ class _ViewerPageState extends State<_ViewerPage> {
     } else if (availability == EvidenceAvailability.availableOnReconnect) {
       content = const _ViewerMessage(
         icon: Icons.cloud_off_outlined,
-        title: 'Disponible al reconectar',
-        message: 'Esta foto no está guardada en el teléfono. Se descargará cuando vuelvas a tener internet.',
+        title: 'Available when back online',
+        message: 'This photo is not saved on the phone. It will download when you are back online.',
       );
     } else if (availability == EvidenceAvailability.failed) {
       content = _ViewerMessage(
         icon: Icons.error_outline,
-        title: viewModel.errorOf(id) ?? 'No se pudo cargar esta foto.',
-        actionLabel: 'Reintentar',
+        title: viewModel.errorOf(id) ?? 'Could not load this photo.',
+        actionLabel: 'Retry',
         onAction: () => viewModel.retry(id),
       );
     } else {
@@ -648,9 +648,9 @@ class _EvidenceMessage extends StatelessWidget {
 }
 
 const _monthNamesEs = [
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
 /// "12 de noviembre de 2026".
-String formatEvidenceDate(DateTime date) => '${date.day} de ${_monthNamesEs[date.month - 1]} de ${date.year}';
+String formatEvidenceDate(DateTime date) => '${_monthNamesEs[date.month - 1]} ${date.day}, ${date.year}';

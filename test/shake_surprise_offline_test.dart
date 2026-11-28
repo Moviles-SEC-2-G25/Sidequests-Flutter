@@ -40,10 +40,10 @@ import 'package:supabase_flutter/supabase_flutter.dart' show AuthState, Session;
 
 const _userId = 'user-1';
 const _noCatalog =
-    'Sin conexión y sin misiones guardadas: conéctate una vez para usar la misión sorpresa';
-const _noCandidates = 'No hay misiones disponibles para sorprenderte ahora.';
+    'Offline and no saved quests: connect once to use the surprise quest';
+const _noCandidates = 'No quests available to surprise you right now.';
 const _noSavedData =
-    'Sin conexión y sin datos guardados en el teléfono. Reintenta cuando tengas internet.';
+    'Offline and no data saved on the phone. Try again when you have internet.';
 
 Map<String, dynamic> _questRow(String id, {int minutes = 20}) => {
   'id': id,
@@ -644,7 +644,7 @@ void main() {
         await tester.pump();
         expect(accelerometer.hasListener, isFalse);
 
-        await tester.tap(find.text('Explorar'));
+        await tester.tap(find.text('Explore'));
         await tester.pump();
         expect(accelerometer.hasListener, isTrue);
       });
@@ -702,7 +702,7 @@ void main() {
 
       expect(find.text('Quest b'), findsWidgets);
       expect(find.byType(QuestDetailView), findsOneWidget);
-      expect(find.text('Qué harás (2 pasos)'), findsOneWidget);
+      expect(find.text("What you'll do (2 steps)"), findsOneWidget);
       expect(find.text(_noSavedData), findsNothing);
       expect(tracker.shakes, ['b']);
     });
@@ -719,7 +719,7 @@ void main() {
 
       expect(find.byType(QuestDetailView), findsOneWidget);
       expect(find.text(_noSavedData), findsOneWidget);
-      expect(find.text('Qué harás'), findsOneWidget);
+      expect(find.text("What you'll do"), findsOneWidget);
       expect(tracker.shakes, hasLength(1));
       expect(tester.takeException(), isNull);
     });
@@ -762,8 +762,8 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('Qué harás (3 pasos)'), findsNothing);
-      expect(find.text('Qué harás'), findsOneWidget);
+      expect(find.text("What you'll do (3 steps)"), findsNothing);
+      expect(find.text("What you'll do"), findsOneWidget);
       expect(find.text(_noSavedData), findsOneWidget);
     });
 

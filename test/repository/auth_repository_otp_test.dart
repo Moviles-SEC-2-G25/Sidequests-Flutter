@@ -65,7 +65,7 @@ void main() {
 
     await expectLater(
       repository.verifyLoginCode(email: 'ana@uniandes.edu.co', code: '000000'),
-      throwsA(isA<AppException>().having((e) => e.message, 'message', contains('Pide uno nuevo'))),
+      throwsA(isA<AppException>().having((e) => e.message, 'message', contains('Request a new one'))),
     );
   });
 
@@ -74,7 +74,7 @@ void main() {
       const AuthException('Signups not allowed for otp', statusCode: '422', code: 'otp_disabled'),
     );
 
-    expect(error.message, contains('Regístrate'));
+    expect(error.message, contains('Sign up'));
     expect(error.isRetryable, isFalse);
   });
 
@@ -83,13 +83,13 @@ void main() {
       const AuthException('email rate limit exceeded', statusCode: '429', code: 'over_email_send_rate_limit'),
     );
 
-    expect(error.message, contains('Espera'));
+    expect(error.message, contains('wait'));
   });
 
   test('no connection is retryable', () async {
     final error = await sendFailing(AuthRetryableFetchException());
 
-    expect(error.message, contains('Sin conexión'));
+    expect(error.message, contains('Offline'));
     expect(error.isRetryable, isTrue);
   });
 

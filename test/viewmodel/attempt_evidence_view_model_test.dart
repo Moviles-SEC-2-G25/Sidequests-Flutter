@@ -90,10 +90,10 @@ void main() {
       await viewModel.load();
 
       expect(viewModel.status, EvidenceStatus.data);
-      expect(viewModel.groups.map((g) => g.label), ['Paso 1: Encuentra el local', 'Paso 3: Foto del plato']);
+      expect(viewModel.groups.map((g) => g.label), ['Step 1: Encuentra el local', 'Step 3: Foto del plato']);
       expect(viewModel.groups.first.items.map((i) => i.id), ['pending:user-1/attempt-1/quest-1/step-2-new.jpg', 's1-p1', 's1-p0']);
       expect(viewModel.items, hasLength(4));
-      expect(viewModel.stepLabelOf(viewModel.items.last), 'Paso 3: Foto del plato');
+      expect(viewModel.stepLabelOf(viewModel.items.last), 'Step 3: Foto del plato');
       viewModel.dispose();
     });
 
@@ -104,7 +104,7 @@ void main() {
 
       await viewModel.load();
 
-      expect(viewModel.groups.single.label, 'Paso 1');
+      expect(viewModel.groups.single.label, 'Step 1');
       viewModel.dispose();
     });
 
@@ -122,8 +122,8 @@ void main() {
       await viewModel.load();
 
       expect(viewModel.status, EvidenceStatus.error);
-      expect(viewModel.errorMessage, contains('No pudimos conectar con el servidor'));
-      expect(viewModel.errorMessage, isNot(contains('tu foto quedó guardada')));
+      expect(viewModel.errorMessage, contains('Could not reach the server'));
+      expect(viewModel.errorMessage, isNot(contains('your photo was saved')));
 
       quests.listOffline = false;
       seed(1);
@@ -269,7 +269,7 @@ void main() {
       expect(viewModel.savedCount, 3);
       expect(viewModel.saveFailed, 1);
       expect(viewModel.availabilityOf(proofs[1].id), EvidenceAvailability.failed);
-      expect(viewModel.errorOf(proofs[1].id), contains('Toca para reintentar'));
+      expect(viewModel.errorOf(proofs[1].id), contains('Tap to retry'));
 
       remote.failing.clear();
       viewModel.retry(proofs[1].id);
@@ -305,7 +305,7 @@ void main() {
       viewModel.dispose();
     });
 
-    test('offline and not saved: "Disponible al reconectar" at once, no request and no spinner', () async {
+    test('offline and not saved: "Available when back online" at once, no request and no spinner', () async {
       final [proof] = seed(1);
       await goOfflineAfterListing();
       final viewModel = build();
@@ -321,7 +321,7 @@ void main() {
       viewModel.dispose();
     });
 
-    test('pending uploads of this attempt are shown from their file, "Pendiente de subir"', () async {
+    test('pending uploads of this attempt are shown from their file, "Waiting to upload"', () async {
       seed(1);
       await goOfflineAfterListing();
       final pending = pendingOf('taken-offline', stepOrder: 0);
@@ -365,8 +365,8 @@ void main() {
       await viewModel.load();
 
       expect(viewModel.status, EvidenceStatus.error);
-      expect(viewModel.errorMessage, startsWith('Sin conexión: las fotos de este intento todavía no se habían cargado'));
-      expect(viewModel.errorMessage, isNot(contains('tu foto quedó guardada')));
+      expect(viewModel.errorMessage, startsWith('Offline: the photos for this attempt had not been loaded'));
+      expect(viewModel.errorMessage, isNot(contains('your photo was saved')));
       viewModel.dispose();
     });
 
@@ -441,7 +441,7 @@ void main() {
       viewModel.dispose();
     });
 
-    test('going offline: what hadn\'t started becomes "Disponible al reconectar"', () async {
+    test('going offline: what hadn\'t started becomes "Available when back online"', () async {
       final proofs = seed(2);
       final viewModel = build();
       await viewModel.load();

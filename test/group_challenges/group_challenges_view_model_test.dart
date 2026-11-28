@@ -13,7 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'group_challenge_fakes.dart';
 
-const _unconfirmedText = 'No sabemos si se guardó. Reconecta y reintenta: es seguro.';
+const _unconfirmedText = "We couldn't confirm it was saved. Reconnect and retry: it's safe.";
 
 void main() {
   late FakeGroupServer server;
@@ -79,14 +79,14 @@ void main() {
       await viewModel.load();
 
       await viewModel.createChallenge(groupPhotoWalk);
-      expect(viewModel.message, 'Reto creado: ya está en Mis retos.');
+      expect(viewModel.message, "Challenge created: it's now in My challenges.");
       final created = viewModel.mine.single;
 
       await viewModel.joinChallenge(viewModel.available.single);
-      expect(viewModel.message, 'Te uniste al reto.');
+      expect(viewModel.message, 'You joined the challenge.');
 
       await viewModel.markNextStep(viewModel.mine.firstWhere((c) => c.challengeId == created.challengeId));
-      expect(viewModel.message, 'Paso marcado. ¡Sigue así!');
+      expect(viewModel.message, 'Step marked. Keep it up!');
 
       expect(server.actCalls, [
         {
@@ -147,7 +147,7 @@ void main() {
       expect(viewModel.canWrite, isTrue);
     });
 
-    test('"Marcar siguiente paso" shows the quest step it marks and stops at the last one', () async {
+    test('"Mark next step" shows the quest step it marks and stops at the last one', () async {
       final id = server.seedChallenge('group-photo-walk', owner: userA, ownerProgress: 3);
       final viewModel = newViewModel();
       await viewModel.load();
@@ -207,7 +207,7 @@ void main() {
       expect(server.progressOf(id, userA), 2);
       expect(viewModel.pending, isNull);
       expect(local.pendingGroupAction, isNull);
-      expect(viewModel.message, 'Paso marcado. ¡Sigue así!');
+      expect(viewModel.message, 'Step marked. Keep it up!');
       expect(viewModel.mine.single.myProgress, 2);
       await pumpEventQueue();
       expect(unconfirmedEvents(), hasLength(1));
@@ -262,7 +262,7 @@ void main() {
       await pumpEventQueue();
 
       expect(server.operations.values.single['ok'], isFalse);
-      expect(viewModel.message, 'Este reto ya no existe o venció.');
+      expect(viewModel.message, 'This challenge no longer exists or has expired.');
       expect(viewModel.pending, isNull);
       expect(unconfirmedEvents(), isEmpty);
       expect(server.listCalls, hasLength(4)); // reloaded after the answer
@@ -276,7 +276,7 @@ void main() {
       await viewModel.createChallenge(groupPhotoWalk);
       await pumpEventQueue();
 
-      expect(viewModel.message, 'El servidor no pudo completar la solicitud.');
+      expect(viewModel.message, 'The server could not complete the request.');
       expect(viewModel.pending, isNull);
       expect(unconfirmedEvents(), isEmpty);
     });
@@ -423,7 +423,7 @@ void main() {
     });
   });
 
-  group('Crear un reto', () {
+  group('Create a challenge', () {
     test('lists the group quests of the catalogue the user is not already in', () {
       final mine = [
         GroupChallenge.fromJson({

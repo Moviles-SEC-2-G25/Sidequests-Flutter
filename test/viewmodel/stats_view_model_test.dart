@@ -239,7 +239,7 @@ void main() {
       await viewModel.load();
 
       expect(viewModel.status, StatsStatus.error);
-      expect(viewModel.errorMessage, contains('Sin conexión'));
+      expect(viewModel.errorMessage, contains('Offline'));
     });
 
     test('offline with attempts cached but no catalogue: summary works, categories are empty', () async {
@@ -299,13 +299,13 @@ void main() {
 
       await pumpStats(tester);
 
-      expect(find.text('Mis estadísticas'), findsOneWidget);
+      expect(find.text('My stats'), findsOneWidget);
       expect(find.text('3'), findsOneWidget); // completadas
       expect(find.text('75 %'), findsOneWidget);
-      expect(find.text('Gastronomía'), findsOneWidget);
+      expect(find.text('Food'), findsOneWidget);
       expect(find.text('2/3 · 67 %'), findsOneWidget);
-      expect(find.text('Prob. media'), findsOneWidget);
-      expect(find.text('Nueva para ti'), findsOneWidget); // Arte, 1 attempt
+      expect(find.text('Medium chance'), findsOneWidget);
+      expect(find.text('New for you'), findsOneWidget); // Arte, 1 attempt
 
       await tester.scrollUntilVisible(find.text('1.234'), 100);
       expect(find.text('1.234'), findsOneWidget);
@@ -317,27 +317,27 @@ void main() {
 
       await pumpStats(tester);
 
-      expect(find.textContaining('Sin conexión'), findsOneWidget);
+      expect(find.textContaining('Offline'), findsOneWidget);
     });
 
     testWidgets('no step data: shows "—", never 0', (tester) async {
       seedHistory();
 
       await pumpStats(tester);
-      await tester.scrollUntilVisible(find.text('Pasos caminados en misiones'), 100);
+      await tester.scrollUntilVisible(find.text('Steps walked on quests'), 100);
 
       expect(find.text('—'), findsOneWidget);
     });
 
     testWidgets('empty and error states each show their message and action', (tester) async {
       await pumpStats(tester);
-      expect(find.textContaining('Aún no has intentado'), findsOneWidget);
+      expect(find.textContaining("You haven't tried"), findsOneWidget);
 
       repository.fromCache = true;
       await viewModel.load();
       await tester.pumpAndSettle();
-      expect(find.textContaining('Sin conexión y sin datos guardados'), findsOneWidget);
-      expect(find.text('Reintentar'), findsOneWidget);
+      expect(find.textContaining('Offline and no saved data'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
     });
   });
 
@@ -452,7 +452,7 @@ void main() {
         ChangeNotifierProvider.value(value: viewModel, child: const MaterialApp(home: StatsView())),
       );
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('Tus caminatas'), 200);
+      await tester.scrollUntilVisible(find.text('Your walks'), 200);
       await tester.pumpAndSettle();
     }
 
@@ -472,24 +472,24 @@ void main() {
           ),
         ),
       );
-      await tester.scrollUntilVisible(find.text('Pasos por categoría'), 200);
+      await tester.scrollUntilVisible(find.text('Steps by category'), 200);
 
-      expect(find.text('Tus caminatas'), findsOneWidget);
+      expect(find.text('Your walks'), findsOneWidget);
       expect(find.text('500'), findsOneWidget); // last 7 days
       expect(find.text('900'), findsOneWidget); // longest
-      expect(find.text('Últimos 7 días'), findsOneWidget);
-      expect(find.text('Caminata más larga'), findsOneWidget);
+      expect(find.text('Last 7 days'), findsOneWidget);
+      expect(find.text('Longest walk'), findsOneWidget);
       expect(find.textContaining('Quest f1 · '), findsOneWidget);
-      expect(find.text('1.200 pasos'), findsOneWidget);
-      expect(find.text('200 pasos'), findsOneWidget);
+      expect(find.text('1.200 steps'), findsOneWidget);
+      expect(find.text('200 steps'), findsOneWidget);
     });
 
     testWidgets('StatsView: the empty state', (tester) async {
       await pumpStats(tester);
 
-      expect(find.text('Tus caminatas'), findsOneWidget);
-      expect(find.textContaining('Aún no hay caminatas guardadas'), findsOneWidget);
-      expect(find.text('Últimos 7 días'), findsNothing);
+      expect(find.text('Your walks'), findsOneWidget);
+      expect(find.textContaining('No walks saved yet'), findsOneWidget);
+      expect(find.text('Last 7 days'), findsNothing);
     });
   });
 
@@ -502,7 +502,7 @@ void main() {
       return summarizeStats(input);
     }
 
-    /// Each visit to "Mis estadísticas" creates a new StatsViewModel.
+    /// Each visit to "My stats" creates a new StatsViewModel.
     Future<StatsViewModel> openStats() async {
       final screen = StatsViewModel(repository, 'user-1', runner: countingRunner, summaryCache: cache);
       await screen.load();

@@ -80,7 +80,7 @@ class _FakeRepository implements QuestRepository {
       if (offline || remote == null) {
         final saved = savedSteps[questId];
         if (saved != null) return saved;
-        throw const AppException('Sin conexión', isRetryable: true);
+        throw const AppException('Offline', isRetryable: true);
       }
       savedSteps[questId] = remote;
       return remote;

@@ -180,7 +180,7 @@ void main() {
       (tester) async {
     var probeBuilds = 0;
     await pumpCounting(tester, () => probeBuilds++);
-    expect(find.text('0 pasos caminados'), findsOneWidget);
+    expect(find.text('0 steps walked'), findsOneWidget);
 
     final buildsBefore = probeBuilds;
     var notifications = 0;
@@ -194,7 +194,7 @@ void main() {
     print('REBUILDS of a context.watch<QuestViewModel>() widget during 50 steps: $rebuildsFromSteps '
         '(notifyListeners: $notifications)');
 
-    expect(find.text('50 pasos caminados'), findsOneWidget, reason: 'the card shows every step');
+    expect(find.text('50 steps walked'), findsOneWidget, reason: 'the card shows every step');
     expect(viewModel.missionSteps, 50);
     expect(notifications, 0);
     expect(rebuildsFromSteps, 0);
@@ -214,7 +214,7 @@ void main() {
     expect(viewModel.stepStatus, StepCounterStatus.unavailable);
     expect(notifications, 1);
     expect(probeBuilds - buildsBefore, 1);
-    expect(find.text('Tu teléfono no tiene contador de pasos.'), findsOneWidget);
+    expect(find.text('Your phone has no step counter.'), findsOneWidget);
     expect(viewModel.missionStepsListenable.value, isNull, reason: 'no session, no number');
   });
 

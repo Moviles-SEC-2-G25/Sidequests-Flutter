@@ -535,7 +535,7 @@ void main() {
       final viewModel = await captureOffline();
 
       final pending = viewModel.currentPendingPhotoProof!;
-      expect(pending.lastError, contains('Sin conexión'));
+      expect(pending.lastError, contains('Offline'));
       expect(await File(pending.localPath).readAsBytes(), _jpeg);
       expect(hive.getPendingPhotoProofs(), hasLength(1));
       expect(remote.uploads, isEmpty);

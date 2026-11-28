@@ -49,17 +49,17 @@ class _BiometricLockViewState extends State<BiometricLockView> {
         context: context,
         builder: (dialogContext) => AlertDialog(
           content: const Text(
-            'Sin conexión no podrás iniciar sesión con tu contraseña hasta reconectar. '
-            '¿Salir de todos modos?',
+            'While offline you will not be able to log in with your password until you reconnect. '
+            'Exit anyway?',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancelar'),
+              child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Salir'),
+              child: const Text('Exit'),
             ),
           ],
         ),
@@ -82,12 +82,12 @@ class _BiometricLockViewState extends State<BiometricLockView> {
               children: [
                 const Icon(Icons.fingerprint, size: 72, color: AppColors.primary),
                 const SizedBox(height: 16),
-                Text('Sidequests bloqueada', style: textTheme.titleLarge),
+                Text('Sidequests is locked', style: textTheme.titleLarge),
                 const SizedBox(height: 8),
                 Text(
                   _failed
-                      ? 'No se pudo verificar tu huella.'
-                      : 'Usa tu huella para continuar.',
+                      ? 'Could not verify your fingerprint.'
+                      : 'Use your fingerprint to continue.',
                   textAlign: TextAlign.center,
                   style: textTheme.bodySmall?.copyWith(
                     color: _failed ? Theme.of(context).colorScheme.error : null,
@@ -99,7 +99,7 @@ class _BiometricLockViewState extends State<BiometricLockView> {
                   child: FilledButton.icon(
                     onPressed: _isPrompting ? null : _prompt,
                     icon: const Icon(Icons.fingerprint),
-                    label: Text(_failed ? 'Reintentar' : 'Desbloquear'),
+                    label: Text(_failed ? 'Retry' : 'Unlock'),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -107,7 +107,7 @@ class _BiometricLockViewState extends State<BiometricLockView> {
                   width: double.infinity,
                   child: OutlinedButton(
                     onPressed: _isPrompting ? null : _usePassword,
-                    child: const Text('Usar contraseña'),
+                    child: const Text('Use password'),
                   ),
                 ),
               ],

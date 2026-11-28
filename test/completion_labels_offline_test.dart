@@ -28,7 +28,7 @@ import 'package:sidequests/viewmodel/profile/stats_view_model.dart';
 import 'package:sidequests/viewmodel/quests/quest_view_model.dart';
 
 const _userId = 'user-1';
-const _note = 'Según tus datos guardados';
+const _note = 'Based on your saved data';
 
 Map<String, dynamic> _questRow(String id) => {
   'id': id,
@@ -442,7 +442,7 @@ void main() {
 
       await pumpExplore(tester);
 
-      expect(find.text('Prob. media'), findsWidgets);
+      expect(find.text('Medium chance'), findsWidgets);
       expect(find.text(_note), findsNothing);
     });
 
@@ -462,7 +462,7 @@ void main() {
       await pumpExplore(tester);
 
       expect(viewModel.recommendations, isNotEmpty);
-      expect(find.text('Prob. media'), findsWidgets);
+      expect(find.text('Medium chance'), findsWidgets);
       expect(find.text(_note), findsNWidgets(2));
     });
 
@@ -475,7 +475,7 @@ void main() {
       await pumpExplore(tester);
 
       expect(viewModel.recommendations, isEmpty);
-      expect(find.text('Prob. media'), findsWidgets);
+      expect(find.text('Medium chance'), findsWidgets);
       expect(find.text(_note), findsOneWidget);
     });
 
@@ -490,7 +490,7 @@ void main() {
       viewModel.setMinutes(10); // every quest takes 20
       await tester.pumpAndSettle();
 
-      expect(find.text('No hay misiones que coincidan con estos filtros.'), findsOneWidget);
+      expect(find.text('No quests match these filters.'), findsOneWidget);
       expect(find.text(_note), findsNothing);
     });
 

@@ -45,9 +45,9 @@ class _ExploreViewState extends State<ExploreView> {
 
   String get _greeting {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Buenos días';
-    if (hour < 19) return 'Buenas tardes';
-    return 'Buenas noches';
+    if (hour < 12) return 'Good morning';
+    if (hour < 19) return 'Good afternoon';
+    return 'Good evening';
   }
 
   @override
@@ -133,7 +133,7 @@ class _Header extends StatelessWidget {
             children: [
               Text('$greeting 👋', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 4),
-              Text('¿Qué te apetece hoy?', style: Theme.of(context).textTheme.headlineSmall),
+              Text('What do you feel like today?', style: Theme.of(context).textTheme.headlineSmall),
             ],
           ),
         ),
@@ -159,9 +159,9 @@ class _TimeAndScopeFilters extends StatelessWidget {
 
   static const _minuteLabels = {10: '10m', 20: '20m', 30: '30m', 45: '45m', 60: '1 hr+'};
   static const _scopes = [
-    ('all', '🌐 Todas'),
-    ('gps', '📍 Cerca'),
-    ('anywhere', '🏠 Donde sea'),
+    ('all', '🌐 All'),
+    ('gps', '📍 Nearby'),
+    ('anywhere', '🏠 Anywhere'),
   ];
 
   void _reload() => questViewModel.loadRecommendations(profileViewModel.preferences);
@@ -172,7 +172,7 @@ class _TimeAndScopeFilters extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'TENGO...',
+          'I HAVE...',
           style: Theme.of(
             context,
           ).textTheme.labelMedium?.copyWith(letterSpacing: 1, fontWeight: FontWeight.w700),
@@ -237,9 +237,9 @@ class _SocialMoodFilter extends StatelessWidget {
   });
 
   static const _levels = [
-    ('solo', '🙋', 'Solo yo'),
-    ('social', '👫', 'Con alguien'),
-    ('group', '👥', 'En grupo'),
+    ('solo', '🙋', 'Just me'),
+    ('social', '👫', 'With someone'),
+    ('group', '👥', 'In a group'),
   ];
 
   /// A level's chip text without its emoji, for sentences that mention it.
@@ -253,7 +253,7 @@ class _SocialMoodFilter extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '¿CÓMO TE SIENTES HOY?',
+          'HOW ARE YOU FEELING TODAY?',
           style: Theme.of(
             context,
           ).textTheme.labelMedium?.copyWith(letterSpacing: 1, fontWeight: FontWeight.w700),
@@ -312,7 +312,7 @@ class _ContinueBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'CONTINÚA DONDE LO DEJASTE',
+                    'PICK UP WHERE YOU LEFT OFF',
                     style: TextStyle(
                       color: Colors.white70,
                       fontWeight: FontWeight.w700,
@@ -356,7 +356,7 @@ class _DiscoverMoreSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Descubre más', style: textTheme.titleLarge),
+        Text('Discover more', style: textTheme.titleLarge),
         const SizedBox(height: 10),
         Card(
           margin: EdgeInsets.zero,
@@ -374,8 +374,8 @@ class _DiscoverMoreSection extends StatelessWidget {
               ),
               child: const Text('👥', style: TextStyle(fontSize: 22)),
             ),
-            title: Text('Retos en grupo', style: textTheme.titleSmall),
-            subtitle: const Text('Explora en compañía'),
+            title: Text('Group challenges', style: textTheme.titleSmall),
+            subtitle: const Text('Explore together'),
             trailing: const Icon(Icons.chevron_right),
           ),
         ),
@@ -399,11 +399,11 @@ class _ContextAdaptationBanner extends StatelessWidget {
     if (appContext.isRainy) {
       final age = appContext.weatherAge;
       message = age != null
-          ? 'Según el último clima conocido (hace ${age.inMinutes} min): te mostramos primero misiones bajo techo.'
-          : 'Está lloviendo: te mostramos primero misiones bajo techo.';
+          ? 'Based on the last known weather (${age.inMinutes} min ago): showing indoor quests first.'
+          : "It's raining: showing indoor quests first.";
       icon = Icons.umbrella_outlined;
     } else {
-      message = 'Es de noche: priorizamos misiones cerca o en casa.';
+      message = "It's nighttime: prioritizing quests nearby or at home.";
       icon = Icons.nightlight_outlined;
     }
 
@@ -450,7 +450,7 @@ class _RecommendedSection extends StatelessWidget {
         Row(
           children: [
             Flexible(
-              child: Text('Recomendados para ti', style: Theme.of(context).textTheme.titleLarge),
+              child: Text('Recommended for you', style: Theme.of(context).textTheme.titleLarge),
             ),
             const SizedBox(width: 8),
             Container(
@@ -460,7 +460,7 @@ class _RecommendedSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Text(
-                'ANÁLISIS',
+                'ANALYSIS',
                 style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
               ),
             ),
@@ -468,13 +468,13 @@ class _RecommendedSection extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Basado en tu tiempo, intereses y historial',
+          'Based on your time, interests and history',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         if (questViewModel.completionLabelsFromCache) const _SavedDataNote(),
         if (questViewModel.recommendationsFromCache) ...[
           const SizedBox(height: 8),
-          const _Badge(text: 'Recomendaciones guardadas', color: AppColors.primaryContainerLight),
+          const _Badge(text: 'Saved recommendations', color: AppColors.primaryContainerLight),
         ],
         if (awaitingLevel != null) ...[
           const SizedBox(height: 8),
@@ -568,7 +568,7 @@ class _RecommendationCardState extends State<_RecommendationCard> {
     if (!started) {
       // Not started (no connection, or it didn't answer): stay on Explore.
       messenger.showSnackBar(
-        SnackBar(content: Text(questViewModel.errorMessage ?? 'No se pudo iniciar la misión.')),
+        SnackBar(content: Text(questViewModel.errorMessage ?? 'Could not start the quest.')),
       );
       return;
     }
@@ -583,10 +583,10 @@ class _RecommendationCardState extends State<_RecommendationCard> {
     final onDismiss = widget.onDismiss;
     final onTap = widget.onTap;
     final reasons = <String>[
-      if (recommendation.timeMatch) 'Encaja en tu tiempo',
-      if (recommendation.interestMatch) 'Coincide con tus intereses',
-      if (recommendation.locationMatch) 'Cerca de ti',
-      if (recommendation.socialMatch) 'Ideal para ti',
+      if (recommendation.timeMatch) 'Fits your time',
+      if (recommendation.interestMatch) 'Matches your interests',
+      if (recommendation.locationMatch) 'Near you',
+      if (recommendation.socialMatch) 'Great for you',
     ];
 
     return InkWell(
@@ -611,9 +611,9 @@ class _RecommendationCardState extends State<_RecommendationCard> {
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      _Badge(text: '#$rank para ti', color: AppColors.primaryContainerLight),
+                      _Badge(text: '#$rank for you', color: AppColors.primaryContainerLight),
                       if (quest.isNew)
-                        _Badge(text: 'NUEVO', color: AppColors.amber, textColor: Colors.white),
+                        _Badge(text: 'NEW', color: AppColors.amber, textColor: Colors.white),
                       if (quest.isSponsored) const SponsoredBadge(),
                     ],
                   ),
@@ -653,11 +653,11 @@ class _RecommendationCardState extends State<_RecommendationCard> {
                 _MetaItem(icon: Icons.access_time, label: '${quest.durationMinutes} min'),
                 _MetaItem(
                   icon: Icons.payments_outlined,
-                  label: quest.estimatedCost > 0 ? '\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Gratis',
+                  label: quest.estimatedCost > 0 ? '\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Free',
                 ),
                 _MetaItem(
                   icon: Icons.location_on_outlined,
-                  label: quest.locationMode == 'anywhere' ? 'Donde sea' : 'Cerca',
+                  label: quest.locationMode == 'anywhere' ? 'Anywhere' : 'Nearby',
                 ),
                 CompletionLikelihoodLabel(level: widget.completionLevel),
               ],
@@ -690,14 +690,14 @@ class _RecommendationCardState extends State<_RecommendationCard> {
                 OutlinedButton(
                   onPressed: _isStartingInstantPlan ? null : onDismiss,
                   style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
-                  child: const Text('Ahora no →'),
+                  child: const Text('Not now →'),
                 ),
                 if (widget.isOffline)
                   FilledButton.icon(
                     onPressed: null,
                     style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
                     icon: const Icon(Icons.wifi_off, size: 16),
-                    label: const Text('Sin conexión'),
+                    label: const Text('Offline'),
                   )
                 else
                   FilledButton(
@@ -709,7 +709,7 @@ class _RecommendationCardState extends State<_RecommendationCard> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
-                        : const Text('Empezar ya →'),
+                        : const Text('Start now →'),
                   ),
               ],
             ),
@@ -755,9 +755,9 @@ class _AllMissionsSection extends StatelessWidget {
             itemBuilder: (context, index) {
               final value = categoryOptions[index];
               final label = value == null
-                  ? 'Todo'
+                  ? 'All'
                   : value == 'sponsored'
-                  ? '⭐ Patrocinadas'
+                  ? '⭐ Sponsored'
                   : categoryLabelEs(value);
               final selected = questViewModel.selectedCategory == value;
               return ChoiceChip(
@@ -769,7 +769,7 @@ class _AllMissionsSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Text('Todas las misiones', style: Theme.of(context).textTheme.titleLarge),
+        Text('All quests', style: Theme.of(context).textTheme.titleLarge),
         if (questViewModel.completionLabelsFromCache && questViewModel.filteredCatalog.isNotEmpty)
           const _SavedDataNote(),
         const SizedBox(height: 8),
@@ -777,14 +777,14 @@ class _AllMissionsSection extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Text(
-              'Sin conexión y sin misiones guardadas en el teléfono. '
-              'Conéctate y desliza hacia abajo para cargarlas.',
+              'Offline and no quests saved on the phone. '
+              'Connect and pull down to load them.',
             ),
           )
         else if (questViewModel.filteredCatalog.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text('No hay misiones que coincidan con estos filtros.'),
+            child: Text('No quests match these filters.'),
           )
         else
           ...questViewModel.filteredCatalog.map(
@@ -814,7 +814,7 @@ class _SavedDataNote extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Text(
-        'Según tus datos guardados',
+        'Based on your saved data',
         style: Theme.of(
           context,
         ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline),
@@ -842,7 +842,7 @@ class _QuestRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${quest.durationMinutes} min · ${quest.estimatedCost > 0 ? '-\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Gratis'} · ${_difficultyLabel(quest.difficulty)}',
+              '${quest.durationMinutes} min · ${quest.estimatedCost > 0 ? '-\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Free'} · ${_difficultyLabel(quest.difficulty)}',
             ),
             if (quest.isSponsored) ...[
               const SizedBox(height: 4),
@@ -917,8 +917,8 @@ class _DifficultyBadge extends StatelessWidget {
 }
 
 String _difficultyLabel(String difficulty) => switch (difficulty) {
-  'easy' => 'Fácil',
-  'medium' => 'Media',
-  'hard' => 'Difícil',
+  'easy' => 'Easy',
+  'medium' => 'Medium',
+  'hard' => 'Hard',
   _ => difficulty,
 };

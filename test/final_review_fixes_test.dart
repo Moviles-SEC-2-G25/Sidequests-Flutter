@@ -472,7 +472,7 @@ void main() {
         final ok = await _withinLimit(tester, viewModel.abandonQuest(attempt, reason: AbandonmentReason.other));
 
         expect(ok, isFalse);
-        expect(viewModel.errorMessage, startsWith('Sin conexión'));
+        expect(viewModel.errorMessage, startsWith('Offline'));
       });
 
       testWidgets('Explore: catálogo y lista guardada, sin spinner, aunque el GPS tampoco responda', (
@@ -502,7 +502,7 @@ void main() {
         expect(viewModel.isLoading, isFalse);
         expect(viewModel.filteredCatalog.map((q) => q.id), ['a', 'b']);
         expect(find.text('Quest a'), findsOneWidget);
-        expect(find.text('Recomendaciones guardadas'), findsOneWidget);
+        expect(find.text('Saved recommendations'), findsOneWidget);
         expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(tracker.of(AnalyticsEventType.recommendationShown), isEmpty);
 
@@ -537,11 +537,11 @@ void main() {
         await tester.pump();
 
         await tester.scrollUntilVisible(
-          find.text('Desbloquear con huella'),
+          find.text('Unlock with fingerprint'),
           300,
           scrollable: find.byType(Scrollable).first,
         );
-        await tester.tap(find.widgetWithText(SwitchListTile, 'Desbloquear con huella'));
+        await tester.tap(find.widgetWithText(SwitchListTile, 'Unlock with fingerprint'));
         await tester.pump();
         await tester.pump();
 
@@ -773,7 +773,7 @@ void main() {
 
       expect(find.text('A-0'), findsOneWidget);
       expect(find.text('B-0'), findsNothing);
-      expect(find.text('Completar misión →'), findsOneWidget);
+      expect(find.text('Complete quest →'), findsOneWidget);
     });
   });
 
@@ -1084,8 +1084,8 @@ void main() {
       await tester.pump();
 
       expect(find.text('permission denied'), findsNothing);
-      expect(find.text('Guardar'), findsOneWidget);
-      expect(find.text('Reintentar'), findsNothing);
+      expect(find.text('Save'), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
       expect(viewModel.ratingErrorMessage, isNull);
     });
   });

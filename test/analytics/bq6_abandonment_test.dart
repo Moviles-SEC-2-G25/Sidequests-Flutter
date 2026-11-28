@@ -281,7 +281,7 @@ void main() {
     });
 
     test('every reason has a label in Spanish', () {
-      expect(AbandonmentReason.tooFar.label, 'Quedaba muy lejos');
+      expect(AbandonmentReason.tooFar.label, 'It was too far away');
       expect(AbandonmentReason.values.every((reason) => reason.label.isNotEmpty), isTrue);
     });
   });
@@ -336,7 +336,7 @@ void main() {
         'attempt_id': 'uq-1',
         'reason': 'too_far',
         'reason_code': 'too_far',
-        'reason_label': 'Quedaba muy lejos',
+        'reason_label': 'It was too far away',
         'quest_duration_minutes': 60,
         'estimated_cost': 12.0,
         'quest_distance_label': '$meters m',
@@ -537,7 +537,7 @@ void main() {
 
     test('a failed attempt can be retried and tracks nothing until it works', () async {
       await loadMission();
-      repository.abandonError = const AppException('Sin conexión', isRetryable: true);
+      repository.abandonError = const AppException('Offline', isRetryable: true);
 
       expect(await viewModel.abandonQuest(_attempt(), reason: AbandonmentReason.other), isFalse);
       await settle();
