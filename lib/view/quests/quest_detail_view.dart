@@ -13,6 +13,7 @@ import '../widgets/offline_notice.dart';
 import '../widgets/quest_address.dart';
 import '../widgets/quest_compass.dart';
 import '../widgets/sponsored_badge.dart';
+import '../widgets/sq_components.dart';
 import 'mission_tab_view.dart';
 
 /// Quest detail: full info, a 2x2 stat grid, difficulty banner, step count
@@ -79,171 +80,224 @@ class _QuestDetailViewState extends State<QuestDetailView> {
     final stepsUnavailable = questViewModel.stepsUnavailableMessage(quest.id);
     final isOffline = watchIsOffline(context);
 
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final faded = scheme.onSurface.withValues(alpha: .62);
+
+    // Kotlin's QuestDetailScreen: "← Back", pills + category, emoji, title,
+    // description, the four facts, difficulty, weather, compass, the steps
+    // and the call to action, 16 dp apart.
+    final sections = <Widget>[
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('← Back')),
+      ),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (quest.isNew) SqMetaPill('New', color: AppColors.amber.withValues(alpha: .25)),
+              if (quest.isSponsored) SponsoredBadge(sponsorName: quest.sponsorName, showSponsorName: true),
+              if (quest.isGroup) const SqMetaPill('Group quest'),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  categoryLabelEs(quest.category).toUpperCase(),
+                  style: textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 36)),
+          const SizedBox(height: 8),
+          Text(quest.title, style: textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(quest.description, style: textTheme.bodyMedium),
+          const SizedBox(height: 8),
+          QuestAddress(quest: quest),
+        ],
+      ),
+      _FactRow(
+        children: [
+          _QuestFact(emoji: '⏱', label: 'Duration', value: '${quest.durationMinutes} min'),
+          _QuestFact(
+            emoji: '💰',
+            label: 'Est. cost',
+            value: quest.estimatedCost > 0 ? '\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Free',
+          ),
+        ],
+      ),
+      _FactRow(
+        children: [
+          _QuestFact(
+            emoji: quest.locationMode == 'anywhere' ? '🏠' : '📍',
+            label: 'Location',
+            value: quest.locationName ?? (quest.locationMode == 'anywhere' ? 'Anywhere' : 'Nearby'),
+          ),
+          _QuestFact(emoji: '👥', label: 'Social', value: _socialLabel(quest.socialLevel)),
+        ],
+      ),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(16)),
+        child: Text(
+          'Difficulty: ${_difficultyLabel(quest.difficulty)}',
+          style: textTheme.titleSmall?.copyWith(color: scheme.onSecondaryContainer),
+        ),
+      ),
+      _WeatherCard(quest: quest),
+      if (quest.latitude != null && quest.longitude != null) QuestCompass(quest: quest),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            stepCount != null ? "What you'll do ($stepCount steps)" : "What you'll do",
+            style: textTheme.titleMedium,
+          ),
+          if (stepsUnavailable != null) ...[
+            const SizedBox(height: 9),
+            Text(stepsUnavailable, style: textTheme.bodyMedium),
+          ],
+          for (final (index, step) in stepsForThisQuest.indexed) ...[
+            const SizedBox(height: 9),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.primary.withValues(alpha: .14),
+                  ),
+                  child: Text(
+                    '${index + 1}',
+                    style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(step.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                      Text(step.description, style: textTheme.bodyMedium?.copyWith(color: faded)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (isCompleted)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.secondary.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Text(
+                '✓ You already completed this quest',
+                style: TextStyle(color: AppColors.secondary, fontWeight: FontWeight.w700),
+              ),
+            )
+          else if (isUnfinished) ...[
+            _InProgressCard(done: userQuest.completedSteps.length, total: stepCount),
+            const SizedBox(height: 10),
+            FilledButton(
+              style: sqPrimaryButtonStyle(AppColors.secondary),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MissionTabView(isTab: false)),
+              ),
+              child: const Text('Continue quest →'),
+            ),
+          ] else if (isOffline) ...[
+            // Starting needs the server: blocked up front, saying why.
+            const OfflineNotice(message: OfflineMessages.startMission),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.wifi_off, size: 18),
+              label: const Text('Offline'),
+            ),
+          ] else
+            FilledButton(
+              onPressed: _isAccepting ? null : _accept,
+              child: _isAccepting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Accept quest →'),
+            ),
+        ],
+      ),
+    ];
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                backgroundColor: Theme.of(context).cardColor,
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (quest.isNew) _pill('NEW', AppColors.amber, Colors.white),
-                  if (quest.isSponsored)
-                    SponsoredBadge(sponsorName: quest.sponsorName, showSponsorName: true),
-                  Text(
-                    categoryLabelEs(quest.category).toUpperCase(),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.outline),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 36)),
-              const SizedBox(height: 8),
-              Text(quest.title, style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 12),
-              Text(quest.description, style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 12),
-              QuestAddress(quest: quest),
-              const SizedBox(height: 20),
-              _StatGrid(
-                children: [
-                  _StatCard(
-                    icon: Icons.access_time,
-                    label: 'DURATION',
-                    value: '${quest.durationMinutes} min',
-                  ),
-                  _StatCard(
-                    icon: Icons.payments_outlined,
-                    label: 'APPROX. COST',
-                    value: quest.estimatedCost > 0
-                        ? '\$${quest.estimatedCost.toStringAsFixed(0)}'
-                        : 'Free',
-                  ),
-                  _StatCard(
-                    icon: Icons.location_on_outlined,
-                    label: 'LOCATION',
-                    value: quest.locationMode == 'anywhere' ? 'Anywhere' : 'Nearby',
-                  ),
-                  _StatCard(
-                    icon: Icons.people_outline,
-                    label: 'SOCIAL',
-                    value: _socialLabel(quest.socialLevel),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.secondaryContainerLight,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.eco_outlined, color: AppColors.secondaryDark),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Difficulty: ${_difficultyLabel(quest.difficulty)}',
-                            style: const TextStyle(
-                              color: AppColors.secondaryDark,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            quest.difficulty == 'easy'
-                                ? 'No planning needed, start now'
-                                : 'A little preparation can help',
-                            style: const TextStyle(color: AppColors.secondaryDark, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              _WeatherCard(quest: quest),
-              const SizedBox(height: 16),
-              QuestCompass(quest: quest),
-              Text(
-                stepCount != null ? "What you'll do ($stepCount steps)" : "What you'll do",
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              if (stepsUnavailable != null) ...[
-                const SizedBox(height: 4),
-                Text(stepsUnavailable, style: Theme.of(context).textTheme.bodySmall),
+              for (final (index, section) in sections.indexed) ...[
+                if (index > 0) const SizedBox(height: 16),
+                section,
               ],
-              const SizedBox(height: 24),
-              if (isCompleted)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.secondaryContainerLight,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Text(
-                    '✓ You already completed this quest',
-                    style: TextStyle(color: AppColors.secondaryDark, fontWeight: FontWeight.w700),
-                  ),
-                )
-              else if (isUnfinished)
-                FilledButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const MissionTabView(isTab: false)),
-                  ),
-                  child: const Text('Continue quest →'),
-                )
-              else if (isOffline) ...[
-                // Starting needs the server: blocked up front, saying why.
-                const OfflineNotice(message: OfflineMessages.startMission),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: null,
-                  icon: const Icon(Icons.wifi_off, size: 18),
-                  label: const Text('Offline'),
-                ),
-              ] else
-                FilledButton(
-                  onPressed: _isAccepting ? null : _accept,
-                  child: _isAccepting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Accept quest →'),
-                ),
             ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _pill(String text, Color color, Color textColor) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
-    child: Text(text, style: TextStyle(color: textColor, fontWeight: FontWeight.w700, fontSize: 11)),
-  );
+/// Kotlin's "⚡ IN PROGRESS" card above "Continue quest →".
+class _InProgressCard extends StatelessWidget {
+  final int done;
+  final int? total;
+
+  const _InProgressCard({required this.done, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = total;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.secondary.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SqSectionLabel('⚡ IN PROGRESS', color: AppColors.secondary, fontSize: 11),
+          const SizedBox(height: 6),
+          Text(
+            steps == null ? '$done steps completed' : '$done of $steps steps completed',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          if (steps != null && steps > 0) ...[
+            const SizedBox(height: 6),
+            SqProgressBar(value: done / steps, height: 6),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// "Clima en el lugar": weather at the quest's coordinates, or at the user's
@@ -301,138 +355,99 @@ class _WeatherCardState extends State<_WeatherCard> {
   @override
   Widget build(BuildContext context) {
     final weather = _weather;
-    if (weather == null) {
-      if (!_isUnavailable) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.only(top: 16),
-        child: Text(
-          'Weather not available offline',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      );
-    }
+    final textTheme = Theme.of(context).textTheme;
+    // Kotlin's WeatherReadingCard: a plain 16 dp card with a titleSmall title.
+    final quest = widget.quest;
+    final title = quest.locationMode == 'gps' && quest.latitude != null && quest.longitude != null
+        ? 'Weather at the location'
+        : 'Weather near you';
+    if (weather == null && !_isUnavailable) return const SizedBox.shrink();
 
-    final outline = Theme.of(context).colorScheme.outline;
-    final rainChance = weather.maxPrecipitationProbability;
-    final age = DateTime.now().difference(weather.fetchedAt);
-    final showRainChance = !weather.isStale || age <= _rainForecastMaxAge;
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: Container(
-        width: double.infinity,
+    final lines = <Widget>[Text(title, style: textTheme.titleSmall)];
+    if (weather == null) {
+      lines.add(Text('Weather not available offline', style: textTheme.bodyLarge));
+    } else {
+      final rainChance = weather.maxPrecipitationProbability;
+      final age = DateTime.now().difference(weather.fetchedAt);
+      final showRainChance = !weather.isStale || age <= _rainForecastMaxAge;
+      lines.add(Text('${weather.temperatureC.round()}°C · ${weather.description}', style: textTheme.bodyLarge));
+      if (showRainChance) lines.add(Text('Rain in the next 3 h: $rainChance%', style: textTheme.bodySmall));
+      if (weather.isStale) {
+        lines.add(Text('Last update: ${age.inMinutes} min ago · offline', style: textTheme.bodySmall));
+      }
+    }
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: outline.withValues(alpha: 0.15)),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              weather.isRainy ? Icons.umbrella_outlined : Icons.wb_sunny_outlined,
-              color: weather.isRainy ? AppColors.primary : AppColors.amber,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'WEATHER AT THE LOCATION',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 0.5),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${weather.temperatureC.round()}°C · ${weather.description}',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  if (showRainChance)
-                    Text(
-                      'Rain in the next 3 h: $rainChance%',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  if (weather.isStale)
-                    Text(
-                      'Last update: ${age.inMinutes} min ago · offline',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
-              ),
-            ),
-          ],
+        child: SizedBox(
+          width: double.infinity,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (index, line) in lines.indexed) ...[if (index > 0) const SizedBox(height: 5), line],
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// The 2x2 stat cards. Each row is as tall as its tallest card, instead of the
-/// fixed aspect ratio a GridView imposes: "Individual — solo tú" wraps to two
-/// lines on a 360 dp phone (or with a larger system font) and overflowed it.
-class _StatGrid extends StatelessWidget {
+/// Two facts side by side, as tall as the taller one ("Solo — just you"
+/// wraps on a 360 dp phone or with a larger system font).
+class _FactRow extends StatelessWidget {
   final List<Widget> children;
 
-  const _StatGrid({required this.children});
+  const _FactRow({required this.children});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (var i = 0; i < children.length; i += 2) ...[
-          if (i > 0) const SizedBox(height: 12),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: children[i]),
-                const SizedBox(width: 12),
-                Expanded(child: i + 1 < children.length ? children[i + 1] : const SizedBox()),
-              ],
-            ),
-          ),
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: children[0]),
+          const SizedBox(width: 10),
+          Expanded(child: children.length > 1 ? children[1] : const SizedBox()),
         ],
-      ],
+      ),
     );
   }
 }
 
-class _StatCard extends StatelessWidget {
-  final IconData icon;
+/// Kotlin's QuestFact: bordered card, emoji, a tiny uppercase label and the value.
+class _QuestFact extends StatelessWidget {
+  final String emoji;
   final String label;
   final String value;
 
-  const _StatCard({required this.icon, required this.label, required this.value});
+  const _QuestFact({required this.emoji, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 64),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.15)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return SqOutlinedCard(
+      padding: const EdgeInsets.all(14),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: Theme.of(context).colorScheme.outline),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  label,
+          Text(emoji, style: const TextStyle(fontSize: 22)),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label.toUpperCase(),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 0.5),
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: onSurface.withValues(alpha: .45)),
                 ),
-              ),
-            ],
+                Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              ],
+            ),
           ),
-          const SizedBox(height: 4),
-          Text(value, style: Theme.of(context).textTheme.titleSmall),
         ],
       ),
     );
@@ -447,8 +462,8 @@ String _difficultyLabel(String difficulty) => switch (difficulty) {
 };
 
 String _socialLabel(String socialLevel) => switch (socialLevel) {
-  'solo' => 'Solo — just you',
-  'social' => 'Social — with others',
+  'solo' => 'Solo',
+  'social' => 'Social',
   'group' => 'Group',
   _ => socialLevel,
 };

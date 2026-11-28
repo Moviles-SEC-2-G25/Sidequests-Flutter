@@ -5,7 +5,6 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/app_theme.dart';
 import '../../core/distance.dart';
 import '../../models/quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
@@ -28,42 +27,33 @@ class QuestCompass extends StatelessWidget {
     final userLat = vm.userLatitude;
     final userLng = vm.userLongitude;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.15),
-        ),
-      ),
-      child: userLat == null || userLng == null
-          ? Row(
-              children: [
-                const Icon(
-                  Icons.explore_outlined,
-                  color: AppColors.secondaryDark,
+    // Kotlin's QuestCompass: a plain 16 dp card, 16 dp padding.
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: userLat == null || userLng == null
+            ? Row(
+                children: [
+                  const Expanded(
+                    child: Text('Turn on location to see the compass'),
+                  ),
+                  TextButton(
+                    onPressed: vm.isLocatingUser ? null : vm.requestUserLocation,
+                    child: const Text('Turn on'),
+                  ),
+                ],
+              )
+            : _CompassArrow(
+                bearing: Geolocator.bearingBetween(
+                  userLat,
+                  userLng,
+                  questLat,
+                  questLng,
                 ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text('Turn on your location to see the compass'),
-                ),
-                TextButton(
-                  onPressed: vm.isLocatingUser ? null : vm.requestUserLocation,
-                  child: const Text('Turn on'),
-                ),
-              ],
-            )
-          : _CompassArrow(
-              bearing: Geolocator.bearingBetween(
-                userLat,
-                userLng,
-                questLat,
-                questLng,
+                distanceKm: haversineKm(userLat, userLng, questLat, questLng),
               ),
-              distanceKm: haversineKm(userLat, userLng, questLat, questLng),
-            ),
+      ),
     );
   }
 }
@@ -101,14 +91,14 @@ class _CompassArrow extends StatelessWidget {
             RepaintBoundary(
               child: Transform.rotate(
                 angle: angle,
-                child: const Icon(
+                child: Icon(
                   Icons.navigation,
-                  size: 48,
-                  color: AppColors.primary,
+                  size: 40,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

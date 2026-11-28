@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
-import '../../core/category_labels.dart';
 import '../../core/number_format.dart';
 import '../../core/verification/step_verification_strategy.dart';
 import '../../core/verification/verification_strategies.dart';
@@ -12,6 +11,7 @@ import '../../models/user_quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
 import '../widgets/offline_notice.dart';
 import '../widgets/sponsored_badge.dart';
+import '../widgets/sq_components.dart';
 import 'abandon_mission_view.dart';
 import 'quest_completed_view.dart';
 
@@ -67,69 +67,93 @@ class _MissionTabViewState extends State<MissionTabView> {
     final quest = mission == null ? null : questViewModel.questById(mission.questId);
 
     return Scaffold(
-      appBar: !widget.isTab
-          ? AppBar(
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            )
-          : null,
       body: SafeArea(
         child: mission == null || quest == null
-            ? const _NoMissionState()
-            : _MissionChecklist(mission: mission, quest: quest, questViewModel: questViewModel),
+            ? _NoMissionState(isTab: widget.isTab)
+            : _MissionChecklist(
+                mission: mission,
+                quest: quest,
+                questViewModel: questViewModel,
+                isTab: widget.isTab,
+              ),
       ),
     );
   }
 }
 
+/// Kotlin's QuestHomeScreen: "No active quest" and a way to Explore.
 class _NoMissionState extends StatelessWidget {
-  const _NoMissionState();
+  final bool isTab;
+
+  const _NoMissionState({required this.isTab});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('⚡', style: TextStyle(fontSize: 48)),
-            const SizedBox(height: 16),
-            Text('You have no active quest', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Text(
-              'Accept a quest from Explore or Nearby to get started.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!isTab)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+            child: SqCircleButton(glyph: '←', fontSize: 22, onTap: () => Navigator.of(context).pop()),
+          ),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('No active quest', style: textTheme.headlineSmall),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Pick a quest in Explore to get started.',
+                    textAlign: TextAlign.center,
+                    style: textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () {
+                      // Back to HomeShell, whichever way this screen was reached.
+                      context.read<QuestViewModel>().requestExploreTab();
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    },
+                    child: const Text('Explore quests'),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: () {
-                // Back to HomeShell, whichever way this screen was reached.
-                context.read<QuestViewModel>().requestExploreTab();
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-              child: const Text('Explore quests'),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
 
+/// Kotlin's ActiveQuestScreen: round back button, "ACTIVE QUEST" + title and
+/// "Exit", a teal progress bar, the walking card and one card per step; the
+/// current step's card holds its verification and the complete button.
 class _MissionChecklist extends StatelessWidget {
   final UserQuest mission;
   final dynamic quest;
   final QuestViewModel questViewModel;
+  final bool isTab;
 
   const _MissionChecklist({
     required this.mission,
     required this.quest,
     required this.questViewModel,
+    required this.isTab,
   });
+
+  void _back(BuildContext context) {
+    if (isTab) {
+      context.read<QuestViewModel>().requestExploreTab();
+    } else {
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -141,149 +165,142 @@ class _MissionChecklist extends StatelessWidget {
     final currentIndex = mission.currentStep;
     // Progress is saved on the server: offline the mission can be reviewed,
     // and the location check-in and photo still wait on the device, but
-    // "Completar" is blocked instead of failing after the tap.
+    // "Complete" is blocked instead of failing after the tap.
     final isOffline = watchIsOffline(context);
+    final onSurface = Theme.of(context).colorScheme.onSurface;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 24)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            categoryLabelEs(quest.category).toUpperCase(),
-                            style: Theme.of(context).textTheme.labelSmall,
-                          ),
-                          Text(quest.title, style: Theme.of(context).textTheme.titleMedium),
-                          if (quest.isSponsored) ...[
-                            const SizedBox(height: 4),
-                            const SponsoredBadge(),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).push(
+    // A step marked done by mistake can be taken back: the last completed one
+    // offers it. Like "Complete", it's saved on the server (off without network).
+    final lastCompleted = mission.completedSteps.isEmpty ? null : mission.completedSteps.last;
+    Widget goBackButton() => Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: isOffline || questViewModel.isCompletingStep
+            ? null
+            : () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final wentBack = await questViewModel.goBackAStep(mission);
+                final error = questViewModel.stepErrorMessage;
+                if (!wentBack && error != null) {
+                  messenger.showSnackBar(SnackBar(content: Text(error)));
+                }
+              },
+        icon: const Icon(Icons.undo, size: 18),
+        label: const Text('Back to this step'),
+      ),
+    );
+
+    Widget completeButton() {
+      if (isOffline) {
+        return FilledButton.icon(
+          onPressed: null,
+          icon: const Icon(Icons.wifi_off, size: 18),
+          label: const Text('Connect to complete'),
+        );
+      }
+      return FilledButton(
+        style: sqPrimaryButtonStyle(AppColors.secondary),
+        // The step's strategy decides: a photo step stays blocked until
+        // its proof is uploaded; location never blocks.
+        onPressed: currentIndex < steps.length && questViewModel.canCompleteCurrentStep(steps[currentIndex], quest)
+            ? () async {
+                final navigator = Navigator.of(context);
+                final messenger = ScaffoldMessenger.of(context);
+                final completedMission = await questViewModel.completeCurrentStep(mission);
+                final error = questViewModel.stepErrorMessage;
+                if (error != null) {
+                  // Not saved (the connection dropped): the step stays where it was.
+                  messenger.showSnackBar(SnackBar(content: Text(error)));
+                  return;
+                }
+                if (!completedMission || !navigator.mounted) return;
+                navigator.push(
                   MaterialPageRoute(
-                    builder: (_) => AbandonMissionView(mission: mission, totalSteps: steps.length),
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
-                child: const Text('Leave'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // A check-in saved for the current step says what happens with it
-          // ("se guardará cuando vuelvas a tener conexión"): saying instead
-          // that the step needs the internet would contradict it.
-          if (isOffline && !questViewModel.isCheckInSavedForCurrentStep) ...[
-            const OfflineNotice(message: OfflineMessages.missionProgress),
-            const SizedBox(height: 16),
-          ],
-          if (steps.isNotEmpty) ...[
-            Row(
-              children: List.generate(steps.length, (index) {
-                final isDone = completed.contains(index);
-                final isCurrent = index == currentIndex;
-                return Expanded(
-                  child: Container(
-                    height: 6,
-                    margin: EdgeInsets.only(right: index == steps.length - 1 ? 0 : 4),
-                    decoration: BoxDecoration(
-                      color: isDone
-                          ? AppColors.secondary
-                          : isCurrent
-                          ? AppColors.primary
-                          : AppColors.primaryContainerLight,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
+                    builder: (_) => QuestCompletedView(mission: mission, quest: quest),
                   ),
                 );
-              }),
+              }
+            : null,
+        child: Text(currentIndex >= steps.length - 1 ? 'Complete quest →' : 'Complete this step →'),
+      );
+    }
+
+    final children = <Widget>[
+      Row(
+        children: [
+          SqCircleButton(glyph: '←', fontSize: 22, onTap: () => _back(context)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SqSectionLabel('ACTIVE QUEST', color: AppColors.secondary),
+                Text(quest.title, style: Theme.of(context).textTheme.titleLarge),
+                if (quest.isSponsored) ...[const SizedBox(height: 4), const SponsoredBadge()],
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              '${completed.length} of ${steps.length} steps completed',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            _WalkedStepsCard(mission: mission, questViewModel: questViewModel),
-            if (questViewModel.canShareBq11(mission, quest)) ...[
-              const SizedBox(height: 12),
-              _ZoneTimeSharingCard(questViewModel: questViewModel),
-            ],
-            const SizedBox(height: 16),
-            for (var i = 0; i < steps.length; i++)
-              _StepTile(
-                step: steps[i],
-                index: i,
-                isDone: completed.contains(i),
-                isCurrent: i == currentIndex,
-                questViewModel: questViewModel,
-                // Only the current step is being verified against live
-                // evidence; one row per part of its strategy.
-                verifications: i == currentIndex
-                    ? [
-                        for (final part in questViewModel.verificationStrategyFor(steps[i]).parts)
-                          (part, questViewModel.verificationResultFor(part, quest)),
-                      ]
-                    : const [],
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AbandonMissionView(mission: mission, totalSteps: steps.length),
               ),
-            const SizedBox(height: 12),
-            if (isOffline)
-              FilledButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.wifi_off, size: 18),
-                label: const Text('Connect to complete'),
-              )
-            else
-              FilledButton(
-                // The step's strategy decides: a photo step stays blocked until
-                // its proof is uploaded; location never blocks.
-                onPressed:
-                    currentIndex < steps.length &&
-                        questViewModel.canCompleteCurrentStep(steps[currentIndex], quest)
-                    ? () async {
-                        final navigator = Navigator.of(context);
-                        final messenger = ScaffoldMessenger.of(context);
-                        final completedMission = await questViewModel.completeCurrentStep(mission);
-                        final error = questViewModel.stepErrorMessage;
-                        if (error != null) {
-                          // Not saved (the connection dropped): the step stays where it was.
-                          messenger.showSnackBar(SnackBar(content: Text(error)));
-                          return;
-                        }
-                        if (!completedMission || !navigator.mounted) return;
-                        navigator.push(
-                          MaterialPageRoute(
-                            builder: (_) => QuestCompletedView(mission: mission, quest: quest),
-                          ),
-                        );
-                      }
-                    : null,
-                child: Text(
-                  currentIndex >= steps.length - 1 ? 'Complete quest →' : 'Complete this step →',
-                ),
-              ),
-          ] else
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Text('This quest has no steps defined.'),
             ),
+            style: TextButton.styleFrom(
+              foregroundColor: onSurface.withValues(alpha: .6),
+              minimumSize: const Size(56, 48),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Exit', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+      if (steps.isNotEmpty) SqProgressBar(value: completed.length / steps.length),
+      // A check-in saved for the current step says what happens with it
+      // ("it will be saved when you are back online"): saying instead that
+      // the step needs the internet would contradict it.
+      if (isOffline && !questViewModel.isCheckInSavedForCurrentStep)
+        const OfflineNotice(message: OfflineMessages.missionProgress),
+      if (steps.isNotEmpty) ...[
+        _WalkedStepsCard(mission: mission, questViewModel: questViewModel),
+        if (questViewModel.canShareBq11(mission, quest)) _ZoneTimeSharingCard(questViewModel: questViewModel),
+        for (var i = 0; i < steps.length; i++)
+          _StepTile(
+            step: steps[i],
+            index: i,
+            isDone: completed.contains(i),
+            isCurrent: i == currentIndex,
+            questViewModel: questViewModel,
+            // Only the current step is being verified against live
+            // evidence; one row per part of its strategy.
+            verifications: i == currentIndex
+                ? [
+                    for (final part in questViewModel.verificationStrategyFor(steps[i]).parts)
+                      (part, questViewModel.verificationResultFor(part, quest)),
+                  ]
+                : const [],
+            action: i == currentIndex && !completed.contains(i)
+                ? completeButton()
+                : i == lastCompleted && questViewModel.canGoBackAStep(mission)
+                ? goBackButton()
+                : null,
+          ),
+        // A finished checklist whose last step isn't marked yet keeps a button.
+        if (currentIndex >= steps.length) completeButton(),
+      ] else
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Text('This quest has no steps defined.'),
+        ),
+    ];
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (index, child) in children.indexed) ...[if (index > 0) const SizedBox(height: 14), child],
         ],
       ),
     );
@@ -326,48 +343,46 @@ class _WalkedStepsCard extends StatelessWidget {
     };
     final isCounting = questViewModel.stepStatus == StepCounterStatus.counting && isThisMission;
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.secondary.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.directions_walk,
-            color: isCounting ? AppColors.secondary : Theme.of(context).colorScheme.outline,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (title != null)
-                  Text(title, style: textTheme.titleSmall)
-                else
-                  // Only this text rebuilds with each step; the ViewModel
-                  // doesn't notify for them (micro-optimization).
-                  ValueListenableBuilder<int?>(
-                    valueListenable: questViewModel.missionStepsListenable,
-                    builder: (context, steps, _) => Text(
-                      steps == null
-                          ? 'Waiting for your first steps…'
-                          : '${formatThousands(steps)} steps walked',
-                      style: textTheme.titleMedium,
+    // Kotlin's QuestWalkingCard: a plain card, 16 dp padding.
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(
+              Icons.directions_walk,
+              color: isCounting ? AppColors.secondary : Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (title != null)
+                    Text(title, style: textTheme.titleMedium)
+                  else
+                    // Only this text rebuilds with each step; the ViewModel
+                    // doesn't notify for them (micro-optimization).
+                    ValueListenableBuilder<int?>(
+                      valueListenable: questViewModel.missionStepsListenable,
+                      builder: (context, steps, _) => Text(
+                        steps == null
+                            ? 'Waiting for your first steps…'
+                            : '${formatThousands(steps)} steps walked',
+                        style: steps == null ? textTheme.titleMedium : textTheme.headlineSmall,
+                      ),
                     ),
-                  ),
-                if (subtitle != null) Text(subtitle, style: textTheme.bodySmall),
-              ],
+                  if (subtitle != null) Text(subtitle, style: textTheme.bodySmall),
+                ],
+              ),
             ),
-          ),
-          if (actionLabel != null)
-            TextButton(
-              onPressed: questViewModel.retryStepTracking,
-              child: Text(actionLabel),
-            ),
-        ],
+            if (actionLabel != null)
+              TextButton(
+                onPressed: questViewModel.retryStepTracking,
+                child: Text(actionLabel),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -385,11 +400,8 @@ class _ZoneTimeSharingCard extends StatelessWidget {
     final error = questViewModel.bq11SharingError;
     // Material, not a decorated Container: the switch's ripple paints on it.
     return Material(
-      color: Theme.of(context).cardColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
-      ),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       clipBehavior: Clip.antiAlias,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 4, 4, 8),
@@ -432,6 +444,9 @@ class _StepTile extends StatelessWidget {
   final QuestViewModel questViewModel;
   final List<(StepVerificationStrategy, VerificationResult)> verifications;
 
+  /// The current step's complete button, inside its card as in Kotlin.
+  final Widget? action;
+
   const _StepTile({
     required this.step,
     required this.index,
@@ -439,68 +454,75 @@ class _StepTile extends StatelessWidget {
     required this.isCurrent,
     required this.questViewModel,
     required this.verifications,
+    this.action,
   });
 
   @override
   Widget build(BuildContext context) {
-    final textColor = isDone ? AppColors.secondaryDark : null;
+    final scheme = Theme.of(context).colorScheme;
+    // Kotlin's step card: teal when done, indigo when current, bordered surface otherwise.
+    final background = isDone
+        ? AppColors.secondary.withValues(alpha: .10)
+        : isCurrent
+        ? AppColors.primary.withValues(alpha: .11)
+        : Colors.transparent;
+    final border = isDone
+        ? AppColors.secondary.withValues(alpha: .5)
+        : isCurrent
+        ? AppColors.primary.withValues(alpha: .42)
+        : scheme.outline;
+    final badge = isDone
+        ? AppColors.secondary
+        : isCurrent
+        ? AppColors.primary
+        : scheme.primaryContainer;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDone
-            ? AppColors.secondaryContainerLight
-            : isCurrent
-            ? Theme.of(context).cardColor
-            : Theme.of(context).cardColor.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(16),
-        border: isCurrent ? Border.all(color: AppColors.primary, width: 2) : null,
+        color: Color.alphaBlend(background, scheme.surface),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: border),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 12,
-                backgroundColor: isDone
-                    ? AppColors.secondary
-                    : isCurrent
-                    ? AppColors.primary
-                    : Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
-                child: isDone
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
-                    : Text(
-                        '${index + 1}',
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
-                      ),
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: badge),
+                child: Text(
+                  isDone ? '✓' : '${index + 1}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: isDone || isCurrent ? Colors.white : scheme.onSurface,
+                  ),
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      step.title,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: textColor,
-                        decoration: isDone ? TextDecoration.lineThrough : null,
-                        fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                    Text(step.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                    if (step.description.isNotEmpty)
+                      Text(
+                        step.description,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurface.withValues(alpha: .64),
+                        ),
                       ),
-                    ),
-                    if (isCurrent && step.description.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(step.description, style: Theme.of(context).textTheme.bodySmall),
-                    ],
                   ],
                 ),
               ),
             ],
           ),
           if (isCurrent && verifications.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
             for (final (part, result) in verifications)
               part is PhotoVerification
                   ? _PhotoProofRow(questViewModel: questViewModel, result: result)
@@ -511,6 +533,7 @@ class _StepTile extends StatelessWidget {
                           part is LocationVerification && questViewModel.isCheckInSavedForCurrentStep,
                     ),
           ],
+          if (action != null) ...[const SizedBox(height: 12), action!],
         ],
       ),
     );
@@ -534,7 +557,7 @@ class _VerificationRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLocation = part is LocationVerification;
     final label = isLocation ? 'Location' : 'Verification photo';
-    final outline = Theme.of(context).colorScheme.outline;
+    final outline = Theme.of(context).colorScheme.onSurfaceVariant;
     final (IconData icon, Color iconColor, String detail) = switch (result) {
       _ when isSavedForLater => (
         Icons.check_circle,
@@ -547,7 +570,7 @@ class _VerificationRow extends StatelessWidget {
         AppColors.primary,
         'Get closer to the place · you are ${_formatDistance(distance)} away',
       ),
-      Pending() => (Icons.my_location, AppColors.primary, 'Finding your location…'),
+      Pending() => (Icons.my_location, Theme.of(context).colorScheme.primary, 'Finding your location…'),
       Unavailable(:final reason) => (
         isLocation ? Icons.location_off_outlined : Icons.camera_alt_outlined,
         outline,
@@ -557,10 +580,12 @@ class _VerificationRow extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(12),
+        color: result is Verified
+            ? AppColors.secondary.withValues(alpha: .16)
+            : Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
@@ -599,7 +624,7 @@ class _PhotoProofRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final outline = Theme.of(context).colorScheme.outline;
+    final outline = Theme.of(context).colorScheme.onSurfaceVariant;
     final pending = questViewModel.currentPendingPhotoProof;
     // The camera and the copy on the device work offline; only the upload
     // waits, and it starts by itself when the connection is back.
@@ -648,10 +673,12 @@ class _PhotoProofRow extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(12),
+        color: result is Verified
+            ? AppColors.secondary.withValues(alpha: .16)
+            : Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(16),
       ),
       // The action sits under the text, not beside it: "Reintentar subida"
       // next to a long error message overflows on a 360 px phone.

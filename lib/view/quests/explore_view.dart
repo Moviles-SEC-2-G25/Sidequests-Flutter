@@ -10,10 +10,12 @@ import '../../models/quest.dart';
 import '../../models/quest_recommendation.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../../viewmodel/theme_view_model.dart';
 import '../social/group_challenges_view.dart';
 import '../widgets/completion_likelihood_label.dart';
 import '../widgets/offline_notice.dart';
 import '../widgets/sponsored_badge.dart';
+import '../widgets/sq_components.dart';
 import 'mission_tab_view.dart';
 import 'quest_detail_view.dart';
 
@@ -109,9 +111,10 @@ class _ExploreViewState extends State<ExploreView> {
   /// to show about 5. And filteredCatalog, which filters and re-sorts the
   /// catalogue each time it's read, was read 3 times per build.
   ///
-  /// Change: the body is a CustomScrollView. The sections above stay one
-  /// SliverList of keyed boxes (same keys, so the banners appearing don't
-  /// recreate their State), and the missions are a SliverList.builder that
+  /// Change: the body is a CustomScrollView. The sections above are one box
+  /// of keyed children (same keys, so the banners appearing don't recreate
+  /// their State; they're few and always built), and the missions are a
+  /// SliverList.builder that
   /// builds only the rows inside the viewport plus its cache extent; the
   /// rest are built when scrolled to. filteredCatalog is read once per
   /// build and passed down. No itemExtent/prototypeItem: a row is taller
@@ -135,13 +138,18 @@ class _ExploreViewState extends State<ExploreView> {
     final missions = questViewModel.filteredCatalog;
     final likelihoodByCategory = questViewModel.completionLikelihoodByCategory;
 
-    Widget missionRow(BuildContext context, Quest quest) => _QuestRow(
-      quest: quest,
-      completionLevel: questViewModel.completionLevelFor(quest, likelihoodByCategory),
-      onTap: () {
-        questViewModel.registerInteraction();
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest)));
-      },
+    Widget missionRow(BuildContext context, Quest quest) => Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: _QuestRow(
+        quest: quest,
+        distanceKm: questViewModel.distanceKmTo(quest),
+        completionLevel: questViewModel.completionLevelFor(quest, likelihoodByCategory),
+        progressLabel: _progressLabel(questViewModel, quest),
+        onTap: () {
+          questViewModel.registerInteraction();
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => QuestDetailView(quest: quest)));
+        },
+      ),
     );
 
     final missionsHeader = _AllMissionsHeader(
@@ -173,11 +181,13 @@ class _ExploreViewState extends State<ExploreView> {
           child: CustomScrollView(
             slivers: [
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                sliver: SliverList.list(children: sections),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                sliver: SliverToBoxAdapter(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: sections),
+                ),
               ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                 sliver: SliverList.builder(
                   itemCount: widget.eagerMissionList ? 0 : missions.length,
                   itemBuilder: (context, index) => missionRow(context, missions[index]),
@@ -190,8 +200,25 @@ class _ExploreViewState extends State<ExploreView> {
     );
   }
 
-  /// Everything above "Todas las misiones", in order.
+  /// Kotlin's "In progress · 2/4" pill, for the quest the user has open.
+  static String? _progressLabel(QuestViewModel questViewModel, Quest quest) {
+    final mission = questViewModel.currentMission;
+    if (mission == null || mission.questId != quest.id) return null;
+    final total = questViewModel.stepsOf(quest.id).length;
+    if (total == 0) return 'In progress';
+    return 'In progress · ${mission.completedSteps.length}/$total';
+  }
+
+  /// Everything above the catalogue, in the Kotlin ExplorerScreen's order.
   List<Widget> _topSections(QuestViewModel questViewModel, ProfileViewModel profileViewModel) => [
+    if (questViewModel.currentMission != null) ...[
+      const SizedBox(height: 12),
+      _ContinueBanner(
+        key: const ValueKey('continue-banner'),
+        userQuestId: questViewModel.currentMission!.questId,
+      ),
+    ],
+    const SizedBox(height: 18),
     _Header(
       key: const ValueKey('header'),
       greeting: _greeting,
@@ -203,38 +230,33 @@ class _ExploreViewState extends State<ExploreView> {
       questViewModel: questViewModel,
       profileViewModel: profileViewModel,
     ),
-    const SizedBox(height: 16),
+    const SizedBox(height: 12),
     _SocialMoodFilter(
       key: const ValueKey('social-mood'),
       questViewModel: questViewModel,
       profileViewModel: profileViewModel,
     ),
-    if (questViewModel.currentMission != null) ...[
-      const SizedBox(height: 16),
-      _ContinueBanner(
-        key: const ValueKey('continue-banner'),
-        userQuestId: questViewModel.currentMission!.questId,
-      ),
-    ],
+    const SizedBox(height: 32),
+    _LiveContextCard(key: const ValueKey('live-context'), questViewModel: questViewModel),
+    const SizedBox(height: 14),
+    const _DiscoverMoreSection(key: ValueKey('discover-more')),
     if (questViewModel.isAdaptingToContext) ...[
-      const SizedBox(height: 16),
+      const SizedBox(height: 14),
       _ContextAdaptationBanner(
         key: const ValueKey('context-adaptation-banner'),
         appContext: questViewModel.currentContext!,
       ),
     ],
-    const SizedBox(height: 20),
+    const SizedBox(height: 14),
     _RecommendedSection(
       key: const ValueKey('recommended'),
       questViewModel: questViewModel,
       profileViewModel: profileViewModel,
     ),
-    const SizedBox(height: 24),
-    const _DiscoverMoreSection(key: ValueKey('discover-more')),
-    const SizedBox(height: 24),
   ];
 }
 
+/// Greeting, "What do you feel like today?" and Kotlin's round 🌙/☀️ toggle.
 class _Header extends StatelessWidget {
   final String greeting;
   final String? displayName;
@@ -243,25 +265,28 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = (displayName?.isNotEmpty ?? false) ? displayName![0].toUpperCase() : '🙂';
+    final themeViewModel = context.watch<ThemeViewModel?>();
+    final name = displayName?.trim();
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('$greeting 👋', style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 4),
+              Text(
+                (name?.isNotEmpty ?? false) ? '$greeting, $name' : greeting,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
               Text('What do you feel like today?', style: Theme.of(context).textTheme.headlineSmall),
             ],
           ),
         ),
-        CircleAvatar(
-          radius: 24,
-          backgroundColor: AppColors.primaryContainerLight,
-          child: Text(initials, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ),
+        if (themeViewModel != null)
+          SqCircleButton(
+            glyph: themeViewModel.isDarkMode ? '☀️' : '🌙',
+            tooltip: themeViewModel.isDarkMode ? 'Light mode' : 'Dark mode',
+            onTap: () => themeViewModel.setDarkMode(!themeViewModel.isDarkMode),
+          ),
       ],
     );
   }
@@ -277,11 +302,10 @@ class _TimeAndScopeFilters extends StatelessWidget {
     required this.profileViewModel,
   });
 
-  static const _minuteLabels = {10: '10m', 20: '20m', 30: '30m', 45: '45m', 60: '1 hr+'};
   static const _scopes = [
-    ('all', '🌐 All'),
-    ('gps', '📍 Nearby'),
-    ('anywhere', '🏠 Anywhere'),
+    ('all', '🌐 All', AppColors.primary),
+    ('gps', '📍 Nearby', AppColors.secondary),
+    ('anywhere', '🏠 Anywhere', AppColors.secondary),
   ];
 
   void _reload() => questViewModel.loadRecommendations(profileViewModel.preferences);
@@ -291,11 +315,10 @@ class _TimeAndScopeFilters extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        SqSectionLabel(
           'I HAVE...',
-          style: Theme.of(
-            context,
-          ).textTheme.labelMedium?.copyWith(letterSpacing: 1, fontWeight: FontWeight.w700),
+          fontSize: 11,
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55),
         ),
         const SizedBox(height: 8),
         SizedBox(
@@ -306,10 +329,9 @@ class _TimeAndScopeFilters extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               final minutes = kAvailableMinuteOptions[index];
-              final selected = questViewModel.selectedMinutes == minutes;
-              return ChoiceChip(
-                label: Text(_minuteLabels[minutes] ?? '$minutes m'),
-                selected: selected,
+              return SqChoiceChip(
+                label: '$minutes min',
+                selected: questViewModel.selectedMinutes == minutes,
                 onSelected: (_) {
                   questViewModel.setMinutes(minutes);
                   _reload();
@@ -319,33 +341,30 @@ class _TimeAndScopeFilters extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        // Wrap, not Row: the three chips (plus the selected one's checkmark)
-        // are wider than a 360 dp phone and overflowed it.
         Wrap(
           spacing: 8,
-          runSpacing: 8,
-          children: _scopes.map((entry) {
-            final (value, label) = entry;
-            final selected = questViewModel.selectedLocationScope == value;
-            return ChoiceChip(
-              label: Text(label),
-              selected: selected,
-              selectedColor: AppColors.amber,
-              onSelected: (_) {
-                questViewModel.setLocationScope(value);
-                _reload();
-              },
-            );
-          }).toList(),
+          runSpacing: 6,
+          children: [
+            for (final (value, label, color) in _scopes)
+              SqChoiceChip(
+                label: label,
+                selected: questViewModel.selectedLocationScope == value,
+                selectedColor: color,
+                onSelected: (_) {
+                  questViewModel.setLocationScope(value);
+                  _reload();
+                },
+              ),
+          ],
         ),
       ],
     );
   }
 }
 
-/// "¿Cómo te sientes hoy?" (BQ5): overrides the profile's social level for
-/// this session only and reloads recommend_quests. Starts on the profile's
-/// value so the user sees what they're changing from.
+/// "Social vibe for this session" (BQ5): overrides the profile's social level
+/// for this session only and reloads recommend_quests. Starts on the
+/// profile's value so the user sees what they're changing from.
 class _SocialMoodFilter extends StatelessWidget {
   final QuestViewModel questViewModel;
   final ProfileViewModel profileViewModel;
@@ -372,34 +391,29 @@ class _SocialMoodFilter extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'HOW ARE YOU FEELING TODAY?',
-          style: Theme.of(
-            context,
-          ).textTheme.labelMedium?.copyWith(letterSpacing: 1, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
+        Text('Social vibe for this session', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 4),
         Wrap(
           spacing: 8,
-          runSpacing: 8,
-          children: _levels.map((entry) {
-            final (value, emoji, name) = entry;
-            return ChoiceChip(
-              label: Text('$emoji $name'),
-              selected: current == value,
-              selectedColor: AppColors.secondary,
-              onSelected: (_) {
-                questViewModel.setSessionSocialLevel(value);
-                questViewModel.loadRecommendations(profileViewModel.preferences);
-              },
-            );
-          }).toList(),
+          runSpacing: 6,
+          children: [
+            for (final (value, emoji, name) in _levels)
+              SqChoiceChip(
+                label: '$emoji $name',
+                selected: current == value,
+                onSelected: (_) {
+                  questViewModel.setSessionSocialLevel(value);
+                  questViewModel.loadRecommendations(profileViewModel.preferences);
+                },
+              ),
+          ],
         ),
       ],
     );
   }
 }
 
+/// Kotlin's "YOUR ACTIVE QUEST" card: teal tint, progress bar, tap to go on.
 class _ContinueBanner extends StatelessWidget {
   final String userQuestId;
 
@@ -407,66 +421,171 @@ class _ContinueBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final quest = context.watch<QuestViewModel>().questById(userQuestId);
-    if (quest == null) return const SizedBox.shrink();
+    final questViewModel = context.watch<QuestViewModel>();
+    final quest = questViewModel.questById(userQuestId);
+    final mission = questViewModel.currentMission;
+    if (quest == null || mission == null) return const SizedBox.shrink();
+    final total = questViewModel.stepsOf(quest.id).length;
+    final done = mission.completedSteps.length;
+    final faded = Theme.of(context).colorScheme.onSurface.withValues(alpha: .62);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
+    return SqTintCard(
+      color: AppColors.secondary.withValues(alpha: .14),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const MissionTabView(isTab: false)),
       ),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppColors.primary, AppColors.primaryLight],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'PICK UP WHERE YOU LEFT OFF',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${quest.emoji ?? '🎯'}  ${quest.title}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
-                  if (quest.isSponsored) ...[
-                    const SizedBox(height: 6),
-                    const SponsoredBadge(),
-                  ],
-                ],
-              ),
+      child: Row(
+        children: [
+          Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 30)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SqSectionLabel('YOUR ACTIVE QUEST', color: AppColors.secondary),
+                const SizedBox(height: 4),
+                Text(quest.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                if (quest.isSponsored) ...[const SizedBox(height: 4), const SponsoredBadge()],
+                const SizedBox(height: 4),
+                SqProgressBar(value: total == 0 ? 0 : done / total, height: 5),
+                const SizedBox(height: 4),
+                Text(
+                  total == 0 ? 'Tap to continue' : '$done of $total steps · tap to continue',
+                  style: TextStyle(fontSize: 11, color: faded),
+                ),
+              ],
             ),
-            const Icon(Icons.arrow_forward, color: Colors.white),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// "Descubre más": the way into Retos en grupo, like Kotlin's "Discover
-/// more" → "Group challenges" shortcut. Opens offline too: the screen shows
-/// the challenges saved on the phone and says why changes wait.
+/// Kotlin's "LIVE CONTEXT" card: time of day, weather and location from the
+/// last context snapshot, with "Enable location" or "Refresh context".
+class _LiveContextCard extends StatelessWidget {
+  final QuestViewModel questViewModel;
+
+  const _LiveContextCard({super.key, required this.questViewModel});
+
+  static String _timeLabel(String timeOfDay) => switch (timeOfDay) {
+    'morning' => 'Morning',
+    'afternoon' => 'Afternoon',
+    'evening' => 'Evening',
+    'night' => 'Night',
+    _ => timeOfDay,
+  };
+
+  static String _weatherLabel(AppContext appContext) {
+    final code = appContext.weatherCode;
+    if (code == null) return 'Weather unavailable';
+    if (appContext.isRainy) return 'Rainy';
+    if (code <= 1) return 'Clear';
+    if (code <= 3) return 'Cloudy';
+    if (code == 45 || code == 48) return 'Foggy';
+    if ((code >= 71 && code <= 77) || code == 85 || code == 86) return 'Snowy';
+    return 'Mixed weather';
+  }
+
+  /// Reads the position (asking for permission when needed), then reloads
+  /// the suggestions with the new context so Explore follows it.
+  Future<void> _enableLocation(BuildContext context) async {
+    final profileViewModel = context.read<ProfileViewModel>();
+    final messenger = ScaffoldMessenger.of(context);
+    await questViewModel.requestUserLocation();
+    if (questViewModel.userLocationUnavailable) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Could not get your location. Check that location is on and Sidequests has permission.'),
+        ),
+      );
+      return;
+    }
+    await questViewModel.loadRecommendations(profileViewModel.preferences);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appContext = questViewModel.currentContext;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final hasLocation = questViewModel.userLatitude != null || (appContext?.hasLocation ?? false);
+    final scopeLabel = switch (questViewModel.selectedLocationScope) {
+      'gps' => 'Nearby',
+      'anywhere' => 'Anywhere',
+      _ => 'All',
+    };
+
+    return SqOutlinedCard(
+      borderColor: Theme.of(context).colorScheme.outline.withValues(alpha: .35),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SqSectionLabel('LIVE CONTEXT', color: AppColors.secondary, letterSpacing: 1.1),
+                    Text(
+                      appContext == null
+                          ? 'Updating context…'
+                          : '${_timeLabel(appContext.timeOfDay)} • ${_weatherLabel(appContext)}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      hasLocation ? '📍 Location available' : '📍 Location not available',
+                      style: TextStyle(fontSize: 12, color: onSurface.withValues(alpha: .62)),
+                    ),
+                  ],
+                ),
+              ),
+              Text(scopeLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (!hasLocation) ...[
+            Text(
+              'Enable location to use Nearby quests. Anywhere works without GPS.',
+              style: TextStyle(fontSize: 11, color: onSurface.withValues(alpha: .6)),
+            ),
+            const SizedBox(height: 8),
+            SqTintCard(
+              color: AppColors.secondary,
+              radius: 12,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              onTap: questViewModel.isLocatingUser ? null : () => _enableLocation(context),
+              child: Center(
+                child: Text(
+                  questViewModel.isLocatingUser ? 'Getting your location…' : 'Enable location',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
+                ),
+              ),
+            ),
+          ] else
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: questViewModel.refreshContext,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 15),
+                child: Center(
+                  child: Text(
+                    'Refresh context',
+                    style: TextStyle(color: AppColors.secondary, fontWeight: FontWeight.w700, fontSize: 12),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Kotlin's "Discover more": shortcut cards into the extra screens (here,
+/// Group challenges — it opens offline too, showing the saved challenges)
+/// and the shake hint.
 class _DiscoverMoreSection extends StatelessWidget {
   const _DiscoverMoreSection({super.key});
 
@@ -476,37 +595,66 @@ class _DiscoverMoreSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Discover more', style: textTheme.titleLarge),
-        const SizedBox(height: 10),
-        Card(
-          margin: EdgeInsets.zero,
-          child: ListTile(
-            onTap: () => Navigator.of(context).push(GroupChallengesView.route()),
-            leading: Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? AppColors.primaryContainerDark
-                    : AppColors.primaryContainerLight,
-                borderRadius: BorderRadius.circular(12),
+        Text('Discover more', style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _DiscoverShortcut(
+                emoji: '👥',
+                title: 'Group challenges',
+                subtitle: 'Explore together',
+                onTap: () => Navigator.of(context).push(GroupChallengesView.route()),
               ),
-              child: const Text('👥', style: TextStyle(fontSize: 22)),
             ),
-            title: Text('Group challenges', style: textTheme.titleSmall),
-            subtitle: const Text('Explore together'),
-            trailing: const Icon(Icons.chevron_right),
-          ),
+            const SizedBox(width: 10),
+            const Expanded(child: SizedBox()),
+          ],
         ),
+        const SizedBox(height: 8),
+        Text('Shake your phone for a surprise quest.', style: textTheme.bodySmall),
       ],
+    );
+  }
+}
+
+class _DiscoverShortcut extends StatelessWidget {
+  final String emoji;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _DiscoverShortcut({required this.emoji, required this.title, required this.subtitle, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return SqTintCard(
+      color: scheme.primaryContainer,
+      radius: 18,
+      padding: const EdgeInsets.all(14),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(emoji, style: textTheme.headlineSmall),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: scheme.onPrimaryContainer),
+          ),
+          const SizedBox(height: 6),
+          Text(subtitle, style: textTheme.bodySmall?.copyWith(color: scheme.onPrimaryContainer)),
+        ],
+      ),
     );
   }
 }
 
 /// Explains why [QuestViewModel.filteredCatalog] just reordered itself:
 /// rain or nighttime pushes 'anywhere' quests first. Rain takes priority
-/// over night in the message when both apply.
+/// over night in the message when both apply. A plain card, as in Kotlin.
 class _ContextAdaptationBanner extends StatelessWidget {
   final AppContext appContext;
 
@@ -515,30 +663,22 @@ class _ContextAdaptationBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String message;
-    final IconData icon;
     if (appContext.isRainy) {
       final age = appContext.weatherAge;
       message = age != null
           ? 'Based on the last known weather (${age.inMinutes} min ago): showing indoor quests first.'
           : "It's raining: showing indoor quests first.";
-      icon = Icons.umbrella_outlined;
     } else {
       message = "It's nighttime: prioritizing quests nearby or at home.";
-      icon = Icons.nightlight_outlined;
     }
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.primaryContainerLight,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: AppColors.primary, size: 18),
-          const SizedBox(width: 8),
-          Expanded(child: Text(message, style: Theme.of(context).textTheme.bodySmall)),
-        ],
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: SizedBox(
+          width: double.infinity,
+          child: Text(message, style: Theme.of(context).textTheme.bodyMedium),
+        ),
       ),
     );
   }
@@ -552,49 +692,42 @@ class _RecommendedSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (questViewModel.isLoadingRecommendations && questViewModel.recommendations.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (questViewModel.recommendations.isEmpty) return const SizedBox.shrink();
-
+    final isLoading = questViewModel.isLoadingRecommendations && questViewModel.recommendations.isEmpty;
     final likelihoodByCategory = questViewModel.completionLikelihoodByCategory;
     final awaitingLevel = questViewModel.socialLevelAwaitingReconnect;
     final isOffline = watchIsOffline(context);
+    final recommendations = questViewModel.recommendations;
+    final white78 = Colors.white.withValues(alpha: .78);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Flexible(
-              child: Text('Recommended for you', style: Theme.of(context).textTheme.titleLarge),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(20),
+        // Kotlin's indigo "SMART PICKS FOR YOU" header card.
+        SqTintCard(
+          color: AppColors.primary,
+          radius: 24,
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SqSectionLabel('SMART PICKS FOR YOU', color: AppColors.amber, letterSpacing: 1.1),
+              const SizedBox(height: 4),
+              Text(
+                'Matched to your time, budget and vibe',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
               ),
-              child: const Text(
-                'ANALYSIS',
-                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+              const SizedBox(height: 8),
+              Text(
+                isLoading ? 'Refreshing recommendations…' : 'Based on your time, interests and history',
+                style: TextStyle(color: white78, fontSize: 11, fontWeight: FontWeight.w600),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          'Based on your time, interests and history',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        if (questViewModel.completionLabelsFromCache) const _SavedDataNote(),
+        if (questViewModel.completionLabelsFromCache && recommendations.isNotEmpty) const _SavedDataNote(),
         if (questViewModel.recommendationsFromCache) ...[
           const SizedBox(height: 8),
-          const _Badge(text: 'Saved recommendations', color: AppColors.primaryContainerLight),
+          SqMetaPill('Saved recommendations', color: Theme.of(context).colorScheme.primaryContainer),
         ],
         if (awaitingLevel != null) ...[
           const SizedBox(height: 8),
@@ -602,59 +735,59 @@ class _RecommendedSection extends StatelessWidget {
             message: OfflineMessages.awaitingSocialLevel(_SocialMoodFilter.nameOf(awaitingLevel)),
           ),
         ],
-        if (isOffline) ...[
+        if (isOffline && recommendations.isNotEmpty) ...[
           const SizedBox(height: 8),
           const OfflineNotice(message: OfflineMessages.browseMissions),
         ],
-        const SizedBox(height: 12),
-        ...questViewModel.recommendations.asMap().entries.map((entry) {
-          final index = entry.key;
-          final recommendation = entry.value;
-          final quest = questViewModel.questById(recommendation.questId);
-          if (quest == null) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _RecommendationCard(
-              rank: index + 1,
-              quest: quest,
-              isOffline: isOffline,
-              recommendation: recommendation,
-              completionLevel: questViewModel.completionLevelFor(quest, likelihoodByCategory),
-              onDismiss: () =>
-                  questViewModel.skipRecommendation(quest.id, profileViewModel.preferences),
-              onTap: () {
-                questViewModel.registerInteraction();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => QuestDetailView(quest: quest, wasRecommended: true),
-                  ),
-                );
-              },
+        if (isLoading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        for (final recommendation in recommendations)
+          if (questViewModel.questById(recommendation.questId) case final quest?)
+            Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: _RecommendationCard(
+                quest: quest,
+                isOffline: isOffline,
+                recommendation: recommendation,
+                completionLevel: questViewModel.completionLevelFor(quest, likelihoodByCategory),
+                progressLabel: _ExploreViewState._progressLabel(questViewModel, quest),
+                onDismiss: () => questViewModel.skipRecommendation(quest.id, profileViewModel.preferences),
+                onTap: () {
+                  questViewModel.registerInteraction();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => QuestDetailView(quest: quest, wasRecommended: true),
+                    ),
+                  );
+                },
+              ),
             ),
-          );
-        }),
+        const SizedBox(height: 14),
       ],
     );
   }
 }
 
 class _RecommendationCard extends StatefulWidget {
-  final int rank;
   final Quest quest;
 
-  /// "Empezar ya" needs the internet: offline it's shown disabled, saying so.
+  /// "Start now" needs the internet: offline it's shown disabled, saying so.
   final bool isOffline;
   final QuestRecommendation recommendation;
   final CompletionLevel completionLevel;
+  final String? progressLabel;
   final VoidCallback onDismiss;
   final VoidCallback onTap;
 
   const _RecommendationCard({
-    required this.rank,
     required this.quest,
     this.isOffline = false,
     required this.recommendation,
     required this.completionLevel,
+    this.progressLabel,
     required this.onDismiss,
     required this.onTap,
   });
@@ -666,15 +799,12 @@ class _RecommendationCard extends StatefulWidget {
 class _RecommendationCardState extends State<_RecommendationCard> {
   bool _isStartingInstantPlan = false;
 
-  /// "Empezar ya" (BQ4's 'instant_plan' start path): skips QuestDetailView
+  /// "Start now" (BQ4's 'instant_plan' start path): skips QuestDetailView
   /// and goes straight to the mission checklist.
   ///
   /// Accepting the quest flips `currentMission` from null to non-null, which
-  /// makes Explore's unkeyed ListView insert the "Continúa donde lo
-  /// dejaste" banner right before this card's section — reshuffling this
-  /// widget to a new list slot and, since it has no Key, disposing and
-  /// recreating its State right under this `await`. So `navigator` and
-  /// `messenger` are captured up front and used unconditionally: they're
+  /// inserts the "continue" banner above this card's section. `navigator`
+  /// and `messenger` are captured up front and used unconditionally: they're
   /// the app's long-lived Navigator/ScaffoldMessenger, not tied to this
   /// (possibly-by-then-disposed) State. Only the `setState` calls need the
   /// `mounted` guard.
@@ -697,11 +827,8 @@ class _RecommendationCardState extends State<_RecommendationCard> {
 
   @override
   Widget build(BuildContext context) {
-    final rank = widget.rank;
     final quest = widget.quest;
     final recommendation = widget.recommendation;
-    final onDismiss = widget.onDismiss;
-    final onTap = widget.onTap;
     final reasons = <String>[
       if (recommendation.timeMatch) 'Fits your time',
       if (recommendation.interestMatch) 'Matches your interests',
@@ -709,138 +836,77 @@ class _RecommendationCardState extends State<_RecommendationCard> {
       if (recommendation.socialMatch) 'Great for you',
     ];
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Ink(
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.12)),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Wraps instead of overflowing on a narrow phone with every badge on.
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _Badge(text: '#$rank for you', color: AppColors.primaryContainerLight),
-                      if (quest.isNew)
-                        _Badge(text: 'NEW', color: AppColors.amber, textColor: Colors.white),
-                      if (quest.isSponsored) const SponsoredBadge(),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 6),
-                _DifficultyBadge(difficulty: quest.difficulty),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 28)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(quest.title, style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 4),
-                      Text(
-                        quest.description,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 12,
-              runSpacing: 4,
-              children: [
-                _MetaItem(icon: Icons.access_time, label: '${quest.durationMinutes} min'),
-                _MetaItem(
-                  icon: Icons.payments_outlined,
-                  label: quest.estimatedCost > 0 ? '\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Free',
-                ),
-                _MetaItem(
-                  icon: Icons.location_on_outlined,
-                  label: quest.locationMode == 'anywhere' ? 'Anywhere' : 'Nearby',
-                ),
-                CompletionLikelihoodLabel(level: widget.completionLevel),
-              ],
-            ),
-            if (reasons.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: reasons
-                    .map(
-                      (reason) => _Badge(
-                        text: reason,
-                        color: AppColors.secondaryContainerLight,
-                        textColor: AppColors.secondaryDark,
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
-            const SizedBox(height: 12),
-            // A row when both buttons fit, stacked when they don't (320 dp
-            // phone, larger system text) instead of overflowing.
-            OverflowBar(
-              alignment: MainAxisAlignment.end,
-              spacing: 8,
-              overflowSpacing: 8,
-              overflowAlignment: OverflowBarAlignment.end,
-              children: [
-                OutlinedButton(
-                  onPressed: _isStartingInstantPlan ? null : onDismiss,
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
-                  child: const Text('Not now →'),
-                ),
-                if (widget.isOffline)
-                  FilledButton.icon(
-                    onPressed: null,
-                    style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
-                    icon: const Icon(Icons.wifi_off, size: 16),
-                    label: const Text('Offline'),
-                  )
-                else
-                  FilledButton(
-                    onPressed: _isStartingInstantPlan ? null : _startInstantPlan,
-                    style: FilledButton.styleFrom(minimumSize: const Size(0, 36)),
-                    child: _isStartingInstantPlan
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Text('Start now →'),
-                  ),
-              ],
-            ),
-          ],
-        ),
+    return SqQuestCard(
+      onTap: widget.onTap,
+      emoji: quest.emoji ?? '🎯',
+      title: quest.title,
+      category: categoryLabelEs(quest.category),
+      description: quest.description,
+      tags: questTags(quest, progressLabel: widget.progressLabel),
+      completion: Wrap(
+        spacing: 6,
+        runSpacing: 4,
+        children: [
+          CompletionLikelihoodLabel(level: widget.completionLevel),
+          for (final reason in reasons) SqMetaPill(reason, color: AppColors.secondary.withValues(alpha: .16)),
+        ],
       ),
+      meta: questMeta(quest, distanceKm: context.read<QuestViewModel>().distanceKmTo(quest)),
+      actions: [
+        TextButton(
+          onPressed: _isStartingInstantPlan ? null : widget.onDismiss,
+          child: const Text('Not for me'),
+        ),
+        if (widget.isOffline)
+          FilledButton.icon(
+            onPressed: null,
+            style: sqPillButtonStyle(),
+            icon: const Icon(Icons.wifi_off, size: 16),
+            label: const Text('Offline'),
+          )
+        else
+          FilledButton(
+            onPressed: _isStartingInstantPlan ? null : _startInstantPlan,
+            style: sqPillButtonStyle(),
+            child: _isStartingInstantPlan
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text('Start now →'),
+          ),
+      ],
     );
   }
 }
 
-/// "Todas las misiones" down to its rows: category chips, title and the
+/// Kotlin QuestCard's top pills: NEW, SPONSORED, GROUP and the open attempt.
+List<Widget> questTags(Quest quest, {String? progressLabel}) => [
+  if (quest.isNew) SqMetaPill('NEW', color: AppColors.amber.withValues(alpha: .2)),
+  if (quest.isSponsored) const SponsoredBadge(),
+  if (quest.isGroup) SqMetaPill('GROUP', color: AppColors.primary.withValues(alpha: .16)),
+  if (progressLabel != null) SqMetaPill('⚡ $progressLabel', color: AppColors.secondary.withValues(alpha: .22)),
+];
+
+/// Kotlin QuestCard's ⏱ 💰 📍 pills; the 📍 one says how far the quest is
+/// once the user's position is known ([distanceKm]).
+List<String> questMeta(Quest quest, {double? distanceKm}) => [
+  '⏱ ${quest.durationMinutes} min',
+  '💰 ${quest.estimatedCost > 0 ? '\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Free'}',
+  if (quest.locationMode == 'anywhere')
+    '🏠 Anywhere'
+  else if (distanceKm != null)
+    '📍 ${formatDistanceKm(distanceKm)}'
+  else
+    '📍 ${quest.locationName ?? 'Nearby'}',
+];
+
+/// 0.35 -> "350 m", 1.234 -> "1.2 km".
+String formatDistanceKm(double km) =>
+    km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(1)} km';
+
+/// "EXPLORE BY CATEGORY" down to its rows: category chips and the
 /// loading/error/empty/offline states. The rows themselves are built by
 /// [_ExploreViewState.build], lazily.
 class _AllMissionsHeader extends StatelessWidget {
@@ -868,170 +934,106 @@ class _AllMissionsHeader extends StatelessWidget {
 
     final categoryOptions = [null, 'sponsored', ...questViewModel.categories];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          height: 40,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: categoryOptions.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final value = categoryOptions[index];
-              final label = value == null
-                  ? 'All'
-                  : value == 'sponsored'
-                  ? '⭐ Sponsored'
-                  : categoryLabelEs(value);
-              final selected = questViewModel.selectedCategory == value;
-              return ChoiceChip(
-                label: Text(label),
-                selected: selected,
-                onSelected: (_) => questViewModel.setCategory(value),
-              );
-            },
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SqSectionLabel(
+            'EXPLORE BY CATEGORY',
+            fontSize: 11,
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55),
           ),
-        ),
-        const SizedBox(height: 16),
-        Text('All quests', style: Theme.of(context).textTheme.titleLarge),
-        if (questViewModel.completionLabelsFromCache && missions.isNotEmpty)
-          const _SavedDataNote(),
-        const SizedBox(height: 8),
-        if (questViewModel.catalogUnavailable)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              'Offline and no quests saved on the phone. '
-              'Connect and pull down to load them.',
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 40,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: categoryOptions.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final value = categoryOptions[index];
+                final label = value == null
+                    ? 'All'
+                    : value == 'sponsored'
+                    ? '⭐ Sponsored'
+                    : categoryLabelEs(value);
+                return SqChoiceChip(
+                  label: label,
+                  selected: questViewModel.selectedCategory == value,
+                  selectedColor: value == null ? AppColors.primary : AppColors.secondary,
+                  onSelected: (_) => questViewModel.setCategory(value),
+                );
+              },
             ),
-          )
-        else if (missions.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text('No quests match these filters.'),
           ),
-      ],
+          if (questViewModel.completionLabelsFromCache && missions.isNotEmpty) const _SavedDataNote(),
+          if (questViewModel.catalogUnavailable)
+            const Padding(
+              padding: EdgeInsets.only(top: 14),
+              child: Text(
+                'Offline and no quests saved on the phone. '
+                'Connect and pull down to load them.',
+              ),
+            )
+          else if (missions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 14),
+              child: Text('No quests match these filters.'),
+            ),
+        ],
+      ),
     );
   }
 }
 
-/// Next to the "Probabilidad de que la termines" labels when they were
-/// computed from data saved on the device.
+/// Next to the "chance you'll finish it" labels when they were computed
+/// from data saved on the device.
 class _SavedDataNote extends StatelessWidget {
   const _SavedDataNote();
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.only(top: 6),
       child: Text(
         'Based on your saved data',
         style: Theme.of(
           context,
-        ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline),
+        ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     );
   }
 }
 
+/// A catalogue row: Kotlin's QuestCard without action buttons.
 class _QuestRow extends StatelessWidget {
   final Quest quest;
+  final double? distanceKm;
   final CompletionLevel completionLevel;
+  final String? progressLabel;
   final VoidCallback onTap;
 
-  const _QuestRow({required this.quest, required this.completionLevel, required this.onTap});
+  const _QuestRow({
+    required this.quest,
+    this.distanceKm,
+    required this.completionLevel,
+    this.progressLabel,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (!kReleaseMode) ExploreBuildStats.questRowBuilds++;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        onTap: onTap,
-        leading: Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 24)),
-        title: Text(quest.title, style: Theme.of(context).textTheme.titleSmall),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${quest.durationMinutes} min · ${quest.estimatedCost > 0 ? '-\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Free'} · ${_difficultyLabel(quest.difficulty)}',
-            ),
-            if (quest.isSponsored) ...[
-              const SizedBox(height: 4),
-              const SponsoredBadge(),
-            ],
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CompletionLikelihoodLabel(level: completionLevel),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-      ),
+    return SqQuestCard(
+      onTap: onTap,
+      emoji: quest.emoji ?? '🎯',
+      title: quest.title,
+      category: categoryLabelEs(quest.category),
+      description: quest.description,
+      tags: questTags(quest, progressLabel: progressLabel),
+      completion: CompletionLikelihoodLabel(level: completionLevel),
+      meta: questMeta(quest, distanceKm: distanceKm),
     );
   }
 }
-
-class _MetaItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _MetaItem({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: Theme.of(context).colorScheme.outline),
-        const SizedBox(width: 4),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
-      ],
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  final String text;
-  final Color color;
-  final Color? textColor;
-
-  const _Badge({required this.text, required this.color, this.textColor});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: textColor),
-      ),
-    );
-  }
-}
-
-class _DifficultyBadge extends StatelessWidget {
-  final String difficulty;
-
-  const _DifficultyBadge({required this.difficulty});
-
-  @override
-  Widget build(BuildContext context) {
-    return _Badge(
-      text: _difficultyLabel(difficulty),
-      color: AppColors.secondaryContainerLight,
-      textColor: AppColors.secondaryDark,
-    );
-  }
-}
-
-String _difficultyLabel(String difficulty) => switch (difficulty) {
-  'easy' => 'Easy',
-  'medium' => 'Medium',
-  'hard' => 'Hard',
-  _ => difficulty,
-};

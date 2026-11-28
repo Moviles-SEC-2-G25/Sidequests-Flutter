@@ -303,7 +303,7 @@ void main() {
 
       expect(repository.sentTo, ['ana@uniandes.edu.co']);
       expect(find.text('ana@uniandes.edu.co'), findsOneWidget);
-      expect(find.text('Code'), findsOneWidget);
+      expect(find.text('Sign-in code'), findsOneWidget);
     });
 
     testWidgets('resend waits 60 s, counting down, then sends again', (tester) async {
@@ -478,7 +478,7 @@ void main() {
         expect(field(tester).text, _validCode);
         expect(find.text('Offline. Connect to verify your code.'), findsOneWidget);
         expect(find.descendant(of: find.byType(OfflineNotice), matching: find.text(AuthViewModel.offlineVerifyMessage)), findsOneWidget);
-        expect(filledButton(tester, 'Log in').onPressed, isNull);
+        expect(filledButton(tester, 'Verify code').onPressed, isNull);
 
         await goOnline(tester);
         await tester.pump();
@@ -486,7 +486,7 @@ void main() {
         expect(field(tester).text, _validCode);
         expect(find.textContaining('Offline'), findsNothing);
 
-        await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+        await tester.tap(find.widgetWithText(FilledButton, 'Verify code'));
         await tester.pumpAndSettle();
         expect(repository.triedCodes, [_validCode]);
         expect(find.byType(OtpLoginView), findsNothing);

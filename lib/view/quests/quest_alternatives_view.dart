@@ -61,12 +61,13 @@ class _QuestAlternativesViewState extends State<QuestAlternativesView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('A better option for right now', style: textTheme.headlineSmall),
-                      const SizedBox(height: 8),
+                      // Kotlin's QuestAlternativesScreen header.
+                      Text('A better fit for now', style: textTheme.headlineMedium),
                       Text(
-                        'You left it because: ${state.reason.label}',
+                        'You left because: ${state.reason.label}',
                         style: textTheme.bodyMedium,
                       ),
+                      Text('Choose an alternative, or return to Explore.', style: textTheme.bodyMedium),
                       if (state.context != null) ...[
                         const SizedBox(height: 4),
                         Text(_contextLine(state), style: textTheme.bodySmall),
@@ -78,7 +79,7 @@ class _QuestAlternativesViewState extends State<QuestAlternativesView> {
                           style: textTheme.bodySmall,
                         ),
                       ],
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
                       if (state.isLoading)
                         const Padding(
                           padding: EdgeInsets.all(32),
@@ -96,8 +97,8 @@ class _QuestAlternativesViewState extends State<QuestAlternativesView> {
                             onOpen: () => _open(alternative),
                           ),
                         ),
-                      const SizedBox(height: 12),
-                      OutlinedButton(
+                      const SizedBox(height: 4),
+                      FilledButton(
                         onPressed: state.isLoading
                             ? null
                             : () => context.read<QuestViewModel>().refreshQuestAlternatives(
@@ -105,8 +106,8 @@ class _QuestAlternativesViewState extends State<QuestAlternativesView> {
                               ),
                         child: const Text('Refresh suggestions'),
                       ),
-                      const SizedBox(height: 8),
-                      TextButton(onPressed: _leave, child: const Text('Back to Explore')),
+                      const SizedBox(height: 16),
+                      FilledButton(onPressed: _leave, child: const Text('Back to Explore')),
                     ],
                   ),
                 ),
@@ -144,51 +145,48 @@ class _AlternativeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final quest = alternative.quest;
     final textTheme = Theme.of(context).textTheme;
+    // Kotlin's alternative card: surface, 24 dp corners, 18 dp padding.
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.15)),
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 22)),
-              const SizedBox(width: 8),
-              Expanded(child: Text(quest.title, style: textTheme.titleSmall)),
+              Text(quest.emoji ?? '🎯', style: textTheme.titleLarge),
+              const SizedBox(width: 6),
+              Expanded(child: Text(quest.title, style: textTheme.titleLarge)),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Text(
             '${quest.durationMinutes} min · '
             '${quest.estimatedCost > 0 ? '\$${quest.estimatedCost.toStringAsFixed(0)}' : 'Free'}',
-            style: textTheme.bodySmall,
+            style: textTheme.bodyLarge,
           ),
           if (quest.isSponsored) ...[
             const SizedBox(height: 6),
             const SponsoredBadge(),
           ],
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             'Why it works for you',
-            style: textTheme.labelMedium?.copyWith(color: AppColors.secondaryDark),
+            style: textTheme.titleSmall?.copyWith(color: AppColors.secondary),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           ...alternative.explanations.map(
             (explanation) => Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: Text('• $explanation', style: textTheme.bodySmall),
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('• $explanation', style: textTheme.bodyMedium),
             ),
           ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton(onPressed: onOpen, child: const Text('View quest')),
-          ),
+          FilledButton(onPressed: onOpen, child: const Text('View quest')),
         ],
       ),
     );

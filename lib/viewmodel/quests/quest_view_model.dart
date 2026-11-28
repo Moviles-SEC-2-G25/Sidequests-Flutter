@@ -10,6 +10,7 @@ import '../../core/bq10_context.dart';
 import '../../core/bq11/block_dwell_meter.dart';
 import '../../core/bq6_evidence.dart';
 import '../../core/completion_likelihood.dart';
+import '../../core/distance.dart';
 import '../../core/quest_alternative_recommender.dart';
 import '../../core/similar_quest_recommender.dart';
 import '../../core/verification/step_verification_strategy.dart';
@@ -259,6 +260,28 @@ class QuestViewModel extends ChangeNotifier {
   /// weather/time-of-day adaptation — null until the first load.
   AppContext? currentContext;
 
+  /// Every snapshot with a GPS fix also becomes the user's position, so the
+  /// distances (Nearby, the quest cards, the "📍 Nearby" order) and the
+  /// compass follow the latest location wherever it was read — not only
+  /// after Nearby's "Turn on location" button.
+  void _rememberPosition(AppContext context) {
+    if (!context.hasLocation) return;
+    userLatitude = context.latitude;
+    userLongitude = context.longitude;
+    userLocationUnavailable = false;
+  }
+
+  /// Kilometres from the user's last known position to [quest]; null without
+  /// either position.
+  double? distanceKmTo(Quest quest) {
+    final lat = userLatitude;
+    final lon = userLongitude;
+    final questLat = quest.latitude;
+    final questLon = quest.longitude;
+    if (lat == null || lon == null || questLat == null || questLon == null) return null;
+    return haversineKm(lat, lon, questLat, questLon);
+  }
+
   // --- BQ4: "decision journey" toward starting a quest — how long, and how
   // many interactions, from the first recommendations shown (after opening
   // the app or after the last quest was started) to accepting one. ---
@@ -362,6 +385,26 @@ class QuestViewModel extends ChangeNotifier {
       }
       return true;
     }).toList();
+
+    // "📍 Nearby": closest first once the user's position is known (stable:
+    // quests without coordinates keep their order, after the others).
+    if (selectedLocationScope == 'gps' && userLatitude != null) {
+      final distances = {for (final quest in filtered) quest.id: distanceKmTo(quest)};
+      final indexed = filtered.indexed.toList()
+        ..sort((a, b) {
+          final da = distances[a.$2.id];
+          final db = distances[b.$2.id];
+          if (da == null || db == null) {
+            if (da == null && db == null) return a.$1.compareTo(b.$1);
+            return da == null ? 1 : -1;
+          }
+          final byDistance = da.compareTo(db);
+          return byDistance != 0 ? byDistance : a.$1.compareTo(b.$1);
+        });
+      filtered
+        ..clear()
+        ..addAll(indexed.map((entry) => entry.$2));
+    }
 
     if (!isAdaptingToContext) return filtered;
 
@@ -499,6 +542,7 @@ class QuestViewModel extends ChangeNotifier {
     try {
       final context = await _contextWithinLimit();
       currentContext = context;
+      _rememberPosition(context);
       final effectivePreferences = preferences.copyWith(
         locationMode: selectedLocationScope,
         socialLevel: sessionSocialLevel,
@@ -559,6 +603,7 @@ class QuestViewModel extends ChangeNotifier {
         reading.then(
           (context) {
             currentContext = context;
+            _rememberPosition(context);
             notifyListeners();
           },
           onError: (Object _) {},
@@ -596,7 +641,9 @@ class QuestViewModel extends ChangeNotifier {
   /// last one stays.
   Future<void> refreshContext() async {
     try {
-      currentContext = await _contextManager.snapshot(availableMinutes: selectedMinutes);
+      final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
+      currentContext = context;
+      _rememberPosition(context);
       notifyListeners();
     } catch (_) {
       // A missing sensor: nothing new to adapt to.
@@ -738,9 +785,11 @@ class QuestViewModel extends ChangeNotifier {
     userLocationUnavailable = false;
     notifyListeners();
     try {
-      final context = await _contextManager.snapshot();
+      final context = await _contextManager.snapshot(availableMinutes: selectedMinutes);
       userLatitude = context.latitude;
       userLongitude = context.longitude;
+      // Explore's live context, rain/night adaptation and order follow it.
+      currentContext = context;
     } catch (_) {
       // No fix: the distances stay unavailable.
     } finally {
@@ -850,6 +899,43 @@ class QuestViewModel extends ChangeNotifier {
         await _finishStepTracking(updated.id, outcome: StepLogEntry.completed);
       }
       return isLastStep;
+    } on AppException catch (e) {
+      stepErrorMessage = e.message;
+      _lastStepFailedForConnection = e.isRetryable;
+      return false;
+    } finally {
+      _isCompletingStep = false;
+      notifyListeners();
+    }
+  }
+
+  /// True when [userQuest] has a completed step to go back to (it isn't over).
+  bool canGoBackAStep(UserQuest userQuest) =>
+      _activeMissionStatuses.contains(userQuest.status) && userQuest.completedSteps.isNotEmpty;
+
+  /// Undoes the last completed step — for a step marked done by mistake: it's
+  /// no longer completed and becomes the current one again. Saved like
+  /// completing a step (it needs the connection, and fails with
+  /// [stepErrorMessage] set instead of half-applying). Photos already uploaded
+  /// for that step stay, so it can be completed again right away.
+  Future<bool> goBackAStep(UserQuest userQuest) async {
+    stepErrorMessage = null;
+    if (_isCompletingStep || !canGoBackAStep(userQuest)) return false;
+    _isCompletingStep = true;
+    _lastStepFailedForConnection = false;
+    notifyListeners();
+    final completed = [...userQuest.completedSteps];
+    final previous = completed.removeLast();
+    try {
+      final updated = await _questRepository.updateProgress(
+        userQuest.copyWithProgress(
+          status: userQuest.status,
+          currentStep: previous,
+          completedSteps: completed,
+        ),
+      );
+      _replaceUserQuest(updated);
+      return true;
     } on AppException catch (e) {
       stepErrorMessage = e.message;
       _lastStepFailedForConnection = e.isRetryable;

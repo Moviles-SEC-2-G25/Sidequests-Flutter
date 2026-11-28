@@ -758,6 +758,38 @@ void main() {
       expect(remote.sent, ['rate:uq-1']);
     });
 
+    testWidgets('"Tell us more" follows the stars, and only the current ones are saved', (
+      tester,
+    ) async {
+      completeMission();
+      final viewModel = await pumpView(tester);
+      expect(find.text('Worth it'), findsNothing); // no stars yet: no tags
+
+      await tester.tap(find.byTooltip('5'));
+      await tester.pump();
+      expect(find.text('What did you like? (optional)'), findsOneWidget);
+      await tester.ensureVisible(find.text('Worth it'));
+      await tester.tap(find.text('Worth it'));
+      await tester.pump();
+
+      await tester.tap(find.byTooltip('2'));
+      await tester.pump();
+      expect(find.text('What went wrong? (optional)'), findsOneWidget);
+      expect(find.text('Worth it'), findsNothing);
+      await tester.ensureVisible(find.text('Too long'));
+      await tester.tap(find.text('Too long'));
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('Save'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      final rated = viewModel.userQuests.firstWhere((uq) => uq.id == 'uq-1');
+      expect(rated.rating, 2);
+      expect(rated.feedbackTags, ['Too long']); // "Worth it" was for another rating
+    });
+
     testWidgets('when it cannot even be kept: it stays open, with "Retry"', (tester) async {
       await pumpView(tester); // the attempt isn't in the cache
       remote.offline = true;

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../viewmodel/auth/auth_view_model.dart';
 import '../widgets/offline_notice.dart';
+import 'login_view.dart';
 
 enum _OtpStep { email, code }
 
@@ -136,85 +137,75 @@ class _OtpLoginViewState extends State<OtpLoginView> {
     // connectivity stream says so: same notice as LoginView's.
     final isOfflineNotice =
         error == AuthViewModel.offlineSendMessage || error == AuthViewModel.offlineVerifyMessage;
+    final errorWidgets = [
+      if (error != null)
+        if (isOfflineNotice)
+          OfflineNotice(message: error)
+        else
+          Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+    ];
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Log in with a code')),
-      body: Center(
-        child: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ...switch (_step) {
-                    _OtpStep.email => _emailStep(context, isBusy),
-                    _OtpStep.code => _codeStep(context, isBusy, isVerifying),
-                  },
-                  if (error != null) ...[
-                    const SizedBox(height: 12),
-                    if (isOfflineNotice)
-                      OfflineNotice(message: error)
-                    else
-                      Text(
-                        error,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Theme.of(context).colorScheme.error),
-                      ),
-                  ],
-                ],
-              ),
-            ),
+    // Kotlin's EmailCodeScreen: "Back", a plain headline, the explanation,
+    // the input, the error, the primary button and the secondary actions,
+    // 14 dp apart.
+    return AuthScaffold(
+      title: _step == _OtpStep.email ? 'Sign in with email code' : 'Check your email',
+      brandTitle: false,
+      onBack: isBusy
+          ? null
+          : _step == _OtpStep.email
+          ? () => Navigator.of(context).maybePop()
+          : _changeEmail,
+      children: _spaced([
+        ...switch (_step) {
+          _OtpStep.email => _emailStep(context, isBusy),
+          _OtpStep.code => _codeStep(context, isBusy, isVerifying, errorWidgets),
+        },
+        if (_step == _OtpStep.email) ...errorWidgets,
+        if (_step == _OtpStep.email)
+          FilledButton(
+            onPressed: _isEmailValid && !isBusy && !_isOffline ? _sendCode : null,
+            child: const Text('Send code'),
           ),
-        ),
-      ),
+        if (isBusy) const Align(alignment: Alignment.centerLeft, child: CircularProgressIndicator()),
+        if (_step == _OtpStep.code) ..._codeActions(isBusy),
+      ]),
     );
   }
 
+  static List<Widget> _spaced(List<Widget> children) => [
+    for (var i = 0; i < children.length; i++) ...[if (i > 0) const SizedBox(height: 14), children[i]],
+  ];
+
   List<Widget> _emailStep(BuildContext context, bool isBusy) => [
     Text(
-      "We'll send a ${OtpLoginView.codeLength}-digit code to your email. "
-      'No password needed.',
-      textAlign: TextAlign.center,
-      style: Theme.of(context).textTheme.bodyMedium,
+      "We'll send a ${OtpLoginView.codeLength}-digit code to the email on your Sidequests account.",
+      style: Theme.of(context).textTheme.bodyLarge,
     ),
-    const SizedBox(height: 16),
     TextField(
       controller: _emailController,
       keyboardType: TextInputType.emailAddress,
       autofillHints: const [AutofillHints.email],
       textInputAction: TextInputAction.done,
+      enabled: !isBusy,
       decoration: const InputDecoration(labelText: 'Email'),
       onChanged: (_) => setState(() {}),
       onSubmitted: (_) {
         if (_isEmailValid && !isBusy && !_isOffline) _sendCode();
       },
     ),
-    const SizedBox(height: 20),
-    FilledButton(
-      onPressed: _isEmailValid && !isBusy && !_isOffline ? _sendCode : null,
-      child: isBusy ? const _ButtonSpinner() : const Text('Send code'),
-    ),
   ];
 
-  List<Widget> _codeStep(BuildContext context, bool isBusy, bool isVerifying) {
-    final minutes = _secondsLeft ~/ 60;
-    final seconds = (_secondsLeft % 60).toString().padLeft(2, '0');
+  List<Widget> _codeStep(BuildContext context, bool isBusy, bool isVerifying, List<Widget> errorWidgets) {
+    final bodyLarge = Theme.of(context).textTheme.bodyLarge;
     return [
-      Text(
-        'Enter the code we sent to',
-        textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.bodyMedium,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Enter the ${OtpLoginView.codeLength}-digit code sent to', style: bodyLarge),
+          Text(_email, style: bodyLarge?.copyWith(fontWeight: FontWeight.w700)),
+        ],
       ),
-      Text(
-        _email,
-        textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.titleSmall,
-      ),
-      TextButton(onPressed: isBusy ? null : _changeEmail, child: const Text('Change email')),
-      const SizedBox(height: 8),
       TextField(
         controller: _codeController,
         autofocus: true,
@@ -222,35 +213,37 @@ class _OtpLoginViewState extends State<OtpLoginView> {
         autofillHints: const [AutofillHints.oneTimeCode],
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         maxLength: OtpLoginView.codeLength,
-        textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.headlineSmall?.copyWith(letterSpacing: 8),
-        decoration: const InputDecoration(labelText: 'Code', counterText: ''),
+        enabled: !isVerifying,
+        decoration: const InputDecoration(labelText: 'Sign-in code', counterText: ''),
         onChanged: (_) {
           setState(() {});
           // Typing (or pasting) the last digit signs in — no extra tap.
           if (_isCodeComplete && !isBusy && !_isOffline) _verify();
         },
       ),
-      const SizedBox(height: 20),
+      ...errorWidgets,
       FilledButton(
         onPressed: _isCodeComplete && !isBusy && !_isOffline ? _verify : null,
-        child: isVerifying ? const _ButtonSpinner() : const Text('Log in'),
-      ),
-      const SizedBox(height: 8),
-      TextButton(
-        onPressed: _secondsLeft > 0 || isBusy || _isOffline ? null : _sendCode,
-        child: Text(
-          _secondsLeft > 0 ? 'Resend code ($minutes:$seconds)' : 'Resend code',
-        ),
+        child: const Text('Verify code'),
       ),
     ];
   }
-}
 
-class _ButtonSpinner extends StatelessWidget {
-  const _ButtonSpinner();
-
-  @override
-  Widget build(BuildContext context) =>
-      const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2));
+  List<Widget> _codeActions(bool isBusy) {
+    final minutes = _secondsLeft ~/ 60;
+    final seconds = (_secondsLeft % 60).toString().padLeft(2, '0');
+    return [
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(
+          onPressed: _secondsLeft > 0 || isBusy || _isOffline ? null : _sendCode,
+          child: Text(_secondsLeft > 0 ? 'Resend code ($minutes:$seconds)' : 'Resend code'),
+        ),
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton(onPressed: isBusy ? null : _changeEmail, child: const Text('Change email')),
+      ),
+    ];
+  }
 }

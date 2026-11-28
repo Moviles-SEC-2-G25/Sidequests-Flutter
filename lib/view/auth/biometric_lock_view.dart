@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/app_theme.dart';
 import '../../viewmodel/auth/auth_view_model.dart';
 
 /// Shown by AuthGate instead of HomeShell while the session is biometric-
@@ -71,44 +70,39 @@ class _BiometricLockViewState extends State<BiometricLockView> {
 
   @override
   Widget build(BuildContext context) {
+    // Kotlin's BiometricLockScreen: centered headline, explanation, the
+    // error in red, the primary "Unlock" button and a text button out.
     final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       body: SafeArea(
         child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.fingerprint, size: 72, color: AppColors.primary),
-                const SizedBox(height: 16),
-                Text('Sidequests is locked', style: textTheme.titleLarge),
-                const SizedBox(height: 8),
-                Text(
-                  _failed
-                      ? 'Could not verify your fingerprint.'
-                      : 'Use your fingerprint to continue.',
-                  textAlign: TextAlign.center,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: _failed ? Theme.of(context).colorScheme.error : null,
+                Text('Unlock Sidequests', style: textTheme.headlineMedium),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 16),
+                  child: Text(
+                    'Confirm your identity to open your saved session.',
+                    textAlign: TextAlign.center,
+                    style: textTheme.bodyLarge,
                   ),
                 ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _isPrompting ? null : _prompt,
-                    icon: const Icon(Icons.fingerprint),
-                    label: Text(_failed ? 'Retry' : 'Unlock'),
+                if (_failed)
+                  Text(
+                    'Could not verify your fingerprint.',
+                    textAlign: TextAlign.center,
+                    style: textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.error),
                   ),
+                FilledButton(
+                  onPressed: _isPrompting ? null : _prompt,
+                  child: Text(_failed ? 'Retry' : 'Unlock'),
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: _isPrompting ? null : _usePassword,
-                    child: const Text('Use password'),
-                  ),
+                TextButton(
+                  onPressed: _isPrompting ? null : _usePassword,
+                  child: const Text('Use password'),
                 ),
               ],
             ),

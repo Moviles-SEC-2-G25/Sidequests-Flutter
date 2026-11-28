@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/app_theme.dart';
 import '../../viewmodel/context/connectivity_view_model.dart';
 
 /// Whether the device is offline, rebuilding [context] when that changes.
@@ -55,20 +54,26 @@ class OfflineNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // The Kotlin app's error-container notice: 16 dp corners, onErrorContainer text.
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.errorContainerDark : AppColors.errorContainerLight,
+        color: scheme.errorContainer,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.wifi_off, color: AppColors.error, size: 18),
-          const SizedBox(width: 8),
-          Expanded(child: Text(message, style: Theme.of(context).textTheme.bodySmall)),
+          Icon(Icons.wifi_off, color: scheme.onErrorContainer, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.onErrorContainer),
+            ),
+          ),
         ],
       ),
     );

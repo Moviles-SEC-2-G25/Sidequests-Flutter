@@ -30,25 +30,25 @@ class CompletionLikelihoodLabel extends StatelessWidget {
       CompletionLevel.low => 'Low chance',
       CompletionLevel.newForYou => 'New for you',
     };
-    final color = completionLevelColor(level);
-
+    // Kotlin's completion MetaPill: teal at 16 %, 11 sp semi-bold.
     return Tooltip(
       message: level == CompletionLevel.newForYou
           ? "You haven't tried enough quests in this category yet"
           : 'Based on how many quests in this category you have finished',
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.insights, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppColors.secondary.withValues(alpha: .16),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
           ),
-        ],
+        ),
       ),
     );
   }

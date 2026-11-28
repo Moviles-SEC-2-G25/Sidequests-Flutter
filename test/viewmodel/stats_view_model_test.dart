@@ -299,9 +299,9 @@ void main() {
 
       await pumpStats(tester);
 
-      expect(find.text('My stats'), findsOneWidget);
-      expect(find.text('3'), findsOneWidget); // completadas
-      expect(find.text('75 %'), findsOneWidget);
+      expect(find.text('My Statistics'), findsOneWidget);
+      expect(find.text('3 completed · 4 attempted'), findsOneWidget);
+      expect(find.text('Overall rate: 75 %'), findsOneWidget);
       expect(find.text('Food'), findsOneWidget);
       expect(find.text('2/3 · 67 %'), findsOneWidget);
       expect(find.text('Medium chance'), findsOneWidget);

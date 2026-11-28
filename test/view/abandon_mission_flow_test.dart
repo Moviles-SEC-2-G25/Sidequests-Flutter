@@ -23,6 +23,7 @@ import 'package:sidequests/data/services/step_counter_service.dart';
 import 'package:sidequests/data/services/weather_service.dart';
 import 'package:sidequests/models/pending_write.dart';
 import 'package:sidequests/models/quest.dart';
+import 'package:sidequests/models/user_preferences.dart';
 import 'package:sidequests/repository/auth_repository.dart';
 import 'package:sidequests/repository/profile_repository.dart';
 import 'package:sidequests/repository/quest_repository.dart';
@@ -389,7 +390,7 @@ void main() {
     await settle(tester);
     await tester.runAsync(() => viewModel.loadSteps('source'));
     await settle(tester);
-    await tester.tap(find.text('Leave'));
+    await tester.tap(find.text('Exit'));
     await settle(tester);
     expect(find.byType(AbandonMissionView), findsOneWidget);
   }
@@ -416,6 +417,70 @@ void main() {
       expect(remote.upserts, isEmpty);
       expect(sink.events, isEmpty);
       expect(viewModel.currentMission?.status, 'in_progress');
+      // Unlike "Keep going", it leaves the mission: back on Explore.
+      expect(find.byType(MissionTabView), findsNothing);
+      expect(navigationBar(tester).selectedIndex, 0);
+      expect(find.text('Progress saved. Continue anytime from the Quest tab.'), findsOneWidget);
+    });
+  });
+
+  group('"Keep going"', () {
+    testWidgets('goes back to the mission itself: nothing written, still on the Quest tab', (tester) async {
+      await pumpShell(tester);
+      await openAbandonScreen(tester);
+      sink.events.clear();
+
+      await tapVisible(tester, 'Keep going');
+
+      expect(find.byType(AbandonMissionView), findsNothing);
+      expect(find.byType(MissionTabView), findsOneWidget);
+      expect(navigationBar(tester).selectedIndex, 3);
+      expect(remote.upserts, isEmpty);
+      expect(sink.events, isEmpty);
+    });
+  });
+
+  group('"End quest"', () {
+    testWidgets('abandons once with the reason and lands on Explore, with no alternatives', (tester) async {
+      await pumpShell(tester);
+      await openAbandonScreen(tester);
+
+      await tapVisible(tester, AbandonmentReasonLabels.tooLong);
+      await tapVisible(tester, 'End quest');
+
+      expect(find.byType(AbandonMissionView), findsNothing);
+      expect(find.byType(QuestAlternativesView), findsNothing);
+      expect(navigationBar(tester).selectedIndex, 0);
+      expect(viewModel.currentMission, isNull);
+      expect(viewModel.questAlternatives, isNull);
+      expect(remote.upserts.single['abandon_reason'], 'ran_out_of_time');
+      final types = sink.events.map((event) => event['event_type']).toList();
+      expect(types, contains('quest_abandoned'));
+      expect(types, isNot(contains('quest_alternative_shown')));
+      expect(find.text('Quest ended.'), findsOneWidget);
+    });
+
+    testWidgets('offline: queued on the device, says so, and syncs once when back online', (tester) async {
+      await pumpShell(tester);
+      await openAbandonScreen(tester);
+      remote.offline = true;
+
+      await tapVisible(tester, 'End quest');
+
+      expect(find.textContaining('it will sync when you reconnect'), findsOneWidget);
+      expect(find.byType(QuestAlternativesView), findsNothing);
+      expect(viewModel.currentMission, isNull);
+      expect(PendingWrite.fromJson(local.pendingWrites.single).type, PendingWrite.abandonQuest);
+      expect(remote.upserts, isEmpty);
+
+      remote.offline = false;
+      await tester.runAsync(() => viewModel.refreshAfterReconnect(const UserPreferences()));
+      await settle(tester);
+
+      expect(local.pendingWrites, isEmpty);
+      expect(remote.upserts.single['status'], 'abandoned');
+      expect(remote.upserts.single['abandon_reason'], 'other');
+      expect(viewModel.currentMission, isNull);
     });
   });
 
@@ -428,7 +493,7 @@ void main() {
       await tapVisible(tester, 'Start another quest');
 
       expect(find.byType(QuestAlternativesView), findsOneWidget);
-      expect(find.text('A better option for right now'), findsOneWidget);
+      expect(find.text('A better fit for now'), findsOneWidget);
       expect(find.textContaining(AbandonmentReasonLabels.tooLong), findsOneWidget);
       expect(find.text('Quest option'), findsOneWidget);
       expect(find.text('Why it works for you'), findsOneWidget);
@@ -518,7 +583,7 @@ void main() {
       await tester.tap(find.text('Quest'));
       await settle(tester);
 
-      expect(find.text('You have no active quest'), findsOneWidget);
+      expect(find.text('No active quest'), findsOneWidget);
 
       await tapVisible(tester, 'Explore quests');
 

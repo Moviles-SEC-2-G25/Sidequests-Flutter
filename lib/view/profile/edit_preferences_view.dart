@@ -5,6 +5,7 @@ import '../../core/category_labels.dart';
 import '../../models/user_preferences.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 import '../widgets/offline_notice.dart';
+import '../widgets/sq_components.dart';
 
 /// "Editar" on the profile's "Mis preferencias" section. Adds the interests
 /// picker the Figma reference shows but the original onboarding flow never
@@ -59,105 +60,115 @@ class _EditPreferencesViewState extends State<EditPreferencesView> {
   @override
   Widget build(BuildContext context) {
     final isOffline = watchIsOffline(context);
+    // Kotlin-style secondary screen: "Back" + title instead of an app bar.
     return Scaffold(
-      appBar: AppBar(title: const Text('My preferences')),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          Text('Interests', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: kInterestOptions
-                .map(
-                  (value) => FilterChip(
-                    label: Text(categoryLabelEs(value)),
-                    selected: _preferences.interests.contains(value),
-                    onSelected: (_) => _toggleInterest(value),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SqBackHeader(title: 'My preferences', onBack: () => Navigator.of(context).maybePop()),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                children: [
+                  Text('Interests', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: kInterestOptions
+                        .map(
+                          (value) => FilterChip(
+                            label: Text(categoryLabelEs(value)),
+                            selected: _preferences.interests.contains(value),
+                            onSelected: (_) => _toggleInterest(value),
+                          ),
+                        )
+                        .toList(),
                   ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 24),
-          Text('Preferred difficulty', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: _difficulties
-                .map(
-                  (value) => ChoiceChip(
-                    label: Text(value),
-                    selected: _preferences.preferredDifficulty == value,
-                    onSelected: (_) => setState(
-                      () => _preferences = _preferences.copyWith(preferredDifficulty: value),
+                  const SizedBox(height: 24),
+                  Text('Preferred difficulty', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: _difficulties
+                        .map(
+                          (value) => ChoiceChip(
+                            label: Text(value),
+                            selected: _preferences.preferredDifficulty == value,
+                            onSelected: (_) => setState(
+                              () => _preferences = _preferences.copyWith(preferredDifficulty: value),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Social level', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: _socialLevels
+                        .map(
+                          (value) => ChoiceChip(
+                            label: Text(value),
+                            selected: _preferences.socialLevel == value,
+                            onSelected: (_) =>
+                                setState(() => _preferences = _preferences.copyWith(socialLevel: value)),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Location mode', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: _locationModes
+                        .map(
+                          (value) => ChoiceChip(
+                            label: Text(value),
+                            selected: _preferences.locationMode == value,
+                            onSelected: (_) =>
+                                setState(() => _preferences = _preferences.copyWith(locationMode: value)),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Typical available time: ${_preferences.typicalTimeMinutes} min',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  Slider(
+                    min: 5,
+                    max: 240,
+                    divisions: 47,
+                    value: _preferences.typicalTimeMinutes.toDouble(),
+                    onChanged: (value) => setState(
+                      () => _preferences = _preferences.copyWith(typicalTimeMinutes: value.round()),
                     ),
                   ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 24),
-          Text('Social level', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: _socialLevels
-                .map(
-                  (value) => ChoiceChip(
-                    label: Text(value),
-                    selected: _preferences.socialLevel == value,
-                    onSelected: (_) =>
-                        setState(() => _preferences = _preferences.copyWith(socialLevel: value)),
+                  const SizedBox(height: 24),
+                  if (isOffline) ...[
+                    const OfflineNotice(message: OfflineMessages.savePreferences),
+                    const SizedBox(height: 12),
+                  ],
+                  FilledButton(
+                    onPressed: _isSaving || isOffline ? null : _save,
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Save'),
                   ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 24),
-          Text('Location mode', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: _locationModes
-                .map(
-                  (value) => ChoiceChip(
-                    label: Text(value),
-                    selected: _preferences.locationMode == value,
-                    onSelected: (_) =>
-                        setState(() => _preferences = _preferences.copyWith(locationMode: value)),
-                  ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Typical available time: ${_preferences.typicalTimeMinutes} min',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          Slider(
-            min: 5,
-            max: 240,
-            divisions: 47,
-            value: _preferences.typicalTimeMinutes.toDouble(),
-            onChanged: (value) => setState(
-              () => _preferences = _preferences.copyWith(typicalTimeMinutes: value.round()),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          if (isOffline) ...[
-            const OfflineNotice(message: OfflineMessages.savePreferences),
-            const SizedBox(height: 12),
           ],
-          FilledButton(
-            onPressed: _isSaving || isOffline ? null : _save,
-            child: _isSaving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Text('Save'),
-          ),
-        ],
+        ),
       ),
     );
   }

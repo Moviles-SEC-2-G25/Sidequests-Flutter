@@ -6,13 +6,17 @@ import '../../core/category_labels.dart';
 import '../../models/quest.dart';
 import '../../models/user_quest.dart';
 import '../../viewmodel/quests/quest_view_model.dart';
+import '../widgets/sq_components.dart';
 import 'quest_detail_view.dart';
 
-const _feedbackTags = <String, String>{
-  'divertida': 'Fun',
-  'muy larga': 'Too long',
-  'costosa': 'Expensive',
-  'repetiría': 'Would do again',
+/// "Tell us more" follows the stars: what went wrong for a low rating, what
+/// was so-so for a middling one, what was good for a high one (the Kotlin
+/// app's tags). Saved as shown, in English, like Kotlin saves them.
+List<String> feedbackTagsFor(int rating) => switch (rating) {
+  <= 0 => const [],
+  1 || 2 => const ['Too long', 'Too expensive', 'Hard to find', 'Not much fun', 'Too difficult', 'Bad weather'],
+  3 => const ['It was okay', 'A bit tough', 'A bit long', 'Worth trying', 'Could be better'],
+  _ => const ['Worth it', 'Would do again', 'Felt proud', 'Relaxing', 'Surprising', 'Fun'],
 };
 
 /// "Misión completada": shown right after the last step is completed.
@@ -44,7 +48,7 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
       widget.mission,
       rating: _rating,
       // Keep the chip order stable regardless of tap order.
-      tags: _feedbackTags.keys.where(_tags.contains).toList(),
+      tags: feedbackTagsFor(_rating).where(_tags.contains).toList(),
     );
     if (success && questViewModel.ratingQueued) {
       messenger.showSnackBar(
@@ -66,39 +70,57 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
       child: Scaffold(
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
+            // Kotlin's RatingScreen: centered column, 20 dp sides, 24 dp top/bottom.
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             child: Column(
               children: [
                 Text(widget.quest.emoji ?? '🎯', style: const TextStyle(fontSize: 64)),
-                const SizedBox(height: 12),
                 Text(
                   'Quest completed!',
-                  style: textTheme.labelLarge?.copyWith(color: AppColors.secondaryDark),
+                  style: textTheme.labelLarge?.copyWith(color: AppColors.secondary),
                 ),
-                const SizedBox(height: 4),
                 Text(widget.quest.title, textAlign: TextAlign.center, style: textTheme.titleLarge),
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
                 Text('How was it?', style: textTheme.titleMedium),
-                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(5, (index) {
                     final filled = index < _rating;
+                    // Kotlin draws the stars as ★ / ☆ glyphs, primary when filled.
                     return IconButton(
-                      iconSize: 36,
                       tooltip: '${index + 1}',
-                      onPressed: isSaving ? null : () => setState(() => _rating = index + 1),
-                      icon: Icon(
-                        filled ? Icons.star_rounded : Icons.star_outline_rounded,
-                        color: filled ? AppColors.primary : Theme.of(context).colorScheme.outline,
+                      onPressed: isSaving
+                          ? null
+                          : () => setState(() {
+                              _rating = index + 1;
+                              // Tags of another rating no longer apply.
+                              _tags.retainAll(feedbackTagsFor(_rating));
+                            }),
+                      icon: Text(
+                        filled ? '★' : '☆',
+                        style: TextStyle(
+                          fontSize: 30,
+                          color: filled
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     );
                   }),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Tell us more (optional)', style: textTheme.bodySmall),
+                  child: Text(
+                    _rating == 0
+                        ? 'Pick your stars to tell us more (optional)'
+                        : _rating <= 2
+                        ? 'What went wrong? (optional)'
+                        : _rating == 3
+                        ? 'What could be better? (optional)'
+                        : 'What did you like? (optional)',
+                    style: textTheme.bodySmall,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Align(
@@ -107,15 +129,13 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final entry in _feedbackTags.entries)
-                        FilterChip(
-                          label: Text(entry.value),
-                          selected: _tags.contains(entry.key),
+                      for (final tag in feedbackTagsFor(_rating))
+                        SqChoiceChip(
+                          label: tag,
+                          selected: _tags.contains(tag),
                           onSelected: isSaving
                               ? null
-                              : (selected) => setState(
-                                  () => selected ? _tags.add(entry.key) : _tags.remove(entry.key),
-                                ),
+                              : (_) => setState(() => _tags.contains(tag) ? _tags.remove(tag) : _tags.add(tag)),
                         ),
                     ],
                   ),
@@ -143,13 +163,9 @@ class _QuestCompletedViewState extends State<QuestCompletedView> {
                         : Text(error == null ? 'Save' : 'Retry'),
                   ),
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: isSaving ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Skip'),
-                  ),
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.of(context).pop(),
+                  child: const Text('Skip'),
                 ),
               ],
             ),
@@ -177,12 +193,11 @@ class _SimilarQuestsSection extends StatelessWidget {
     if (similar.isEmpty) return const SizedBox.shrink();
 
     return Padding(
-      padding: const EdgeInsets.only(top: 24),
+      padding: const EdgeInsets.only(top: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('You might also like', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
           for (final (index, quest) in similar.indexed)
             _SimilarQuestCard(
               quest: quest,
@@ -213,16 +228,38 @@ class _SimilarQuestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        onTap: onTap,
-        leading: Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 24)),
-        title: Text(quest.title, style: Theme.of(context).textTheme.titleSmall),
-        subtitle: Text(
-          '${categoryLabelEs(quest.category)} · ${quest.durationMinutes} min',
+    // Kotlin's suggestion card: plain 16 dp card, emoji + title + "category · duration".
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(quest.emoji ?? '🎯', style: const TextStyle(fontSize: 24)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(quest.title, style: textTheme.titleSmall),
+                      Text(
+                        '${categoryLabelEs(quest.category)} · ${quest.durationMinutes} min',
+                        style: textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-        trailing: const Icon(Icons.chevron_right),
       ),
     );
   }

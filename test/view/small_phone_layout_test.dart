@@ -608,7 +608,7 @@ void main() {
               await tester.pump(); // connectivity read, post-frame loads
               await tester.pump();
               if (name == 'onboarding') {
-                await tester.tap(find.text('Get started')); // to the preferences step
+                await tester.tap(find.text('Continue →')); // past the first step
                 await tester.pump();
               }
               if (_showsSponsoredQuest.contains(name)) {

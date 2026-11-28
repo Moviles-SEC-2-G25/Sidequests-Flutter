@@ -13,6 +13,7 @@ import '../viewmodel/profile/profile_view_model.dart';
 import '../viewmodel/quests/quest_view_model.dart';
 import 'widgets/context_banner.dart';
 import 'widgets/offline_notice.dart';
+import 'widgets/sq_components.dart';
 
 import 'profile/profile_view.dart';
 import 'quests/explore_view.dart';
@@ -242,12 +243,13 @@ class _HomeShellState extends State<HomeShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: _selectTab,
+        // The Kotlin app's own outline glyphs (res/drawable/ic_*.xml).
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.explore_outlined), label: 'Explore'),
-          NavigationDestination(icon: Icon(Icons.location_on_outlined), label: 'Nearby'),
-          NavigationDestination(icon: Icon(Icons.people_outline), label: 'Social'),
-          NavigationDestination(icon: Icon(Icons.bolt_outlined), label: 'Quest'),
-          NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
+          NavigationDestination(icon: SqNavIcon(SqNavGlyph.explore), label: 'Explore'),
+          NavigationDestination(icon: SqNavIcon(SqNavGlyph.nearby), label: 'Nearby'),
+          NavigationDestination(icon: SqNavIcon(SqNavGlyph.social), label: 'Social'),
+          NavigationDestination(icon: SqNavIcon(SqNavGlyph.quest), label: 'Quest'),
+          NavigationDestination(icon: SqNavIcon(SqNavGlyph.profile), label: 'Profile'),
         ],
       ),
     ));

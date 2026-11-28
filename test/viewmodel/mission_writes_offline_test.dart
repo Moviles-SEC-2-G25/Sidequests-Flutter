@@ -251,8 +251,8 @@ void main() {
 
       expect(find.textContaining('Offline'), findsOneWidget);
       expect(find.byType(AbandonMissionView), findsOneWidget);
-      final button = tester.widget<OutlinedButton>(
-        find.widgetWithText(OutlinedButton, 'Start another quest'),
+      final button = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Start another quest'),
       );
       expect(button.onPressed, isNotNull);
     });
@@ -334,6 +334,84 @@ void main() {
       expect(find.byType(SnackBar), findsNothing);
       expect(viewModel.currentMission!.currentStep, 1);
       expect(find.text('Complete quest →'), findsOneWidget);
+    });
+  });
+
+  group('going back a step (a step completed by mistake)', () {
+    Future<void> openMission() async {
+      repository.steps = [_step(0), _step(1), _step(2)];
+      await viewModel.load();
+      await viewModel.loadSteps('a');
+    }
+
+    test('nothing to go back to before completing a step', () async {
+      await openMission();
+
+      expect(viewModel.canGoBackAStep(viewModel.currentMission!), isFalse);
+      expect(await viewModel.goBackAStep(viewModel.currentMission!), isFalse);
+    });
+
+    test('online: the last completed step is the current one again', () async {
+      await openMission();
+      await viewModel.completeCurrentStep(viewModel.currentMission!);
+      expect(viewModel.currentMission!.currentStep, 1);
+
+      final wentBack = await viewModel.goBackAStep(viewModel.currentMission!);
+
+      expect(wentBack, isTrue);
+      expect(viewModel.currentMission!.currentStep, 0);
+      expect(viewModel.currentMission!.completedSteps, isEmpty);
+      expect(viewModel.currentMission!.status, 'in_progress');
+      expect(viewModel.stepErrorMessage, isNull);
+      expect(viewModel.isCompletingStep, isFalse);
+      // And it can be completed again.
+      await viewModel.completeCurrentStep(viewModel.currentMission!);
+      expect(viewModel.currentMission!.completedSteps, [0]);
+    });
+
+    test('offline: says why and leaves the progress as it was', () async {
+      await openMission();
+      await viewModel.completeCurrentStep(viewModel.currentMission!);
+      repository.offline = true;
+
+      final wentBack = await viewModel.goBackAStep(viewModel.currentMission!);
+
+      expect(wentBack, isFalse);
+      expect(viewModel.stepErrorMessage, startsWith('Offline'));
+      expect(viewModel.currentMission!.currentStep, 1);
+      expect(viewModel.currentMission!.completedSteps, [0]);
+      expect(viewModel.isCompletingStep, isFalse);
+    });
+
+    testWidgets('"Back to this step" on the last completed step undoes it', (tester) async {
+      await tester.runAsync(openMission);
+      tester.view.physicalSize = const Size(360, 690);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ChangeNotifierProvider<QuestViewModel>.value(
+          value: viewModel,
+          child: const MaterialApp(home: MissionTabView()),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('Back to this step'), findsNothing);
+
+      await tester.ensureVisible(find.text('Complete this step →'));
+      await tester.tap(find.text('Complete this step →'));
+      await tester.pump();
+      await tester.pump();
+      expect(viewModel.currentMission!.currentStep, 1);
+
+      await tester.ensureVisible(find.text('Back to this step'));
+      await tester.tap(find.text('Back to this step'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(viewModel.currentMission!.currentStep, 0);
+      expect(find.text('Back to this step'), findsNothing);
+      expect(find.text('Complete this step →'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 
