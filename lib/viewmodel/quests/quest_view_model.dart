@@ -128,6 +128,16 @@ class QuestViewModel extends ChangeNotifier {
   final SimilarQuestRunner _similarQuestRunner;
   final CompletionLikelihood _completionLikelihood;
   final StepCounterService _stepCounter;
+
+  /// Micro-optimization: the walked steps change many times a minute, and
+  /// only the Misión tab's step card shows them. They go through this
+  /// notifier, so a step rebuilds that card alone instead of every widget
+  /// watching the ViewModel (Explorar, Cerca, Perfil… stay mounted in
+  /// HomeShell's IndexedStack). notifyListeners stays for the podómetro's
+  /// status and session, which do change the rest of the screen.
+  final ValueNotifier<int?> _missionSteps = ValueNotifier(null);
+  StepCounterStatus _notifiedStepStatus = StepCounterStatus.idle;
+  String? _notifiedStepSessionId;
   late final StreamSubscription<void> _stepCounterSubscription;
   int? _lastPersistedSteps;
   final LocationCheckInService _checkIn;
@@ -1200,6 +1210,9 @@ class QuestViewModel extends ChangeNotifier {
   /// The attempt (`user_quests.id`) being counted, null when not counting.
   String? get stepTrackedUserQuestId => _stepCounter.session?.userQuestId;
 
+  /// [missionSteps], for the widgets that show the number as it changes.
+  ValueListenable<int?> get missionStepsListenable => _missionSteps;
+
   /// Walked steps of the attempt being counted; null = no reading yet
   /// (distinct from 0 steps walked).
   int? get missionSteps {
@@ -1309,7 +1322,17 @@ class QuestViewModel extends ChangeNotifier {
         unawaited(_questRepository.saveActiveStepSession(session));
       }
     }
-    notifyListeners();
+    // A reading only changes the number: its listeners alone hear it.
+    _missionSteps.value = missionSteps;
+    // The status (idle, counting, denied, no sensor) or the session (started,
+    // ended, another mission) change the card's layout: everyone hears it.
+    final status = _stepCounter.status;
+    final sessionId = session?.userQuestId;
+    if (status != _notifiedStepStatus || sessionId != _notifiedStepSessionId) {
+      _notifiedStepStatus = status;
+      _notifiedStepSessionId = sessionId;
+      notifyListeners();
+    }
   }
 
   // --- Feature (c): automatic location check-in (Strategy pattern). While
@@ -1911,6 +1934,7 @@ class QuestViewModel extends ChangeNotifier {
     _similarQuestRunner.close();
     _stepCounterSubscription.cancel();
     _stepCounter.dispose();
+    _missionSteps.dispose();
     _stopCheckIn();
     _checkIn.dispose();
     _checkInEvents.close();
