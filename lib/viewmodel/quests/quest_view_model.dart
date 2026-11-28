@@ -31,6 +31,7 @@ import '../../models/user_preferences.dart';
 import '../../models/user_quest.dart';
 import '../../models/verified_check_in.dart';
 import '../../repository/quest_repository.dart';
+import '../../telemetry/app_module.dart';
 
 const List<int> kAvailableMinuteOptions = [10, 20, 30, 45, 60];
 
@@ -116,6 +117,9 @@ class QuestViewModel extends ChangeNotifier {
   final StreamController<CheckInEvent> _checkInEvents = StreamController<CheckInEvent>.broadcast();
   final StreamController<void> _exploreTabRequests = StreamController<void>.broadcast();
   final QuestAlternativesRunner _runQuestAlternatives;
+
+  /// BQ1: non-fatal failures per module (Bq1Telemetry in the app).
+  final FailureReporter _failureReporter;
 
   /// "📍 Cerca de: ..." (where the user is), from Nominatim.
   final ReverseGeocodingService? _geocoding;
@@ -268,9 +272,11 @@ class QuestViewModel extends ChangeNotifier {
     DateTime Function()? now,
     QuestAlternativesRunner questAlternativesRunner = _computeAlternativesInBackground,
     CompletionLikelihoodMemo? completionLikelihoodMemo,
+    FailureReporter failureReporter = FailureReporter.none,
     ReverseGeocodingService? geocoding,
     AttemptFinishedCallback? onAttemptFinished,
   }) : _now = now ?? DateTime.now,
+       _failureReporter = failureReporter,
        _geocoding = geocoding,
        _onAttemptFinished = onAttemptFinished,
        _completionLikelihoodMemo = completionLikelihoodMemo ?? CompletionLikelihoodMemo(),
@@ -348,8 +354,17 @@ class QuestViewModel extends ChangeNotifier {
       ]);
       unawaited(_resumeStepTracking());
       unawaited(retryPendingPhotoUploads());
+      // Only asked when someone records it (Bq1Telemetry in the app).
+      if (!identical(_failureReporter, FailureReporter.none) && _questRepository.catalogFromCache) {
+        _failureReporter.report(
+          AppModule.catalog,
+          null,
+          message: 'Quest catalogue fell back to the device cache',
+        );
+      }
     } on AppException catch (e) {
       errorMessage = e.message;
+      _failureReporter.report(AppModule.catalog, e, message: e.message);
     } finally {
       isLoading = false;
       _syncCheckIn();
@@ -485,7 +500,14 @@ class QuestViewModel extends ChangeNotifier {
         _visibleBatchId = batchId;
       }
       // A saved list logged its impressions when it was first shown (BQ8).
-      if (batch.fromCache) return;
+      if (batch.fromCache) {
+        _failureReporter.report(
+          AppModule.recommendations,
+          null,
+          message: 'recommend_quests unavailable; showing an earlier list',
+        );
+        return;
+      }
       _lastServedSocialLevel = effectivePreferences.socialLevel;
       // A list from the in-memory cache too: same list, same batch (as Kotlin).
       if (batch.alreadyShown) return;
@@ -507,6 +529,7 @@ class QuestViewModel extends ChangeNotifier {
       }
     } on AppException catch (e) {
       errorMessage = e.message;
+      _failureReporter.report(AppModule.recommendations, e, message: e.message);
     } finally {
       isLoadingRecommendations = false;
       notifyListeners();
@@ -569,8 +592,9 @@ class QuestViewModel extends ChangeNotifier {
       currentContext = context;
       notifyListeners();
       await _updateArea(context);
-    } catch (_) {
+    } catch (error) {
       // A missing sensor: nothing new to adapt to.
+      _failureReporter.report(AppModule.context, error);
     }
   }
 
@@ -600,6 +624,11 @@ class QuestViewModel extends ChangeNotifier {
       _areaLongitude = longitude;
     } else {
       currentAreaError = 'Dirección no disponible por ahora';
+      _failureReporter.report(
+        AppModule.geocoding,
+        null,
+        message: 'Reverse geocoding returned no address',
+      );
     }
     notifyListeners();
   }
@@ -853,6 +882,7 @@ class QuestViewModel extends ChangeNotifier {
     } on AppException catch (e) {
       stepErrorMessage = e.message;
       _lastStepFailedForConnection = e.isRetryable;
+      _failureReporter.report(AppModule.questProgress, e, message: e.message);
       return false;
     } finally {
       _isCompletingStep = false;
@@ -1024,6 +1054,7 @@ class QuestViewModel extends ChangeNotifier {
       return true;
     } on AppException catch (e) {
       errorMessage = e.message;
+      _failureReporter.report(AppModule.questProgress, e, message: e.message);
       notifyListeners();
       return false;
     }
@@ -1644,6 +1675,7 @@ class QuestViewModel extends ChangeNotifier {
       // Retryable: the repository kept the photo with this message as
       // its lastError ("Reintentar subida"). Not retryable: it's gone.
       if (!e.isRetryable) photoErrorMessage = e.message;
+      _failureReporter.report(AppModule.photoProof, e, message: e.message);
     } finally {
       _uploadingStoragePath = null;
       pendingPhotoProofs = _questRepository.getPendingPhotoProofs();
@@ -1680,6 +1712,7 @@ class QuestViewModel extends ChangeNotifier {
       );
     } on AppException catch (e) {
       photoErrorMessage = e.message;
+      _failureReporter.report(AppModule.photoProof, e, message: e.message);
     } finally {
       _uploadingStoragePath = null;
       notifyListeners();

@@ -23,4 +23,8 @@ abstract final class AnalyticsEventType {
   static const smartDifficultySuggested = 'smart_difficulty_suggested';
   static const smartDifficultyAccepted = 'smart_difficulty_accepted';
   static const smartDifficultyDismissed = 'smart_difficulty_dismissed';
+
+  // BQ1 telemetry (queued in SQLite, see Bq1Telemetry).
+  static const bq1ResumeAfterBackground = 'bq1_resume_after_background';
+  static const moduleFailure = 'module_failure';
 }
