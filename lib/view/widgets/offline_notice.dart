@@ -25,6 +25,9 @@ abstract final class OfflineMessages {
       'Tu avance está guardado.';
   static const photoUpload = 'Tu foto está guardada en el teléfono y se subirá cuando vuelvas a tener conexión.';
   static const savePreferences = 'Sin conexión: necesitas internet para guardar tus preferencias.';
+  static const attemptEvidence =
+      'Sin conexión: ves las fotos guardadas en tu teléfono. Las demás estarán disponibles al reconectar, '
+      'y necesitas internet para guardarlas.';
   static const offlinePackPending =
       'Sin conexión: la misión se descargará cuando vuelvas a tener internet.';
   static const offlinePackRetry =

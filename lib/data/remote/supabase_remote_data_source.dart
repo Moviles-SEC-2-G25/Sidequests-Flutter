@@ -143,6 +143,13 @@ class SupabaseRemoteDataSource implements AnalyticsEventSink {
   Future<void> removeQuestProof(String storagePath) =>
       _client.storage.from(kQuestProofsBucket).remove([storagePath]);
 
+  /// The JPEG bytes of one of the user's own proofs ("Evidencias de un
+  /// intento"). The bucket is private: the SELECT policy of migration 009
+  /// lets only the owner read it, so this is an authenticated download, not a
+  /// public URL. Called through NetworkGuard (EvidenceRepository).
+  Future<Uint8List> downloadQuestProof(String storagePath) =>
+      _client.storage.from(kQuestProofsBucket).download(storagePath);
+
   Future<List<Map<String, dynamic>>> getQuestPhotoProofs(String attemptId) async {
     final rows = await _client
         .from('quest_photo_proofs')

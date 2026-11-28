@@ -8,8 +8,10 @@ import '../../core/number_format.dart';
 import '../../models/abandonment_reason.dart';
 import '../../repository/quest_repository.dart';
 import '../../viewmodel/auth/auth_view_model.dart';
+import '../../viewmodel/profile/attempt_evidence_view_model.dart';
 import '../../viewmodel/profile/mission_history_view_model.dart';
 import '../quests/quest_detail_view.dart';
+import 'attempt_evidence_view.dart';
 
 /// "Mi bitácora", opened from Perfil: every mission the user tried —
 /// completed (with the rating given), abandoned (with why) and in progress —
@@ -319,6 +321,27 @@ class _EntryCard extends StatelessWidget {
                         ],
                       ),
                     ],
+                    // Evidencias de un intento (Alejandro, Sprint 4): the
+                    // photos of this attempt. Its own tap target, so the
+                    // card's onTap (the quest's detail) stays as it was.
+                    TextButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        AttemptEvidenceView.route(
+                          EvidenceAttempt(
+                            attemptId: entry.attemptId,
+                            questId: entry.questId,
+                            questTitle: entry.title,
+                            date: entry.date,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.photo_library_outlined, size: 18),
+                      label: const Text('Evidencias'),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                      ),
+                    ),
                   ],
                 ),
               ),

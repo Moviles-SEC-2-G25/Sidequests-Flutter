@@ -6,6 +6,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'evidence_store.dart';
+
 /// Local cache: profile, preferences, quest catalog and steps, the user's
 /// attempts (and when they were last synced) and their photo proofs, active
 /// quest and progress, analytics
@@ -51,6 +53,13 @@ class LocalDataSource {
 
   late final Box _box;
   late final SharedPreferences _prefs;
+
+  /// Saved photos of "Evidencias de un intento" (files + their own Hive
+  /// index). Owned here so [clear] deletes them with the rest of the account's
+  /// data; opened lazily by the store itself, so [init] doesn't wait for it.
+  final EvidenceStore evidenceStore;
+
+  LocalDataSource({EvidenceStore? evidenceStore}) : evidenceStore = evidenceStore ?? EvidenceStore();
 
   Future<void> init() async {
     await Hive.initFlutter();
@@ -338,6 +347,9 @@ class LocalDataSource {
     } catch (_) {
       // Nothing to clean, or no documents folder on this platform.
     }
+    // The evidence photos saved on the phone are the account's too: files
+    // and index. Never throws (see EvidenceStore.clear).
+    await evidenceStore.clear();
     await _box.clear();
     await _prefs.remove(_keyOnboardingComplete);
     await _prefs.remove(_keyBiometricEnabled);
